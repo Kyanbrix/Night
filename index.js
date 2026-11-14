@@ -44,6 +44,15 @@ function readData() {
     if (!dbCache.users) dbCache.users = {};
     if (!dbCache.clans) dbCache.clans = {};
     if (!dbCache.marketListings) dbCache.marketListings = [];
+    if (!dbCache.shopItems || dbCache.shopItems.length === 0) {
+        dbCache.shopItems = [
+            { id: 1, name: 'Rifle', price: 100000, category: 'Gun', huntCount: 1, luckBoost: 0.05, emoji: '🔫', description: 'Hunts 1 Animal with 5% Luck Boost' },
+            { id: 2, name: 'Sniper', price: 500000, category: 'Gun', huntCount: 3, luckBoost: 0.10, emoji: '🎯', description: 'Hunts 3 Animals with 10% Luck Boost' },
+            { id: 3, name: 'Machine Gun', price: 10000000, category: 'Gun', huntCount: 5, luckBoost: 0.50, emoji: '💣', description: 'Hunts 5 Animals with 50% Luck Boost' },
+            { id: 4, name: 'NUKE', price: 100000000, category: 'Gun', huntCount: 100, luckBoost: 5.00, emoji: '🚀', description: 'Hunts 100 Animals with 500% Luck Boost' },
+            { id: 5, name: 'Lucky Charm I', price: 1500000, category: 'Charm', luckBoost: 0.25, emoji: '🍀', description: 'Increase Luck Boost For 25%' }
+        ];
+    }
     return dbCache;
 }
 
@@ -61,8 +70,8 @@ function saveData(data) {
 function getUser(data, userId) {
     if (!data.users[userId]) {
         data.users[userId] = { 
-            wallet: 500, bank: 1000, inventory: [], boxes: { Rare: 0, Epic: 0 },
-            collection: {}, cooldowns: {}, titles: ['Beta'], equippedTitle: 'Beta',
+            wallet: 500, bank: 1000, inventory: [], boxes: { Rare: 0, Epic: 0, Ultra: 0, Legendary: 0, GOD: 0 },
+            lootboxes: 0, collection: {}, cooldowns: {}, titles: ['Beta'], equippedTitle: 'Beta',
             started: false, level: 1, exp: 0, points: 0, totalHunts: 0,
             clan: null, job: 'Unemployed', badges: []
         };
@@ -71,6 +80,7 @@ function getUser(data, userId) {
     const u = data.users[userId];
     if (u.started === undefined) u.started = false;
     if (!u.clan) u.clan = null;
+    if (!u.boxes) u.boxes = { Rare: 0, Epic: 0, Ultra: 0, Legendary: 0, GOD: 0 };
     return u;
 }
 
@@ -113,8 +123,17 @@ function addClanContribution(user, userId, data, pointsEarned) {
 }
 
 const RARITY_ICONS = {
-    'Common': '⚪', 'Uncommon': '🟢', 'Rare': '🔵', 'Epic': '🟣', 
-    'Legendary': '🟡', 'Mythic': '🟠', 'GOD Tier': '✨', 'Shiny': '🌟'
+    'Common': '<:common:1570576518206333098>',
+    'Uncommon': '<:uncommon:1570576547298021437>',
+    'Rare': '<:rare:1570576572044279918>',
+    'Epic': '<:epic:1570576596413190154>',
+    'Legendary': '<:legendary:1570562590529159210>',
+    'Mythic': '<:mythical:1570576640247861449>',
+    'S+ Tier': '<:stier:1571017458419109989>',
+    'SS+ Tier': '<:sstier:1571017591189807104>',
+    'SSS+ Tier': '<:ssstier:1571017675650367608>',
+    'GOD Tier': '<:god:1570577048966140035>',
+    'Shiny': '✨'
 };
 
 const HUNT_ANIMALS = [
@@ -124,7 +143,14 @@ const HUNT_ANIMALS = [
     { name: 'Bear', tier: 'Rare', badge: '🐻', minExp: 120, maxExp: 170, clanPts: [7, 13] },
     { name: 'Whale', tier: 'Epic', badge: '🐋', minExp: 180, maxExp: 210, clanPts: [9, 16] },
     { name: 'Lion', tier: 'Mythic', badge: '🦁', minExp: 300, maxExp: 340, clanPts: [14, 23] },
-    { name: 'Snowman', tier: 'GOD Tier', badge: '⛄', minExp: 5000, maxExp: 7000, clanPts: [45, 68] }
+    { name: 'Ghost', tier: 'S+ Tier', badge: '👻', minExp: 1370, maxExp: 1420, clanPts: [18, 29] },
+    { name: 'Dragon', tier: 'SS+ Tier', badge: '🐉', minExp: 2500, maxExp: 2700, clanPts: [23, 34] },
+    { name: 'Unicorn', tier: 'SSS+ Tier', badge: '🦄', minExp: 3500, maxExp: 4000, clanPts: [34, 52] },
+    { name: 'Snowman', tier: 'GOD Tier', badge: '⛄', minExp: 5000, maxExp: 7000, clanPts: [45, 68] },
+    { name: 'Shiny Turtle', tier: 'Shiny', badge: '<:ShinyTurtle:1570467471889137735>', minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
+    { name: 'Shiny Snowman', tier: 'Shiny', badge: '<:ShinySnowman:1570467561454305520>', minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
+    { name: 'Shiny Scorpion', tier: 'Shiny', badge: '<:ShinyScorpion:1570467397834379285>', minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
+    { name: 'Shiny Dolphin', tier: 'Shiny', badge: '<:Shinydolphin:1570467326573416602>', minExp: 8000, maxExp: 10000, clanPts: [56, 100] }
 ];
 
 const commands = [
@@ -134,15 +160,18 @@ const commands = [
     new SlashCommandBuilder().setName('beg').setDescription('Beg for coins.'),
     new SlashCommandBuilder().setName('work').setDescription('Work to earn coins.')
         .addStringOption(o => o.setName('job').setDescription('Profession').setRequired(false).addChoices(
-            {name:'Farmer', value:'Farmer'}, {name:'Chief', value:'Chief'}, {name:'Developer', value:'Developer'}
+            {name:'Farmer', value:'Farmer'}, {name:'Chief', value:'Chief'}, {name:'Developer', value:'Developer'},
+            {name:'Designer', value:'Designer'}, {name:'Discord Manager', value:'Discord Manager'},
+            {name:'CEO', value:'CEO'}, {name:'President', value:'President'}
         )),
-    new SlashCommandBuilder().setName('trivia').setDescription('Answer a 1-minute random trivia or fill-in-the-blank challenge for cash prizes (₱1k-₱7k).'),
+    new SlashCommandBuilder().setName('work-list').setDescription('View list of available professions.'),
+    new SlashCommandBuilder().setName('trivia').setDescription('Answer a 1-minute random trivia challenge for cash prizes (₱1k-₱7k).'),
     new SlashCommandBuilder().setName('clan').setDescription('Manage your clan.')
         .addSubcommand(s => s.setName('create').setDescription('Create a clan').addStringOption(o => o.setName('name').setDescription('Name').setRequired(true)).addStringOption(o => o.setName('logo').setDescription('Logo URL').setRequired(true)))
         .addSubcommand(s => s.setName('info').setDescription('View your current clan info'))
         .addSubcommand(s => s.setName('edit').setDescription('Edit clan settings').addStringOption(o => o.setName('type').setDescription('Open/Private').setRequired(false).addChoices({name:'Open', value:'Open'}, {name:'Private', value:'Private'}))),
     new SlashCommandBuilder().setName('sclan').setDescription('Search or join a clan').addStringOption(o => o.setName('name').setDescription('Clan name').setRequired(true)),
-    new SlashCommandBuilder().setName('hunt').setDescription('Go hunting!'),
+    new SlashCommandBuilder().setName('hunt').setDescription('Go hunting for animals and shinies!'),
     new SlashCommandBuilder().setName('profiles').setDescription('View your enhanced RPG profile card').addUserOption(o => o.setName('user').setDescription('User').setRequired(false)),
     new SlashCommandBuilder().setName('sell').setDescription('Sell items/animals on market')
         .addStringOption(o => o.setName('type').setDescription('Name').setRequired(true))
@@ -270,7 +299,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply(`✅ Successfully joined clan **${clanName}**!`);
         }
 
-        // --- /hunt (Strict clan contribution check) ---
+        // --- /hunt (Strict clan contribution check + Shinies included) ---
         else if (commandName === 'hunt') {
             const caught = HUNT_ANIMALS[Math.floor(Math.random() * HUNT_ANIMALS.length)];
             if (!user.collection[caught.name]) user.collection[caught.name] = 0;
