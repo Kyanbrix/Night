@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -83,7 +82,6 @@ function getRarityIconMap() {
   return map;
 }
 
-// Parse time strings like 30s, 5m, 2h, 1d, 1w
 function parseDurationToMs(durationStr) {
   const match = durationStr.match(/^(\d+)([smhdw])$/i);
   if (!match) return null;
@@ -260,7 +258,6 @@ client.on('interactionCreate', async interaction => {
   const rarityIconsMap = getRarityIconMap();
 
   try {
-    // Check if timed luck event expired
     if (db.config.luckEventExpires && Date.now() > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
       db.config.luckEventExpires = 0;
@@ -287,11 +284,10 @@ client.on('interactionCreate', async interaction => {
           { name: '🎒 Inventory & Profile', value: '`/cinventory`, `/collections`\n`/cprofile`, `/crank`, `/cpoints`, `/cranks`\n`/ctrade` - Trade with other players' },
           { name: '🏛️ Clans & Fun', value: '`/cclanlist`, `/cclanjoin`, `/cclaninfo`, `/ccreateclan`\n`/cmeme`, `/ctrivia`' }
         )
-        .setFooter({ text: `Powered by Railway` });
+        .setFooter({ text: 'Powered by Railway' });
       return interaction.reply({ embeds: [embed] });
     }
 
-    // Roll Command (Integrated with Active Luck Boosts)
     if (interaction.commandName === 'roll') {
       const qty = Math.min(interaction.options.getInteger('quantity') || 1, gameData.settings.maxRollQuantity);
       const boost = interaction.options.getString('boost');
@@ -311,8 +307,6 @@ client.on('interactionCreate', async interaction => {
 
       user.dice -= qty;
       const resultsSummary = [];
-
-      // Calculate effective luck multiplier (Global Event multiplier * Spray boost)
       let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
@@ -340,8 +334,6 @@ client.on('interactionCreate', async interaction => {
 
         const normalVal = parseOddsNumber(chibiTemplate.odds);
         let shinyVal = parseOddsNumber(chibiTemplate.shinyOdds);
-        
-        // Luck event / boost makes shiny rolls easier (divides required threshold)
         shinyVal = Math.max(1, Math.round(shinyVal / activeLuckMultiplier));
         const isShiny = Math.random() * shinyVal < 1;
 
@@ -370,7 +362,7 @@ client.on('interactionCreate', async interaction => {
         if (currentRollVal > user.bestRollVal) {
           user.bestRollVal = currentRollVal;
           user.bestRoll = chibiTemplate.shinyOdds;
-          user.bestChibi = `${isShiny ? SHINY_ICON + ' ' : ''}${chibiTemplate.emoji} ${chibiTemplate.name}`;
+          user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
         }
       }
 
@@ -384,7 +376,7 @@ client.on('interactionCreate', async interaction => {
           resultsSummary
             .map(
               r =>
-                `${rarityIconsMap[r.chibi.rarity]} ${r.isShiny ? SHINY_ICON + ' ' : ''}${r.chibi.emoji} **${r.chibi.name}** ${
+                `${rarityIconsMap[r.chibi.rarity]} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${
                   r.duplicated ? '(🍀 Duplicated!)' : ''
                 }`
             )
@@ -426,7 +418,7 @@ client.on('interactionCreate', async interaction => {
         user.inventory.chibis
           .map(
             (c, i) =>
-              `${i + 1}. \`[${c.id}]\` ${rarityIconsMap[c.rarity]} ${c.isShiny ? SHINY_ICON + ' ' : ''}${c.emoji} **${c.name}** - Lv.${c.level}`
+              `${i + 1}. \`[${c.id}]\` ${rarityIconsMap[c.rarity]} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''} - Lv.${c.level}`
           )
           .slice(0, 15)
           .join('\n') || 'No chibis collected yet.';
@@ -481,7 +473,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'collections') {
       const collectionText =
         user.inventory.chibis
-          .map(c => `${rarityIconsMap[c.rarity]} - ${c.isShiny ? SHINY_ICON + ' ' : ''}${c.emoji} ${c.name} (${c.date})`)
+          .map(c => `${rarityIconsMap[c.rarity]} - [${c.emoji} ${c.name} ${c.isShiny ? SHINY_ICON : ''}] (${c.date})`)
           .join('\n') || 'Your collection is empty.';
       const embed = new EmbedBuilder()
         .setTitle(`📖 ${interaction.user.username}'s Chibi Collection`)
@@ -501,7 +493,7 @@ client.on('interactionCreate', async interaction => {
       const maxExp = baseExp + (chibi.level - 1) * perLvl;
 
       const embed = new EmbedBuilder()
-        .setTitle(`${rarityIconsMap[chibi.rarity]} ${chibi.isShiny ? SHINY_ICON + ' ' : ''}${chibi.emoji} ${chibi.name} Stats`)
+        .setTitle(`${rarityIconsMap[chibi.rarity]} ${chibi.emoji} ${chibi.name} ${chibi.isShiny ? SHINY_ICON : ''} Stats`)
         .setColor('#e67e22')
         .addFields(
           { name: '❤️ HP', value: `${statConfig.hp + chibi.level * statConfig.hpPer}`, inline: true },
@@ -520,7 +512,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `💰 Your current points balance is: **${user.points}**` });
     }
 
-    // Leaderboard /cranks
     if (interaction.commandName === 'cranks') {
       const sortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, ...uData }))
@@ -562,7 +553,7 @@ client.on('interactionCreate', async interaction => {
       saveUsers(db);
 
       return interaction.reply({
-        content: `✅ Successfully equipped ${chibi.isShiny ? SHINY_ICON + ' ' : ''}${chibi.emoji} **${chibi.name}** to Team Slot ${slot}!${expMsg}`
+        content: `✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`
       });
     }
 
@@ -720,7 +711,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       const options = user.inventory.chibis.slice(0, 25).map(c => ({
-        label: `${c.isShiny ? '✨ ' : ''}${c.name} (${c.rarity}) Lv.${c.level}`,
+        label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
         description: `ID: ${c.id}`,
         value: c.id
       }));
@@ -752,7 +743,7 @@ client.on('interactionCreate', async interaction => {
           );
 
           await i.update({
-            content: `🤝 <@${userId}> offered **${offeredChibi.isShiny ? SHINY_ICON + ' ' : ''}${offeredChibi.emoji} ${offeredChibi.name}** (${
+            content: `🤝 <@${userId}> offered **${offeredChibi.emoji} ${offeredChibi.name} ${offeredChibi.isShiny ? SHINY_ICON : ''}** (${
               offeredChibi.rarity
             }).\n<@${target.id}>, click Confirm Trade to accept!`,
             components: [confirmRow]
@@ -785,9 +776,9 @@ client.on('interactionCreate', async interaction => {
             collector.stop();
 
             return i.update({
-              content: `✅ **Trade Complete!** ${transferredChibi.isShiny ? SHINY_ICON + ' ' : ''}${transferredChibi.emoji} **${
-                transferredChibi.name
-              }** transferred to <@${target.id}>!`,
+              content: `✅ **Trade Complete!** ${transferredChibi.emoji} **${transferredChibi.name}** ${
+                transferredChibi.isShiny ? SHINY_ICON : ''
+              } transferred to <@${target.id}>!`,
               components: []
             });
           }
@@ -796,14 +787,12 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
-    // 17. Admin Commands (With Timed Luck Events & Item Quantities)
     if (interaction.commandName.startsWith('admin-')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
         return interaction.reply({ content: '❌ You do not have permission to use admin commands!', ephemeral: true });
       }
 
-      // /admin-luck-event (multiplier, duration e.g. 30m, 2h)
       if (interaction.commandName === 'admin-luck-event') {
         const mult = interaction.options.getNumber('multiplier');
         const durationStr = interaction.options.getString('duration');
@@ -820,7 +809,6 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ content: `⚡ **Global Luck Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!` });
       }
 
-      // /admin-give-item (target, item, quantity)
       if (interaction.commandName === 'admin-give-item') {
         const target = interaction.options.getUser('target');
         const itemType = interaction.options.getString('item');
