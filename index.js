@@ -1600,4 +1600,4 @@ client.on('messageCreate', async message => {
 // Initialize Database connection then start bot
 initDatabase().then(() => {
   client.login(process.env.DISCORD_TOKEN);
-});
+}); 
