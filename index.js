@@ -359,7 +359,7 @@ client.on('messageCreate', async message => {
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
           { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards\n`+points` - Check points\n`+rank` / `+ranks` - View ranks & leaderboards' },
-          { name: '⚔️ RPG & Battling', value: '`+stats` - Check equipped chibi stats\n`+equipteam [chibi_id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - Challenge players' },
+          { name: '⚔️ RPG & Battling', value: '`+cstats` - Check detailed Chibi card stats\n`+equipteam [chibi_id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - 3v3 Team Clash' },
           { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+cclanjoin`, `+cclaninfo`, `+ccreateclan`\n`+meme`, `+trivia`' }
         )
@@ -557,7 +557,7 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory (Shows individual instances with unique short IDs, capped safely)
+    // +inventory
     if (command === 'inventory') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
@@ -574,7 +574,6 @@ client.on('messageCreate', async message => {
         })
         .join('\n');
 
-      // Safety check to prevent Discord 1024-character field limit error
       if (chibiList.length > 1000) {
         chibiList = chibiList.substring(0, 997) + '...';
       }
@@ -593,7 +592,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +collections (Grouped duplicates with ID index numbers + Sort Buttons)
+    // +collections
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('📖 Your collection is empty! Use `+roll` to summon chibis.');
@@ -693,26 +692,49 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +stats
-    if (command === 'stats') {
-      if (!user.equippedChibi) return message.reply('❌ You do not have a chibi equipped! Use `+equipteam [chibi_id] [slot]` first.');
-      const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
-      if (!chibi) return message.reply('❌ Equipped chibi not found in inventory.');
+    // +cstats (Detailed Chibi Card Stat Layout inspired by screenshot 2)
+    if (command === 'cstats') {
+      if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
+        return message.reply('❌ You have no chibis in your inventory!');
+      }
+
+      // If an argument is provided, lookup by short ID or slot index
+      let chibi = null;
+      if (args[0]) {
+        chibi = user.inventory.chibis.find(c => {
+          const uId = c.chibiId || c.id;
+          return uId === args[0] || uId.endsWith(args[0]);
+        });
+      } else if (user.equippedChibi) {
+        chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
+      } else {
+        chibi = user.inventory.chibis[0]; // Default to first chibi
+      }
+
+      if (!chibi) return message.reply('❌ Chibi not found! Use `+inventory` to find valid Chibi IDs.');
 
       const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
+      const hpVal = statConfig.hp + chibi.level * statConfig.hpPer;
+      const atkVal = statConfig.atk + chibi.level * statConfig.atkPer;
+      const defVal = statConfig.def + chibi.level * statConfig.defPer;
+
       const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
       const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
       const maxExp = baseExp + (chibi.level - 1) * perLvl;
+      const shortId = (chibi.chibiId || chibi.id).slice(-6);
 
       const embed = new EmbedBuilder()
-        .setTitle(`${rarityIconsMap[chibi.rarity]} ${chibi.emoji} ${chibi.name} ${chibi.isShiny ? SHINY_ICON : ''} Stats`)
-        .setColor('#e67e22')
-        .addFields(
-          { name: '❤️ HP', value: `${statConfig.hp + chibi.level * statConfig.hpPer}`, inline: true },
-          { name: '🗡️ Attack', value: `${statConfig.atk + chibi.level * statConfig.atkPer}`, inline: true },
-          { name: '🛡️ Defense', value: `${statConfig.def + chibi.level * statConfig.defPer}`, inline: true },
-          { name: '📊 Level / EXP', value: `Level ${chibi.level} (${chibi.exp}/${maxExp} EXP)` }
-        );
+        .setTitle(`📜 ${message.author.username}'s Chibi Card`)
+        .setColor('#2ecc71')
+        .setDescription(
+          `[${shortId}] ${rarityIconsMap[chibi.rarity]} ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}\n` +
+          `**Lvl ${chibi.level}** [\`${chibi.exp}/${maxExp}\`]\n\n` +
+          `❤️ **HP:** \`${hpVal}\`  |  🛡️ **DEF:** \`${defVal}\`\n` +
+          `🗡️ **ATK:** \`${atkVal}\`  |  ✨ **Rarity:** \`${chibi.rarity}\`\n` +
+          `📅 **Obtained:** \`${chibi.date || 'Unknown'}\``
+        )
+        .setFooter({ text: `Tip: Use +cstats [id] to inspect a specific chibi!` });
+
       return message.reply({ embeds: [embed] });
     }
 
@@ -740,7 +762,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +equipteam (Fully linked to chibiId and short ID suffix lookup)
+    // +equipteam
     if (command === 'equipteam') {
       const chibiIdArg = args[0];
       const slot = parseInt(args[1]);
@@ -748,7 +770,6 @@ client.on('messageCreate', async message => {
         return message.reply('❌ Usage: `+equipteam [chibi_id or short id] [slot 1-3]`\nExample: `+equipteam a1b2c3 1`');
       }
 
-      // Find chibi by full chibiId, id, or trailing short ID
       const chibi = user.inventory.chibis.find(c => {
         const uId = c.chibiId || c.id;
         return uId === chibiIdArg || uId.endsWith(chibiIdArg);
@@ -771,7 +792,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // +battle (Linked to unique chibi IDs)
+    // +battle (Innovative 3v3 Clash UI styled after screenshot 1)
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -780,48 +801,81 @@ client.on('messageCreate', async message => {
       ensureUser(opponent.id);
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('accept_battle').setLabel('Accept Battle').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('accept_battle').setLabel('Accept Clash').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('decl_battle').setLabel('Decline').setStyle(ButtonStyle.Danger)
       );
 
       const battleMsg = await message.reply({
-        content: `<@${opponent.id}>, you have been challenged to a Chibi Battle by <@${userId}>!`,
+        content: `⚔️ <@${opponent.id}>, you have been challenged to a 3v3 Chibi Team Clash by <@${userId}>!`,
         components: [row]
       });
 
       const collector = battleMsg.createMessageComponentCollector({ time: 120000 });
       collector.on('collect', async i => {
         if (i.user.id !== opponent.id) return i.reply({ content: 'This battle challenge is not for you!', ephemeral: true });
+        
         if (i.customId === 'accept_battle') {
-          const challengerChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
-          const opponentUser = db.users[opponent.id];
-          const opponentChibi = opponentUser.inventory.chibis.find(c => (c.chibiId || c.id) === opponentUser.equippedChibi);
+          const p1User = user;
+          const p2User = db.users[opponent.id];
 
-          const p1Power = calculateChibiCombatPower(challengerChibi) * (0.85 + Math.random() * 0.3);
-          const p2Power = calculateChibiCombatPower(opponentChibi) * (0.85 + Math.random() * 0.3);
+          // Resolve 3-slot team chibis for both players
+          const getTeamChibis = (u) => {
+            return (u.team || [null, null, null]).map(id => {
+              if (!id) return null;
+              return u.inventory.chibis.find(c => (c.chibiId || c.id) === id);
+            });
+          };
 
-          const winner = p1Power >= p2Power ? message.author : opponent;
-          const loser = winner.id === userId ? opponent : message.author;
+          const p1Team = getTeamChibis(p1User);
+          const p2Team = getTeamChibis(p2User);
 
-          const winUser = db.users[winner.id];
-          const winChibi = winUser.inventory.chibis.find(c => (c.chibiId || c.id) === winUser.equippedChibi);
-          const loseUser = db.users[loser.id];
-          const loseChibi = loseUser.inventory.chibis.find(c => (c.chibiId || c.id) === loseUser.equippedChibi);
+          // Calculate total team combat power
+          const getTeamPower = (team) => {
+            return team.reduce((acc, c) => acc + calculateChibiCombatPower(c), 50);
+          };
 
-          winUser.points += 150;
-          const winExpBase = Math.floor(Math.random() * 201) + 300;
-          const loseExpBase = Math.floor(Math.random() * 201) + 100;
+          const p1Power = getTeamPower(p1Team) * (0.85 + Math.random() * 0.3);
+          const p2Power = getTeamPower(p2Team) * (0.85 + Math.random() * 0.3);
 
-          const actualWinExp = addExpAndLevelUp(winUser, winChibi, winExpBase);
-          const actualLoseExp = addExpAndLevelUp(loseUser, loseChibi, loseExpBase);
+          const isP1Winner = p1Power >= p2Power;
+          const winner = isP1Winner ? message.author : opponent;
+          const loser = isP1Winner ? opponent : message.author;
+
+          const winUser = isP1Winner ? p1User : p2User;
+          const loseUser = isP1Winner ? p2User : p1User;
+          const winTeam = isP1Winner ? p1Team : p2Team;
+
+          winUser.points += 200;
+          const totalExpWon = addExpAndLevelUp(winUser, winTeam.find(Boolean), 400);
+
           await saveUsers();
 
-          await i.update({
-            content: `⚔️ **Battle Complete!** <@${winner.id}> won against <@${loser.id}> and earned **+150 Points** & **+${actualWinExp} EXP**! (<@${loser.id}> received **+${actualLoseExp} EXP** consolation).`,
-            components: []
-          });
+          // Render 3v3 Combat UI inspired by Screenshot 1
+          const renderTeamLines = (team, username) => {
+            return team.map((c, idx) => {
+              if (!c) return `**[${idx + 1}]** *Empty Slot*`;
+              const rIcon = rarityIconsMap[c.rarity] || '📦';
+              const sIcon = c.isShiny ? SHINY_ICON : '';
+              const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
+              const hp = statCfg.hp + c.level * statCfg.hpPer;
+              return `**[${idx + 1}]** ${rIcon} ${c.emoji} **${c.name}** ${sIcon} (Lvl ${c.level}) — ❤️ HP: \`${hp}\``;
+            }).join('\n');
+          };
+
+          const embed = new EmbedBuilder()
+            .setTitle(`⚔️ 3v3 Chibi Arena Clash Result`)
+            .setColor(isP1Winner ? '#f1c40f' : '#e74c3c')
+            .setDescription(`🏆 **Winner:** <@${winner.id}> triumphs in a fierce 3v3 showdown!`)
+            .addFields(
+              { name: `🛡️ ${message.author.username}'s Team Lineup`, value: renderTeamLines(p1Team, message.author.username), inline: false },
+              { name: `🛡️ ${opponent.username}'s Team Lineup`, value: renderTeamLines(p2Team, opponent.username), inline: false },
+              { name: '📊 Match Rewards', value: `✨ Victor earned **+200 Points** & **+${totalExpWon} EXP**!` }
+            )
+            .setFooter({ text: `Clash concluded in 5 tactical turns!` });
+
+          await i.update({ content: '', embeds: [embed], components: [] });
         } else {
-          await i.update({ content: `❌ <@${opponent.id}> declined the battle challenge.`, components: [] });
+          await i.update({ content: `❌ <@${opponent.id}> declined the 3v3 arena clash.`, components: [] });
         }
       });
       return;
