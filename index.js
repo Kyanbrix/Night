@@ -418,7 +418,7 @@ client.on('messageCreate', async message => {
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
     }
 
-    // +roll
+    // +roll (Updated to generate unique chibiId for duplicate tracking)
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -473,8 +473,10 @@ client.on('messageCreate', async message => {
         const isShiny = Math.random() * shinyVal < 1;
 
         const pushChibi = () => {
+          const generatedId = new mongoose.Types.ObjectId().toString();
           user.inventory.chibis.push({
-            id: Math.random().toString(36).substring(2, 9),
+            id: generatedId,
+            chibiId: generatedId, // Unique ID for duplicate item management
             name: chibiTemplate.name,
             rarity: chibiTemplate.rarity,
             emoji: chibiTemplate.emoji,
@@ -483,6 +485,7 @@ client.on('messageCreate', async message => {
             exp: 0,
             date: new Date().toLocaleDateString()
           });
+          return generatedId;
         };
 
         pushChibi();
@@ -552,19 +555,19 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory
+    // +inventory (Displays unique IDs for duplicate chibis)
     if (command === 'inventory') {
       const chibiList =
         user.inventory.chibis
           .map(
             (c, i) =>
-              `${i + 1}. \`[${c.id}]\` ${rarityIconsMap[c.rarity]} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''} - Lv.${c.level}`
+              `${i + 1}. \`[${(c.chibiId || c.id).slice(-6)}]\` ${rarityIconsMap[c.rarity]} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''} - Lv.${c.level}`
           )
           .slice(0, 15)
           .join('\n') || 'No chibis collected yet.';
 
       const embed = new EmbedBuilder()
-        .setTitle(`🎒 ${message.author.username}'s Inventory`)
+        .setTitle(`🎒 ${message.author.username}'s Inventory (Unique IDs shown)`)
         .setColor('#3498db')
         .addFields(
           { name: '🎲 Dice', value: `${user.dice} 🎲`, inline: true },
@@ -670,7 +673,7 @@ client.on('messageCreate', async message => {
     // +stats
     if (command === 'stats') {
       if (!user.equippedChibi) return message.reply('❌ You do not have a chibi equipped! Use `+equipteam` first.');
-      const chibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
+      const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
       if (!chibi) return message.reply('❌ Equipped chibi not found in inventory.');
 
       const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
@@ -715,18 +718,19 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'equipteam') {
-      const chibiId = args[0];
+      const chibiIdArg = args[0];
       const slot = parseInt(args[1]);
-      if (!chibiId || isNaN(slot) || slot < 1 || slot > 3) {
-        return message.reply('❌ Usage: `+equipteam [chibi_id] [slot 1-3]`');
+      if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
+        return message.reply('❌ Usage: `+equipteam [chibi_id or partial id] [slot 1-3]`');
       }
 
-      const chibi = user.inventory.chibis.find(c => c.id === chibiId);
+      const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiIdArg || (c.chibiId || c.id).endsWith(chibiIdArg));
       if (!chibi) return message.reply('❌ Chibi ID not found in your inventory.');
 
+      const chibiUniqueId = chibi.chibiId || chibi.id;
       const wasEmpty = !user.team[slot - 1];
-      user.team[slot - 1] = chibi.id;
-      user.equippedChibi = chibi.id;
+      user.team[slot - 1] = chibiUniqueId;
+      user.equippedChibi = chibiUniqueId;
 
       let expMsg = '';
       if (wasEmpty) {
@@ -760,9 +764,9 @@ client.on('messageCreate', async message => {
       collector.on('collect', async i => {
         if (i.user.id !== opponent.id) return i.reply({ content: 'This battle challenge is not for you!', ephemeral: true });
         if (i.customId === 'accept_battle') {
-          const challengerChibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
+          const challengerChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
           const opponentUser = db.users[opponent.id];
-          const opponentChibi = opponentUser.inventory.chibis.find(c => c.id === opponentUser.equippedChibi);
+          const opponentChibi = opponentUser.inventory.chibis.find(c => (c.chibiId || c.id) === opponentUser.equippedChibi);
 
           const p1Power = calculateChibiCombatPower(challengerChibi) * (0.85 + Math.random() * 0.3);
           const p2Power = calculateChibiCombatPower(opponentChibi) * (0.85 + Math.random() * 0.3);
@@ -771,9 +775,9 @@ client.on('messageCreate', async message => {
           const loser = winner.id === userId ? opponent : message.author;
 
           const winUser = db.users[winner.id];
-          const winChibi = winUser.inventory.chibis.find(c => c.id === winUser.equippedChibi);
+          const winChibi = winUser.inventory.chibis.find(c => (c.chibiId || c.id) === winUser.equippedChibi);
           const loseUser = db.users[loser.id];
-          const loseChibi = loseUser.inventory.chibis.find(c => c.id === loseUser.equippedChibi);
+          const loseChibi = loseUser.inventory.chibis.find(c => (c.chibiId || c.id) === loseUser.equippedChibi);
 
           winUser.points += 150;
           const winExpBase = Math.floor(Math.random() * 201) + 300;
@@ -899,8 +903,8 @@ client.on('messageCreate', async message => {
 
       const options = user.inventory.chibis.slice(0, 25).map(c => ({
         label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
-        description: `ID: ${c.id}`,
-        value: c.id
+        description: `ID: ${c.chibiId || c.id}`,
+        value: c.chibiId || c.id
       }));
 
       const selectMenu = new StringSelectMenuBuilder()
@@ -921,7 +925,7 @@ client.on('messageCreate', async message => {
         if (i.isStringSelectMenu() && i.customId === 'trade_chibi_select') {
           if (i.user.id !== userId) return i.reply({ content: 'This is not your trade offer!', ephemeral: true });
           selectedChibiId = i.values[0];
-          const offeredChibi = user.inventory.chibis.find(c => c.id === selectedChibiId);
+          const offeredChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === selectedChibiId);
 
           const confirmRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('confirm_trade').setLabel('Confirm Trade').setStyle(ButtonStyle.Success),
@@ -947,15 +951,16 @@ client.on('messageCreate', async message => {
             if (i.user.id !== target.id) {
               return i.reply({ content: `Only <@${target.id}> can accept this trade!`, ephemeral: true });
             }
-            const chibiIndex = user.inventory.chibis.findIndex(c => c.id === selectedChibiId);
+            const chibiIndex = user.inventory.chibis.findIndex(c => (c.chibiId || c.id) === selectedChibiId);
             if (chibiIndex === -1) {
               collector.stop();
               return i.update({ content: '❌ Trade failed: Chibi is no longer in sender inventory.', components: [] });
             }
 
             const [transferredChibi] = user.inventory.chibis.splice(chibiIndex, 1);
-            if (user.equippedChibi === transferredChibi.id) user.equippedChibi = null;
-            user.team = user.team.map(slotId => (slotId === transferredChibi.id ? null : slotId));
+            const transferredId = transferredChibi.chibiId || transferredChibi.id;
+            if (user.equippedChibi === transferredId) user.equippedChibi = null;
+            user.team = user.team.map(slotId => (slotId === transferredId ? null : slotId));
 
             db.users[target.id].inventory.chibis.push(transferredChibi);
             await saveUsers();
