@@ -112,23 +112,22 @@ function getRarityIconMap() {
   return map;
 }
 
-// Automatic Rank Calculator based on Points
+// Updated Rank Calculator using exact custom emojis and point ranges
 function updateUserRank(user) {
   const pts = user.points || 0;
-  const rarityIcons = getRarityIconMap();
   
-  if (pts >= 10000) {
-    user.rank = `${rarityIcons['UTR'] || '👑'} Ultra Rare (UTR)`;
-  } else if (pts >= 5000) {
-    user.rank = `${rarityIcons['SRR'] || '💎'} Super Rare Red (SRR)`;
-  } else if (pts >= 2500) {
-    user.rank = `${rarityIcons['SR'] || '⭐'} Super Rare (SR)`;
+  if (pts >= 8002) {
+    user.rank = '<:Inferno:1571314769741357117>';
+  } else if (pts >= 5501) {
+    user.rank = '<:Obsidian:1571314669732237533>';
+  } else if (pts >= 4001) {
+    user.rank = '<:Archangel:1571314592993247282>';
+  } else if (pts >= 2501) {
+    user.rank = '<:Zenith:1571314408875884714>';
   } else if (pts >= 1000) {
-    user.rank = `${rarityIcons['R'] || '🔷'} Rare (R)`;
-  } else if (pts >= 300) {
-    user.rank = `${rarityIcons['U'] || '🟩'} Uncommon (U)`;
+    user.rank = '<:Astral:1571314353796284496>';
   } else {
-    user.rank = `${rarityIcons['C'] || '📦'} Common (C)`;
+    user.rank = '<:unranked:1571314276071907519>';
   }
 }
 
@@ -138,7 +137,7 @@ function ensureUser(userId) {
       started: false,
       dice: 10,
       points: 0,
-      rank: '📦 Common (C)',
+      rank: '<:unranked:1571314276071907519>',
       clan: null,
       inventory: { chibis: [], items: { spray: 0, clover: 0 } },
       team: [null, null, null],
@@ -382,8 +381,8 @@ client.on('messageCreate', async message => {
         .setDescription('Explore the categories below to navigate your adventure:')
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
-          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank badge\n`+rank` / `+ranks` - View ranks & leaderboards' },
-          { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash' },
+          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards' },
+          { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points' },
           { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis & dice' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`' }
         )
@@ -413,7 +412,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +daily (Reworked streak and multi-tier rewards)
+    // +daily
     if (command === 'daily') {
       const nowTime = Date.now();
       const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -432,7 +431,6 @@ client.on('messageCreate', async message => {
 
       user.lastDaily = nowTime;
 
-      // Tiered streak multipliers for base daily dice drop
       let multiplier = 1;
       if (user.streak >= 100) multiplier = 5;
       else if (user.streak >= 50) multiplier = 3;
@@ -769,7 +767,7 @@ client.on('messageCreate', async message => {
     if (command === 'rank') {
       updateUserRank(user);
       await saveUsers();
-      return message.reply(`🏆 Your current rank is: **${user.rank}**`);
+      return message.reply(`🏆 Your current rank icon: ${user.rank}`);
     }
     
     if (command === 'points') {
@@ -791,7 +789,7 @@ client.on('messageCreate', async message => {
         sortedUsers
           .map(
             (u, idx) =>
-              `**${idx + 1}.** <@${u.uId}> — Rank: **${u.rank}** | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`
+              `**${idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`
           )
           .join('\n') || 'No players on the leaderboard yet.';
 
@@ -833,7 +831,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // +battle (3v3 Team Arena Clash)
+    // +battle (3v3 Team Arena Clash with Tiered Point Rewards & Penalties)
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -881,9 +879,25 @@ client.on('messageCreate', async message => {
           const loser = isP1Winner ? opponent : message.author;
 
           const winUser = isP1Winner ? p1User : p2User;
+          const loseUser = isP1Winner ? p2User : p1User;
           const winTeam = isP1Winner ? p1Team : p2Team;
 
-          winUser.points += 200;
+          // Helper to calculate bracket-based random points win/loss
+          const getBattlePoints = (pts) => {
+            if (pts >= 8002) return { win: Math.floor(Math.random() * 31) + 120, lose: 75 }; // 120-150 points, lose 75
+            if (pts >= 5501) return { win: Math.floor(Math.random() * 31) + 90, lose: 50 };  // 90-120 points, lose 50
+            if (pts >= 4001) return { win: Math.floor(Math.random() * 31) + 70, lose: 30 };  // 70-100 points, lose 30
+            if (pts >= 2501) return { win: Math.floor(Math.random() * 31) + 50, lose: 20 };  // 50-80 points, lose 20
+            if (pts >= 1000) return { win: Math.floor(Math.random() * 21) + 20, lose: 10 };  // 20-40 points, lose 10
+            return { win: Math.floor(Math.random() * 11) + 10, lose: 5 };                  // 10-20 points, lose 5
+          };
+
+          const winReward = getBattlePoints(winUser.points);
+          const losePenalty = getBattlePoints(loseUser.points);
+
+          winUser.points += winReward.win;
+          loseUser.points = Math.max(0, loseUser.points - losePenalty.lose);
+
           const totalExpWon = addExpAndLevelUp(winUser, winTeam.find(Boolean), 400);
 
           updateUserRank(p1User);
@@ -908,7 +922,7 @@ client.on('messageCreate', async message => {
             .addFields(
               { name: `🛡️ ${message.author.username}'s Team Lineup`, value: renderTeamLines(p1Team), inline: false },
               { name: `🛡️ ${opponent.username}'s Team Lineup`, value: renderTeamLines(p2Team), inline: false },
-              { name: '📊 Match Rewards', value: `✨ Victor earned **+200 Points** & **+${totalExpWon} EXP**!` }
+              { name: '📊 Match Rewards', value: `✨ Victor earned **+${winReward.win} Points** & **+${totalExpWon} EXP**!\n💔 Loser lost **-${losePenalty.lose} Points**.` }
             )
             .setFooter({ text: `Clash concluded in 5 tactical turns!` });
 
@@ -1014,7 +1028,7 @@ client.on('messageCreate', async message => {
           const mUser = db.users[mId];
           if (mUser) updateUserRank(mUser);
           const role = mId === clan.leader ? 'Leader' : mId === clan.viceLeader ? 'Vice-Leader' : 'Member';
-          return `${idx + 1}. <@${mId}> ${role} ${mUser?.rank || 'Novice'} ${mUser?.points || 0} ${mUser?.bestRoll || 'None'}`;
+          return `${idx + 1}. <@${mId}> ${role} ${mUser?.rank || '<:unranked:1571314276071907519>'} ${mUser?.points || 0} ${mUser?.bestRoll || 'None'}`;
         })
       );
 
@@ -1027,7 +1041,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +trade (Reworked to support both Chibis and Dice)
+    // +trade
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
@@ -1120,7 +1134,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // Admin Commands Rework (Removed hyphens: +adminsetpoints, +admingiveitem, etc.)
+    // Admin Commands
     if (command.startsWith('admin')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
@@ -1186,7 +1200,7 @@ client.on('messageCreate', async message => {
         ensureUser(target.id);
         db.users[target.id].rank = newRank;
         await saveUsers();
-        return message.reply(`🛡️ Admin updated rank for <@${target.id}> to **${newRank}**.`);
+        return message.reply(`🛡️ Admin updated rank icon for <@${target.id}>.`);
       }
 
       if (command === 'adminsetpoints') {
@@ -1197,7 +1211,7 @@ client.on('messageCreate', async message => {
         db.users[target.id].points = pts;
         updateUserRank(db.users[target.id]);
         await saveUsers();
-        return message.reply(`🛡️ Admin set points for <@${target.id}> to **${pts}** (Rank auto-updated to **${db.users[target.id].rank}**).`);
+        return message.reply(`🛡️ Admin set points for <@${target.id}> to **${pts}** (Rank icon auto-updated).`);
       }
 
       if (command === 'admingivepermission') {
