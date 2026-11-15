@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -36,7 +37,7 @@ function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) {
     fs.writeFileSync(
       USERS_FILE,
-      JSON.stringify({ users: {}, clans: {}, config: { ownerId: '', globalLuckMultiplier: 1.0 } }, null, 2)
+      JSON.stringify({ users: {}, clans: {}, config: { ownerId: '', globalLuckMultiplier: 1.0, luckEventExpires: 0 } }, null, 2)
     );
   }
   return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
@@ -82,8 +83,23 @@ function getRarityIconMap() {
   return map;
 }
 
+// Parse time strings like 30s, 5m, 2h, 1d, 1w
+function parseDurationToMs(durationStr) {
+  const match = durationStr.match(/^(\d+)([smhdw])$/i);
+  if (!match) return null;
+  const val = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  switch (unit) {
+    case 's': return val * 1000;
+    case 'm': return val * 60 * 1000;
+    case 'h': return val * 60 * 60 * 1000;
+    case 'd': return val * 24 * 60 * 60 * 1000;
+    case 'w': return val * 7 * 24 * 60 * 60 * 1000;
+    default: return null;
+  }
+}
+
 function addExpAndLevelUp(user, chibi, expAmount) {
-  // User Leveling
   user.userExp += expAmount;
   let userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
   while (user.userExp >= userMaxExp) {
@@ -92,7 +108,6 @@ function addExpAndLevelUp(user, chibi, expAmount) {
     userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
   }
 
-  // Chibi Leveling
   if (chibi) {
     chibi.exp += expAmount;
     const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
@@ -150,6 +165,7 @@ const commands = [
   new SlashCommandBuilder().setName('cstats').setDescription('Show stats of your currently equipped Chibi'),
   new SlashCommandBuilder().setName('crank').setDescription('Show your current rank'),
   new SlashCommandBuilder().setName('cpoints').setDescription('Show your current points balance'),
+  new SlashCommandBuilder().setName('cranks').setDescription('Show the global leaderboard of user ranks & points'),
   new SlashCommandBuilder()
     .setName('cequipteam')
     .setDescription('Equip a chibi to a team slot and gain EXP')
@@ -179,14 +195,25 @@ const commands = [
   // Admin Commands
   new SlashCommandBuilder()
     .setName('admin-luck-event')
-    .setDescription('Admin: Trigger a global luck event multiplier')
-    .addNumberOption(opt => opt.setName('multiplier').setDescription('Luck multiplier value').setRequired(true)),
+    .setDescription('Admin: Trigger a timed global luck event multiplier')
+    .addNumberOption(opt => opt.setName('multiplier').setDescription('Luck multiplier value (e.g. 2.0)').setRequired(true))
+    .addStringOption(opt => opt.setName('duration').setDescription('Duration time (e.g. 30s, 10m, 2h, 1d)').setRequired(true)),
   new SlashCommandBuilder()
     .setName('admin-give-item')
-    .setDescription('Admin: Give items or dice to a user')
+    .setDescription('Admin: Give items, dice, or spray/clover to a user')
     .addUserOption(opt => opt.setName('target').setDescription('Target user').setRequired(true))
-    .addStringOption(opt => opt.setName('type').setDescription('dice, spray, or clover').setRequired(true))
-    .addIntegerOption(opt => opt.setName('amount').setDescription('Amount').setRequired(true)),
+    .addStringOption(opt =>
+      opt
+        .setName('item')
+        .setDescription('Item type')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Dice 🎲', value: 'dice' },
+          { name: 'Spray 🧴', value: 'spray' },
+          { name: 'Clover 🍀', value: 'clover' }
+        )
+    )
+    .addIntegerOption(opt => opt.setName('quantity').setDescription('Quantity to give').setRequired(true)),
   new SlashCommandBuilder()
     .setName('admin-set-rank')
     .setDescription('Admin: Set a user rank')
@@ -233,21 +260,22 @@ client.on('interactionCreate', async interaction => {
   const rarityIconsMap = getRarityIconMap();
 
   try {
-    // 1. /cstart
+    // Check if timed luck event expired
+    if (db.config.luckEventExpires && Date.now() > db.config.luckEventExpires) {
+      db.config.globalLuckMultiplier = 1.0;
+      db.config.luckEventExpires = 0;
+      saveUsers(db);
+    }
+
     if (interaction.commandName === 'cstart') {
-      if (user.started) {
-        return interaction.reply({ content: '⚠️ You have already started your Chibi RPG journey!', ephemeral: true });
-      }
+      if (user.started) return interaction.reply({ content: '⚠️ You have already started your Chibi RPG journey!', ephemeral: true });
       user.started = true;
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
       saveUsers(db);
-      return interaction.reply({
-        content: '🎉 Welcome to Chibi RPG RNG! You have been awarded **20x Dice** 🎲 and your profile is initialized. Use `/chelp` to begin!'
-      });
+      return interaction.reply({ content: '🎉 Welcome to Chibi RPG RNG! You have been awarded **20x Dice** 🎲 and your profile is initialized.' });
     }
 
-    // 2. /chelp
     if (interaction.commandName === 'chelp') {
       const embed = new EmbedBuilder()
         .setTitle('🌸 Chibi RPG RNG - Help Center')
@@ -256,50 +284,42 @@ client.on('interactionCreate', async interaction => {
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`/roll` - Roll for Chibis\n`/cdrop` - Claim free dice every 10s\n`/cshop` - Buy Spray & Clover boosts' },
           { name: '⚔️ RPG & Battling', value: '`/cstats` - Check equipped chibi stats\n`/cequipteam` - Manage team slots & gain EXP\n`/cbattle` - Challenge players' },
-          { name: '🎒 Inventory & Profile', value: '`/cinventory` - View items & chibis\n`/collections` - View chibi collection log\n`/cprofile`, `/crank`, `/cpoints`\n`/ctrade` - Trade with other players' },
-          { name: '🏛️ Clans & Fun', value: '`/cclanlist`, `/cclanjoin`, `/cclaninfo`, `/ccreateclan`\n`/cmeme` - Random meme\n`/ctrivia` - Trivia minigame' }
+          { name: '🎒 Inventory & Profile', value: '`/cinventory`, `/collections`\n`/cprofile`, `/crank`, `/cpoints`, `/cranks`\n`/ctrade` - Trade with other players' },
+          { name: '🏛️ Clans & Fun', value: '`/cclanlist`, `/cclanjoin`, `/cclaninfo`, `/ccreateclan`\n`/cmeme`, `/ctrivia`' }
         )
-        .setFooter({ text: `Servers: ${client.guilds.cache.size} • Powered by Railway` });
+        .setFooter({ text: `Powered by Railway` });
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 3. /roll
+    // Roll Command (Integrated with Active Luck Boosts)
     if (interaction.commandName === 'roll') {
       const qty = Math.min(interaction.options.getInteger('quantity') || 1, gameData.settings.maxRollQuantity);
       const boost = interaction.options.getString('boost');
 
       if (qty < 1) return interaction.reply({ content: '❌ Quantity must be at least 1.', ephemeral: true });
       if (user.dice < qty) {
-        return interaction.reply({
-          content: `❌ You don't have enough dice! You need ${qty} 🎲, but you only have ${user.dice} 🎲.`,
-          ephemeral: true
-        });
+        return interaction.reply({ content: `❌ You don't have enough dice! You need ${qty} 🎲, but you have ${user.dice} 🎲.`, ephemeral: true });
       }
 
       if (boost === 'spray') {
-        if (user.inventory.items.spray <= 0) {
-          return interaction.reply({ content: '❌ You have no Spray uses left! Buy more in `/cshop`.', ephemeral: true });
-        }
+        if (user.inventory.items.spray <= 0) return interaction.reply({ content: '❌ No Spray uses left! Buy more in `/cshop`.', ephemeral: true });
         user.inventory.items.spray--;
       } else if (boost === 'clover') {
-        if (user.inventory.items.clover <= 0) {
-          return interaction.reply({ content: '❌ You have no Clover uses left! Buy more in `/cshop`.', ephemeral: true });
-        }
+        if (user.inventory.items.clover <= 0) return interaction.reply({ content: '❌ No Clover uses left! Buy more in `/cshop`.', ephemeral: true });
         user.inventory.items.clover--;
       }
 
       user.dice -= qty;
       const resultsSummary = [];
-      const luckMult = db.config.globalLuckMultiplier || 1.0;
+
+      // Calculate effective luck multiplier (Global Event multiplier * Spray boost)
+      let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
+      if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
       for (let i = 0; i < qty; i++) {
-        // Adjust weights slightly if Spray boost or global luck is active
         const adjustedRarities = gameData.rarities.map(r => {
           let w = r.weight;
-          if (r.key !== 'C') {
-            w *= luckMult;
-            if (boost === 'spray') w *= 1.5;
-          }
+          if (r.key !== 'C') w *= activeLuckMultiplier;
           return { ...r, adjustedWeight: w };
         });
 
@@ -319,8 +339,11 @@ client.on('interactionCreate', async interaction => {
         const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
 
         const normalVal = parseOddsNumber(chibiTemplate.odds);
-        const shinyVal = parseOddsNumber(chibiTemplate.shinyOdds);
-        const isShiny = Math.random() * shinyVal < 1 * luckMult;
+        let shinyVal = parseOddsNumber(chibiTemplate.shinyOdds);
+        
+        // Luck event / boost makes shiny rolls easier (divides required threshold)
+        shinyVal = Math.max(1, Math.round(shinyVal / activeLuckMultiplier));
+        const isShiny = Math.random() * shinyVal < 1;
 
         const pushChibi = () => {
           user.inventory.chibis.push({
@@ -338,24 +361,22 @@ client.on('interactionCreate', async interaction => {
         pushChibi();
         resultsSummary.push({ chibi: chibiTemplate, isShiny });
 
-        // Clover duplication check
         if (boost === 'clover' && Math.random() < 0.5) {
           pushChibi();
           resultsSummary.push({ chibi: chibiTemplate, isShiny, duplicated: true });
         }
 
-        // Track Best Roll & Best Chibi
         const currentRollVal = isShiny ? shinyVal : normalVal;
-        const currentRollText = isShiny ? chibiTemplate.shinyOdds : chibiTemplate.odds;
         if (currentRollVal > user.bestRollVal) {
           user.bestRollVal = currentRollVal;
-          user.bestRoll = currentRollText;
+          user.bestRoll = chibiTemplate.shinyOdds;
           user.bestChibi = `${isShiny ? SHINY_ICON + ' ' : ''}${chibiTemplate.emoji} ${chibiTemplate.name}`;
         }
       }
 
       saveUsers(db);
 
+      const luckNotice = activeLuckMultiplier > 1.0 ? `\n⚡ *Active Luck Boost: ${activeLuckMultiplier}x*` : '';
       const embed = new EmbedBuilder()
         .setTitle('🎲 Chibi Roll Results')
         .setColor('#57f287')
@@ -367,14 +388,13 @@ client.on('interactionCreate', async interaction => {
                   r.duplicated ? '(🍀 Duplicated!)' : ''
                 }`
             )
-            .join('\n')
+            .join('\n') + luckNotice
         )
         .setFooter({ text: `Remaining Dice: ${user.dice} 🎲` });
 
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 4. /cdrop
     if (interaction.commandName === 'cdrop') {
       const now = Date.now();
       const cooldownMs = gameData.settings.dropCooldownSeconds * 1000;
@@ -401,7 +421,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}` });
     }
 
-    // 5. /cinventory
     if (interaction.commandName === 'cinventory') {
       const chibiList =
         user.inventory.chibis
@@ -419,12 +438,11 @@ client.on('interactionCreate', async interaction => {
           { name: '🎲 Dice', value: `${user.dice} 🎲`, inline: true },
           { name: '🧴 Spray', value: `${user.inventory.items.spray} Uses`, inline: true },
           { name: '🍀 Clover', value: `${user.inventory.items.clover} Uses`, inline: true },
-          { name: '✨ Chibis (Use ID in /cequipteam)', value: chibiList }
+          { name: '✨ Chibis', value: chibiList }
         );
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 6. /cshop
     if (interaction.commandName === 'cshop') {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('buy_spray').setLabel('Buy Spray (5 🎲)').setStyle(ButtonStyle.Primary),
@@ -435,8 +453,8 @@ client.on('interactionCreate', async interaction => {
         .setColor('#f1c40f')
         .setDescription('Boost your rolling potential with shop items!')
         .addFields(
-          { name: '🧴 Spray (5 🎲)', value: 'Use this to have the chance to roll Awesome Chibi [30 Uses]' },
-          { name: '🍀 Clover (15 🎲)', value: 'Use this to duplicate your Chibi while rolling [50 Uses]' }
+          { name: '🧴 Spray (5 🎲)', value: 'Use this for Awesome Chibi boost [30 Uses]' },
+          { name: '🍀 Clover (15 🎲)', value: 'Use this to duplicate Chibis while rolling [50 Uses]' }
         );
       const response = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
@@ -448,19 +466,18 @@ client.on('interactionCreate', async interaction => {
           user.dice -= 5;
           user.inventory.items.spray += 30;
           saveUsers(db);
-          await i.update({ content: `✅ Successfully purchased Spray! Current inventory: ${user.inventory.items.spray} Spray uses.`, components: [] });
+          await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, components: [] });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 15;
           user.inventory.items.clover += 50;
           saveUsers(db);
-          await i.update({ content: `✅ Successfully purchased Clover! Current inventory: ${user.inventory.items.clover} Clover uses.`, components: [] });
+          await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, components: [] });
         }
       });
       return;
     }
 
-    // 7. /collections
     if (interaction.commandName === 'collections') {
       const collectionText =
         user.inventory.chibis
@@ -473,11 +490,8 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 8. /cstats
     if (interaction.commandName === 'cstats') {
-      if (!user.equippedChibi) {
-        return interaction.reply({ content: '❌ You do not have a chibi equipped! Use `/cequipteam` first.', ephemeral: true });
-      }
+      if (!user.equippedChibi) return interaction.reply({ content: '❌ You do not have a chibi equipped! Use `/cequipteam` first.', ephemeral: true });
       const chibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
       if (!chibi) return interaction.reply({ content: '❌ Equipped chibi not found in inventory.', ephemeral: true });
 
@@ -498,7 +512,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 9. /crank & /cpoints
     if (interaction.commandName === 'crank') {
       return interaction.reply({ content: `🏆 Your current rank is: **${user.rank}**` });
     }
@@ -507,14 +520,35 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `💰 Your current points balance is: **${user.points}**` });
     }
 
-    // 10. /cequipteam (Connected to EXP & Leveling System)
+    // Leaderboard /cranks
+    if (interaction.commandName === 'cranks') {
+      const sortedUsers = Object.entries(db.users)
+        .map(([uId, uData]) => ({ uId, ...uData }))
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 10);
+
+      const leaderboardText =
+        sortedUsers
+          .map(
+            (u, idx) =>
+              `**${idx + 1}.** <@${u.uId}> — Rank: **${u.rank}** | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`
+          )
+          .join('\n') || 'No players on the leaderboard yet.';
+
+      const embed = new EmbedBuilder()
+        .setTitle('🏆 Global Ranks & Points Leaderboard')
+        .setColor('#f1c40f')
+        .setDescription(leaderboardText);
+      return interaction.reply({ embeds: [embed] });
+    }
+
     if (interaction.commandName === 'cequipteam') {
       const chibiId = interaction.options.getString('chibi_id');
       const slot = interaction.options.getInteger('slot');
       if (slot < 1 || slot > 3) return interaction.reply({ content: '❌ Slot must be 1, 2, or 3.', ephemeral: true });
 
       const chibi = user.inventory.chibis.find(c => c.id === chibiId);
-      if (!chibi) return interaction.reply({ content: '❌ Chibi ID not found in your inventory. Check `/cinventory` for IDs.', ephemeral: true });
+      if (!chibi) return interaction.reply({ content: '❌ Chibi ID not found in your inventory.', ephemeral: true });
 
       const wasEmpty = !user.team[slot - 1];
       user.team[slot - 1] = chibi.id;
@@ -523,7 +557,7 @@ client.on('interactionCreate', async interaction => {
       let expMsg = '';
       if (wasEmpty) {
         addExpAndLevelUp(user, chibi, 250);
-        expMsg = `\n✨ Empty slot bonus: **+250 EXP** awarded to you and **${chibi.name}**!`;
+        expMsg = `\n✨ Team slot bonus: **+250 EXP** awarded to you and **${chibi.name}**!`;
       }
       saveUsers(db);
 
@@ -532,7 +566,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    // 11. /cbattle (Connected to Chibi Stats, EXP, and Points)
     if (interaction.commandName === 'cbattle') {
       const opponent = interaction.options.getUser('opponent');
       if (opponent.bot || opponent.id === userId) return interaction.reply({ content: '❌ You cannot battle yourself or a bot!', ephemeral: true });
@@ -549,7 +582,7 @@ client.on('interactionCreate', async interaction => {
         fetchReply: true
       });
 
-      const collector = msg.createMessageComponentCollector({ time: gameData.settings.battleTimeoutMinutes * 60 * 1000 });
+      const collector = msg.createMessageComponentCollector({ time: 120000 });
       collector.on('collect', async i => {
         if (i.user.id !== opponent.id) return i.reply({ content: 'This battle challenge is not for you!', ephemeral: true });
         if (i.customId === 'accept_battle') {
@@ -570,7 +603,7 @@ client.on('interactionCreate', async interaction => {
           saveUsers(db);
 
           await i.update({
-            content: `⚔️ **Battle Complete!** <@${winner.id}> emerged victorious against <@${loser.id}> and earned **+150 Points** and **+300 EXP**!`,
+            content: `⚔️ **Battle Complete!** <@${winner.id}> won against <@${loser.id}> and earned **+150 Points** & **+300 EXP**!`,
             components: []
           });
         } else {
@@ -580,15 +613,13 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
-    // 12. /cmeme
     if (interaction.commandName === 'cmeme') {
       const res = await fetch('https://meme-api.com/gimme');
       const data = await res.json();
-      const embed = new EmbedBuilder().setTitle(data.title).setImage(data.url).setColor('#e74c3c').setFooter({ text: `Subreddit: r/${data.subreddit}` });
+      const embed = new EmbedBuilder().setTitle(data.title).setImage(data.url).setColor('#e74c3c').setFooter({ text: `r/${data.subreddit}` });
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 13. /ctrivia
     if (interaction.commandName === 'ctrivia') {
       const triviaList = [
         { q: 'What is the powerhouse of the cell? Answer starts with M___', a: 'mitochondria' },
@@ -614,7 +645,6 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
-    // 14. /cprofile
     if (interaction.commandName === 'cprofile') {
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
       const embed = new EmbedBuilder()
@@ -630,7 +660,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 15. Clan Commands
     if (interaction.commandName === 'cclanlist') {
       const clanNames = Object.keys(db.clans);
       const clanListText =
@@ -676,14 +705,11 @@ client.on('interactionCreate', async interaction => {
         .setTitle(`🔰 Clan Information`)
         .setColor('#1abc9c')
         .setDescription(
-          `**Clan Name:** ${clan.name}\n**Clan Leader:** <@${clan.leader}>\n**Clan Vice-Leader:** ${
-            clan.viceLeader ? `<@${clan.viceLeader}>` : 'None'
-          }\n**Total Clan Points:** ${totalPoints}\n\n**Members:**\n${memberLines.join('\n')}`
+          `**Clan Name:** ${clan.name}\n**Leader:** <@${clan.leader}>\n**Total Points:** ${totalPoints}\n\n**Members:**\n${memberLines.join('\n')}`
         );
       return interaction.reply({ embeds: [embed] });
     }
 
-    // 16. /ctrade (Complete end-to-end transfer)
     if (interaction.commandName === 'ctrade') {
       const target = interaction.options.getUser('target');
       if (target.bot || target.id === userId) return interaction.reply({ content: '❌ Invalid trade target.', ephemeral: true });
@@ -712,7 +738,7 @@ client.on('interactionCreate', async interaction => {
       });
 
       let selectedChibiId = null;
-      const collector = tradeMsg.createMessageComponentCollector({ time: gameData.settings.tradeTimeoutMinutes * 60 * 1000 });
+      const collector = tradeMsg.createMessageComponentCollector({ time: 300000 });
 
       collector.on('collect', async i => {
         if (i.isStringSelectMenu() && i.customId === 'trade_chibi_select') {
@@ -761,7 +787,7 @@ client.on('interactionCreate', async interaction => {
             return i.update({
               content: `✅ **Trade Complete!** ${transferredChibi.isShiny ? SHINY_ICON + ' ' : ''}${transferredChibi.emoji} **${
                 transferredChibi.name
-              }** has been transferred from <@${userId}> to <@${target.id}>!`,
+              }** transferred to <@${target.id}>!`,
               components: []
             });
           }
@@ -770,30 +796,49 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
-    // 17. Admin Commands
+    // 17. Admin Commands (With Timed Luck Events & Item Quantities)
     if (interaction.commandName.startsWith('admin-')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
         return interaction.reply({ content: '❌ You do not have permission to use admin commands!', ephemeral: true });
       }
 
+      // /admin-luck-event (multiplier, duration e.g. 30m, 2h)
       if (interaction.commandName === 'admin-luck-event') {
         const mult = interaction.options.getNumber('multiplier');
+        const durationStr = interaction.options.getString('duration');
+        const durationMs = parseDurationToMs(durationStr);
+
+        if (!durationMs) {
+          return interaction.reply({ content: '❌ Invalid duration format! Use format like `30s`, `15m`, `2h`, `1d`, or `1w`.', ephemeral: true });
+        }
+
         db.config.globalLuckMultiplier = mult;
+        db.config.luckEventExpires = Date.now() + durationMs;
         saveUsers(db);
-        return interaction.reply({ content: `⚡ Global luck event multiplier set to **${mult}x**!` });
+
+        return interaction.reply({ content: `⚡ **Global Luck Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!` });
       }
+
+      // /admin-give-item (target, item, quantity)
       if (interaction.commandName === 'admin-give-item') {
         const target = interaction.options.getUser('target');
-        const type = interaction.options.getString('type');
-        const amount = interaction.options.getInteger('amount');
+        const itemType = interaction.options.getString('item');
+        const quantity = interaction.options.getInteger('quantity');
         ensureUser(target.id);
-        if (type === 'dice') db.users[target.id].dice += amount;
-        else if (type === 'spray') db.users[target.id].inventory.items.spray += amount;
-        else if (type === 'clover') db.users[target.id].inventory.items.clover += amount;
+
+        if (itemType === 'dice') {
+          db.users[target.id].dice += quantity;
+        } else if (itemType === 'spray') {
+          db.users[target.id].inventory.items.spray += quantity;
+        } else if (itemType === 'clover') {
+          db.users[target.id].inventory.items.clover += quantity;
+        }
         saveUsers(db);
-        return interaction.reply({ content: `🎁 Admin granted ${amount} ${type} to <@${target.id}>.` });
+
+        return interaction.reply({ content: `🎁 Admin granted **${quantity}x** ${itemType} to <@${target.id}>.` });
       }
+
       if (interaction.commandName === 'admin-set-rank') {
         const target = interaction.options.getUser('target');
         const newRank = interaction.options.getString('rank');
@@ -802,6 +847,7 @@ client.on('interactionCreate', async interaction => {
         saveUsers(db);
         return interaction.reply({ content: `🛡️ Admin updated rank for <@${target.id}> to **${newRank}**.` });
       }
+
       if (interaction.commandName === 'admin-set-points') {
         const target = interaction.options.getUser('target');
         const pts = interaction.options.getInteger('points');
@@ -810,6 +856,7 @@ client.on('interactionCreate', async interaction => {
         saveUsers(db);
         return interaction.reply({ content: `🛡️ Admin set points for <@${target.id}> to **${pts}**.` });
       }
+
       if (interaction.commandName === 'admin-give-permission') {
         const target = interaction.options.getUser('target');
         ensureUser(target.id);
