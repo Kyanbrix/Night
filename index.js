@@ -692,9 +692,8 @@ client.on('messageCreate', async message => {
       };
 
       const invMsg = await message.reply({
-        components: [renderInvContainer(currentPage)],
-        flags: MessageFlags.IsComponentsV2,
-        actionRows: [getInventoryRow(currentPage)]
+        components: [renderInvContainer(currentPage), getInventoryRow(currentPage)],
+        flags: MessageFlags.IsComponentsV2
       });
 
       const invCollector = invMsg.createMessageComponentCollector({ time: 120000 });
@@ -705,9 +704,8 @@ client.on('messageCreate', async message => {
         if (i.customId === 'inv_next' && currentPage < totalPages - 1) currentPage++;
 
         await i.update({
-          components: [renderInvContainer(currentPage)],
-          flags: MessageFlags.IsComponentsV2,
-          actionRows: [getInventoryRow(currentPage)]
+          components: [renderInvContainer(currentPage), getInventoryRow(currentPage)],
+          flags: MessageFlags.IsComponentsV2
         });
       });
       return;
@@ -792,9 +790,8 @@ client.on('messageCreate', async message => {
 
       const initialRender = renderColContainer(currentPage);
       const colMsg = await message.reply({
-        components: [initialRender.container],
-        flags: MessageFlags.IsComponentsV2,
-        actionRows: getColRows(currentPage, initialRender.totalPages)
+        components: [initialRender.container, ...getColRows(currentPage, initialRender.totalPages)],
+        flags: MessageFlags.IsComponentsV2
       });
 
       const colCollector = colMsg.createMessageComponentCollector({ time: 120000 });
@@ -815,9 +812,8 @@ client.on('messageCreate', async message => {
 
         const updated = renderColContainer(currentPage);
         await i.update({
-          components: [updated.container],
-          flags: MessageFlags.IsComponentsV2,
-          actionRows: getColRows(currentPage, updated.totalPages)
+          components: [updated.container, ...getColRows(currentPage, updated.totalPages)],
+          flags: MessageFlags.IsComponentsV2
         });
       });
       return;
@@ -838,7 +834,7 @@ client.on('messageCreate', async message => {
             '🍀 **Clover (15 🎲):** Use this to duplicate Chibis while rolling [50 Uses]'
           )
         );
-      const shopMsg = await message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
+      const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
 
       const collector = shopMsg.createMessageComponentCollector({ time: 30000 });
       collector.on('collect', async i => {
@@ -959,9 +955,8 @@ client.on('messageCreate', async message => {
       };
 
       const ranksMsg = await message.reply({
-        components: [renderRanksContainer(currentPage)],
-        flags: MessageFlags.IsComponentsV2,
-        actionRows: [getRanksRow(currentPage)]
+        components: [renderRanksContainer(currentPage), getRanksRow(currentPage)],
+        flags: MessageFlags.IsComponentsV2
       });
 
       const ranksCollector = ranksMsg.createMessageComponentCollector({ time: 120000 });
@@ -972,9 +967,8 @@ client.on('messageCreate', async message => {
         if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
 
         await i.update({
-          components: [renderRanksContainer(currentPage)],
-          flags: MessageFlags.IsComponentsV2,
-          actionRows: [getRanksRow(currentPage)]
+          components: [renderRanksContainer(currentPage), getRanksRow(currentPage)],
+          flags: MessageFlags.IsComponentsV2
         });
       });
       return;
@@ -1339,9 +1333,8 @@ client.on('messageCreate', async message => {
 
           await i.update({
             content: `🤝 **Trade Session Active!** Both players, submit your offers below:`,
-            components: [renderTradeUI()],
-            flags: MessageFlags.IsComponentsV2,
-            actionRows: [actionRow1, actionRow2]
+            components: [renderTradeUI(), actionRow1, actionRow2],
+            flags: MessageFlags.IsComponentsV2
           });
 
           const sessionCollector = reqMsg.createMessageComponentCollector({ time: 300000 });
@@ -1403,7 +1396,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await collected.delete().catch(() => {});
-                await reqMsg.edit({ components: [renderTradeUI()], flags: MessageFlags.IsComponentsV2, actionRows: [actionRow1, actionRow2] });
+                await reqMsg.edit({ components: [renderTradeUI(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
 
               } else if (typeInteraction.customId === 'choose_chibi') {
                 const activeUserObj = db.users[activeId];
@@ -1447,7 +1440,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await menuInteraction.update({ content: `✅ Chibi offer registered: **${chibiObj.name}**`, components: [] });
-                await reqMsg.edit({ components: [renderTradeUI()], flags: MessageFlags.IsComponentsV2, actionRows: [actionRow1, actionRow2] });
+                await reqMsg.edit({ components: [renderTradeUI(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
               }
 
             } else if (si.customId === 'confirm_trade') {
@@ -1492,8 +1485,7 @@ client.on('messageCreate', async message => {
               return si.update({
                 content: `✅ **Trade Successfully Completed Between <@${userId}> and <@${target.id}>!**`,
                 components: [renderTradeUI()],
-                flags: MessageFlags.IsComponentsV2,
-                actionRows: []
+                flags: MessageFlags.IsComponentsV2
               });
             }
           });
@@ -1600,4 +1592,4 @@ client.on('messageCreate', async message => {
 // Initialize Database connection then start bot
 initDatabase().then(() => {
   client.login(process.env.DISCORD_TOKEN);
-}); 
+});
