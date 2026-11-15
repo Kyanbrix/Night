@@ -350,7 +350,6 @@ client.on('messageCreate', async message => {
   let command = args.shift().toLowerCase();
   const userId = message.author.id;
 
-  // Shortcut mapping
   const shortcuts = {
     h: 'help',
     r: 'roll',
@@ -412,7 +411,7 @@ client.on('messageCreate', async message => {
       return message.reply('❌ You must type `+start` before using any bot commands!');
     }
 
-    // +help (Components V2 Container)
+    // +help
     if (command === 'help') {
       const container = new ContainerBuilder()
         .setAccentColor(0xff77aa)
@@ -432,7 +431,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +status (Components V2 Container)
+    // +status
     if (command === 'status') {
       const ping = client.ws.ping;
       const uptimeSec = Math.floor(client.uptime / 1000);
@@ -486,7 +485,7 @@ client.on('messageCreate', async message => {
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`);
     }
 
-    // +roll (Components V2 Container)
+    // +roll
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -633,7 +632,7 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory (Grouped View Components V2 Container)
+    // +inventory (Paginated with Next & Previous buttons)
     if (command === 'inventory') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
@@ -660,37 +659,71 @@ client.on('messageCreate', async message => {
       const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
       entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
 
-      let chibiList = entries
-        .map((e, idx) => `**${idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
-        .join('\n') || 'Your inventory is empty.';
+      const itemsPerPage = 10;
+      let currentPage = 0;
+      const totalPages = Math.ceil(entries.length / itemsPerPage);
 
-      if (chibiList.length > 2000) {
-        chibiList = chibiList.substring(0, 1997) + '...';
-      }
+      const getInventoryPage = (page) => {
+        const start = page * itemsPerPage;
+        const pageItems = entries.slice(start, start + itemsPerPage);
+        return pageItems
+          .map((e, idx) => `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
+          .join('\n') || 'Inventory page empty.';
+      };
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x3498db)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 🎒 ${message.author.username}'s Inventory\n\n` +
-            `🎲 **Dice:** ${user.dice || 0}\n` +
-            `🧴 **Spray:** ${user.inventory.items?.spray || 0} Uses\n` +
-            `🍀 **Clover:** ${user.inventory.items?.clover || 0} Uses\n\n` +
-            `✨ **Chibis (Grouped View):**\n${chibiList}\n\n` +
-            `*Total Chibis Owned: ${user.inventory.chibis.length}*`
-          )
+      const getInventoryRow = (page) => {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('inv_prev').setLabel('◀ Previous').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('inv_next').setLabel('Next ▶').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
         );
+      };
 
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      const renderInvContainer = (page) => {
+        return new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 🎒 ${message.author.username}'s Inventory (Page ${page + 1}/${totalPages})\n\n` +
+              `🎲 **Dice:** ${user.dice || 0} | 🧴 **Spray:** ${user.inventory.items?.spray || 0} | 🍀 **Clover:** ${user.inventory.items?.clover || 0}\n\n` +
+              `✨ **Chibis:**\n${getInventoryPage(page)}\n\n` +
+              `*Total Chibis Owned: ${user.inventory.chibis.length}*`
+            )
+          );
+      };
+
+      const invMsg = await message.reply({
+        components: [renderInvContainer(currentPage)],
+        flags: MessageFlags.IsComponentsV2,
+        actionRows: [getInventoryRow(currentPage)]
+      });
+
+      const invCollector = invMsg.createMessageComponentCollector({ time: 120000 });
+      invCollector.on('collect', async i => {
+        if (i.user.id !== userId) return i.reply({ content: 'Not your inventory session!', ephemeral: true });
+
+        if (i.customId === 'inv_prev' && currentPage > 0) currentPage--;
+        if (i.customId === 'inv_next' && currentPage < totalPages - 1) currentPage++;
+
+        await i.update({
+          components: [renderInvContainer(currentPage)],
+          flags: MessageFlags.IsComponentsV2,
+          actionRows: [getInventoryRow(currentPage)]
+        });
+      });
+      return;
     }
 
-    // +collections
+    // +collections (Paginated with Next & Previous buttons + Sort Toggle)
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('📖 Your collection is empty! Use `+roll` to summon chibis.');
       }
 
-      const getFormattedCollection = (sortBy = 'rarity') => {
+      let sortBy = 'rarity';
+      let currentPage = 0;
+      const itemsPerPage = 10;
+
+      const getGroupedEntries = () => {
         const grouped = {};
         user.inventory.chibis.forEach(c => {
           const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
@@ -717,45 +750,75 @@ client.on('messageCreate', async message => {
         } else if (sortBy === 'alpha') {
           entries.sort((a, b) => a.name.localeCompare(b.name));
         }
-
-        const formatted = entries
-          .map((e, idx) => `**${idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
-          .join('\n') || 'Your collection is empty.';
-
-        return formatted.length > 3000 ? formatted.substring(0, 2996) + '...' : formatted;
+        return entries;
       };
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sort_rarity').setLabel('Order by Rarity').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('sort_alpha').setLabel('Order Alphabetical').setStyle(ButtonStyle.Secondary)
-      );
+      const renderColContainer = (page) => {
+        const entries = getGroupedEntries();
+        const totalPages = Math.max(1, Math.ceil(entries.length / itemsPerPage));
+        if (page >= totalPages) page = totalPages - 1;
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x9b59b6)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 📖 ${message.author.username}'s Chibi Collection\n\n` +
-            getFormattedCollection('rarity') +
-            `\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`
-          )
-        );
+        const start = page * itemsPerPage;
+        const pageItems = entries.slice(start, start + itemsPerPage);
+        const formatted = pageItems
+          .map((e, idx) => `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
+          .join('\n') || 'Collection page empty.';
 
-      const colMsg = await message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
-      const collector = colMsg.createMessageComponentCollector({ time: 60000 });
-
-      collector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: 'Not your collection session!', ephemeral: true });
-        const sortType = i.customId === 'sort_alpha' ? 'alpha' : 'rarity';
-        const newContainer = new ContainerBuilder()
+        const container = new ContainerBuilder()
           .setAccentColor(0x9b59b6)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `# 📖 ${message.author.username}'s Chibi Collection\n\n` +
-              getFormattedCollection(sortType) +
+              `# 📖 ${message.author.username}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\n` +
+              `Sort: **${sortBy === 'rarity' ? 'Rarity' : 'Alphabetical'}**\n\n` +
+              formatted +
               `\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`
             )
           );
-        await i.update({ components: [newContainer], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
+        return { container, totalPages };
+      };
+
+      const getColRows = (page, totalPages) => {
+        return [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('sort_rarity').setLabel('Order by Rarity').setStyle(sortBy === 'rarity' ? ButtonStyle.Success : ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('sort_alpha').setLabel('Order Alphabetical').setStyle(sortBy === 'alpha' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          ),
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('col_prev').setLabel('◀ Previous').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId('col_next').setLabel('Next ▶').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+          )
+        ];
+      };
+
+      const initialRender = renderColContainer(currentPage);
+      const colMsg = await message.reply({
+        components: [initialRender.container],
+        flags: MessageFlags.IsComponentsV2,
+        actionRows: getColRows(currentPage, initialRender.totalPages)
+      });
+
+      const colCollector = colMsg.createMessageComponentCollector({ time: 120000 });
+      colCollector.on('collect', async i => {
+        if (i.user.id !== userId) return i.reply({ content: 'Not your collection session!', ephemeral: true });
+
+        if (i.customId === 'sort_rarity') {
+          sortBy = 'rarity';
+          currentPage = 0;
+        } else if (i.customId === 'sort_alpha') {
+          sortBy = 'alpha';
+          currentPage = 0;
+        } else if (i.customId === 'col_prev' && currentPage > 0) {
+          currentPage--;
+        } else if (i.customId === 'col_next') {
+          currentPage++;
+        }
+
+        const updated = renderColContainer(currentPage);
+        await i.update({
+          components: [updated.container],
+          flags: MessageFlags.IsComponentsV2,
+          actionRows: getColRows(currentPage, updated.totalPages)
+        });
       });
       return;
     }
@@ -799,7 +862,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +cstats (Components V2 Container)
+    // +cstats
     if (command === 'cstats') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('❌ You have no chibis in your inventory!');
@@ -857,29 +920,64 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
+    // +ranks (Paginated leaderboard)
     if (command === 'ranks') {
-      const sortedUsers = Object.entries(db.users)
+      const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
           updateUserRank(uData);
           return { uId, ...uData };
         })
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 10);
+        .sort((a, b) => b.points - a.points);
 
-      const leaderboardText =
-        sortedUsers
-          .map(
-            (u, idx) =>
-              `**${idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`
-          )
+      const itemsPerPage = 10;
+      let currentPage = 0;
+      const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
+
+      const getRanksPage = (page) => {
+        const start = page * itemsPerPage;
+        const pageUsers = allSortedUsers.slice(start, start + itemsPerPage);
+        return pageUsers
+          .map((u, idx) => `**${start + idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`)
           .join('\n') || 'No players on the leaderboard yet.';
+      };
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0xf1c40f)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`# 🏆 Global Ranks & Points Leaderboard\n\n${leaderboardText}`)
+      const getRanksRow = (page) => {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('rank_prev').setLabel('◀ Previous').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('rank_next').setLabel('Next ▶').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
         );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      };
+
+      const renderRanksContainer = (page) => {
+        return new ContainerBuilder()
+          .setAccentColor(0xf1c40f)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 🏆 Global Ranks & Points Leaderboard (Page ${page + 1}/${totalPages})\n\n${getRanksPage(page)}`
+            )
+          );
+      };
+
+      const ranksMsg = await message.reply({
+        components: [renderRanksContainer(currentPage)],
+        flags: MessageFlags.IsComponentsV2,
+        actionRows: [getRanksRow(currentPage)]
+      });
+
+      const ranksCollector = ranksMsg.createMessageComponentCollector({ time: 120000 });
+      ranksCollector.on('collect', async i => {
+        if (i.user.id !== userId) return i.reply({ content: 'Not your leaderboard session!', ephemeral: true });
+
+        if (i.customId === 'rank_prev' && currentPage > 0) currentPage--;
+        if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
+
+        await i.update({
+          components: [renderRanksContainer(currentPage)],
+          flags: MessageFlags.IsComponentsV2,
+          actionRows: [getRanksRow(currentPage)]
+        });
+      });
+      return;
     }
 
     // +equipteam
@@ -1048,7 +1146,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile (Auto-syncs collection highest rarity & uses Components V2 Container)
+    // +profile (Auto-syncs collection highest rarity & restores User Avatar Thumbnail)
     if (command === 'profile') {
       updateUserRank(user);
 
@@ -1080,11 +1178,14 @@ client.on('messageCreate', async message => {
       }
 
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
+      const avatarUrl = message.author.displayAvatarURL();
+
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# 📊 ${message.author.username}'s RPG Profile\n\n` +
+            `🖼️ [View Avatar](${avatarUrl})\n\n` +
             `📊 **Level & EXP:** Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\n` +
             `🎲 **Best Roll:** ${user.bestRoll} ${user.bestChibi ? user.bestChibi : 'None'}\n` +
             `🏆 **Rank & Points:** Rank: ${user.rank} | Points: ${user.points}\n` +
@@ -1163,7 +1264,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +trade (Revamped Interactive 2-Player Trade System with Components V2 Containers)
+    // +trade
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
