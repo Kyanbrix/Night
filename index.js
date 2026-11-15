@@ -211,11 +211,16 @@ function calculateChibiCombatPower(chibi) {
 }
 
 function parseOddsNumber(oddsString) {
-  const numPart = parseFloat(oddsString.replace(/[^0-9.]/g, '')) || 1;
-  if (oddsString.includes('T')) return numPart * 1_000_000_000_000;
-  if (oddsString.includes('B')) return numPart * 1_000_000_000;
-  if (oddsString.includes('M')) return numPart * 1_000_000;
-  if (oddsString.includes('K')) return numPart * 1_000;
+  if (!oddsString) return 1;
+  const cleanStr = oddsString.replace(/,/g, '').trim();
+  const match = cleanStr.match(/(\d+(?:\.\d+)?)([KMBT])?/i);
+  if (!match) return 1;
+  const numPart = parseFloat(match[1]);
+  const unit = match[2] ? match[2].toUpperCase() : '';
+  if (unit === 'T') return numPart * 1_000_000_000_000;
+  if (unit === 'B') return numPart * 1_000_000_000;
+  if (unit === 'M') return numPart * 1_000_000;
+  if (unit === 'K') return numPart * 1_000;
   return numPart;
 }
 
@@ -526,10 +531,10 @@ client.on('messageCreate', async message => {
         const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
         totalExpGained += addExpAndLevelUp(user, primaryChibi, baseExpRoll);
 
-        const currentRollVal = isShiny ? shinyVal : normalVal;
-        if (currentRollVal > user.bestRollVal) {
+        const currentRollVal = isShiny ? (shinyVal * 1000) : normalVal;
+        if (currentRollVal > (user.bestRollVal || 0)) {
           user.bestRollVal = currentRollVal;
-          user.bestRoll = chibiTemplate.shinyOdds;
+          user.bestRoll = chibiTemplate.shinyOdds || chibiTemplate.odds;
           user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
         }
       }
@@ -1050,7 +1055,6 @@ client.on('messageCreate', async message => {
       updateUserRank(user);
       updateUserRank(targetUser);
 
-      // Step 1: Request trade acceptance
       const acceptRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('accept_trade_req').setLabel('Accept Trade').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('cancel_trade_req').setLabel('Decline').setStyle(ButtonStyle.Danger)
@@ -1074,7 +1078,6 @@ client.on('messageCreate', async message => {
         if (i.customId === 'accept_trade_req') {
           reqCollector.stop();
 
-          // Active Trade State
           let p1OfferType = null;
           let p1OfferData = null;
           let p2OfferType = null;
@@ -1237,7 +1240,6 @@ client.on('messageCreate', async message => {
               const p1Obj = db.users[userId];
               const p2Obj = db.users[target.id];
 
-              // Transfer P1 offer -> P2
               if (p1OfferType === 'dice') {
                 if (p1Obj.dice < p1OfferData) return si.reply({ content: '❌ Player 1 no longer has enough dice!', ephemeral: true });
                 p1Obj.dice -= p1OfferData;
@@ -1249,7 +1251,6 @@ client.on('messageCreate', async message => {
                 p2Obj.inventory.chibis.push(transferred);
               }
 
-              // Transfer P2 offer -> P1
               if (p2OfferType === 'dice') {
                 if (p2Obj.dice < p2OfferData) return si.reply({ content: '❌ Player 2 no longer has enough dice!', ephemeral: true });
                 p2Obj.dice -= p2OfferData;
