@@ -36,7 +36,17 @@ function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) {
     fs.writeFileSync(
       USERS_FILE,
-      JSON.stringify({ users: {}, clans: {}, config: { ownerId: '', globalLuckMultiplier: 1.0, luckEventExpires: 0 } }, null, 2)
+      JSON.stringify({
+        users: {},
+        clans: {},
+        config: {
+          ownerId: '',
+          globalLuckMultiplier: 1.0,
+          luckEventExpires: 0,
+          globalXpMultiplier: 1.0,
+          xpEventExpires: 0
+        }
+      }, null, 2)
     );
   }
   return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
@@ -97,7 +107,11 @@ function parseDurationToMs(durationStr) {
   }
 }
 
-function addExpAndLevelUp(user, chibi, expAmount) {
+function addExpAndLevelUp(user, chibi, baseExpAmount) {
+  const xpMultiplier = db.config.globalXpMultiplier || 1.0;
+  const expAmount = Math.round(baseExpAmount * xpMultiplier);
+
+  // User Leveling System
   user.userExp += expAmount;
   let userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
   while (user.userExp >= userMaxExp) {
@@ -106,18 +120,20 @@ function addExpAndLevelUp(user, chibi, expAmount) {
     userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
   }
 
+  // Chibi Leveling System
   if (chibi) {
     chibi.exp += expAmount;
-    const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
+    const baseChibiExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
     const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
-    let chibiMaxExp = baseExp + (chibi.level - 1) * perLvl;
+    let chibiMaxExp = baseChibiExp + (chibi.level - 1) * perLvl;
 
     while (chibi.exp >= chibiMaxExp) {
       chibi.exp -= chibiMaxExp;
       chibi.level += 1;
-      chibiMaxExp = baseExp + (chibi.level - 1) * perLvl;
+      chibiMaxExp = baseChibiExp + (chibi.level - 1) * perLvl;
     }
   }
+  return expAmount;
 }
 
 function calculateChibiCombatPower(chibi) {
@@ -194,7 +210,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName('admin-luck-event')
     .setDescription('Admin: Trigger a timed global luck event multiplier')
-    .addNumberOption(opt => opt.setName('multiplier').setDescription('Luck multiplier value (e.g. 2.0)').setRequired(true))
+    .addNumberOption(opt => opt.setName('multiplier').setDescription('Luck multiplier value').setRequired(true))
+    .addStringOption(opt => opt.setName('duration').setDescription('Duration time (e.g. 30s, 10m, 2h, 1d)').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('admin-set-xp')
+    .setDescription('Admin: Trigger a timed global XP event multiplier')
+    .addNumberOption(opt => opt.setName('multiplier').setDescription('XP multiplier value').setRequired(true))
     .addStringOption(opt => opt.setName('duration').setDescription('Duration time (e.g. 30s, 10m, 2h, 1d)').setRequired(true)),
   new SlashCommandBuilder()
     .setName('admin-give-item')
@@ -258,9 +279,16 @@ client.on('interactionCreate', async interaction => {
   const rarityIconsMap = getRarityIconMap();
 
   try {
-    if (db.config.luckEventExpires && Date.now() > db.config.luckEventExpires) {
+    // Check expired events
+    const now = Date.now();
+    if (db.config.luckEventExpires && now > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
       db.config.luckEventExpires = 0;
+      saveUsers(db);
+    }
+    if (db.config.xpEventExpires && now > db.config.xpEventExpires) {
+      db.config.globalXpMultiplier = 1.0;
+      db.config.xpEventExpires = 0;
       saveUsers(db);
     }
 
@@ -288,6 +316,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ embeds: [embed] });
     }
 
+    // Roll Command (Awards EXP & Leveling)
     if (interaction.commandName === 'roll') {
       const qty = Math.min(interaction.options.getInteger('quantity') || 1, gameData.settings.maxRollQuantity);
       const boost = interaction.options.getString('boost');
@@ -309,6 +338,9 @@ client.on('interactionCreate', async interaction => {
       const resultsSummary = [];
       let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
+
+      let totalExpGained = 0;
+      const equippedChibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
 
       for (let i = 0; i < qty; i++) {
         const adjustedRarities = gameData.rarities.map(r => {
@@ -358,10 +390,15 @@ client.on('interactionCreate', async interaction => {
           resultsSummary.push({ chibi: chibiTemplate, isShiny, duplicated: true });
         }
 
+        // Roll EXP calculation: Normal (10-150exp), Shiny (50-300exp)
+        const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
+        totalExpGained += addExpAndLevelUp(user, equippedChibi, baseExpRoll);
+
         const currentRollVal = isShiny ? shinyVal : normalVal;
         if (currentRollVal > user.bestRollVal) {
           user.bestRollVal = currentRollVal;
           user.bestRoll = chibiTemplate.shinyOdds;
+          // Best roll without parentheses as requested
           user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
         }
       }
@@ -380,7 +417,7 @@ client.on('interactionCreate', async interaction => {
                   r.duplicated ? '(🍀 Duplicated!)' : ''
                 }`
             )
-            .join('\n') + luckNotice
+            .join('\n') + `\n✨ Gained **+${totalExpGained} EXP**!` + luckNotice
         )
         .setFooter({ text: `Remaining Dice: ${user.dice} 🎲` });
 
@@ -547,8 +584,8 @@ client.on('interactionCreate', async interaction => {
 
       let expMsg = '';
       if (wasEmpty) {
-        addExpAndLevelUp(user, chibi, 250);
-        expMsg = `\n✨ Team slot bonus: **+250 EXP** awarded to you and **${chibi.name}**!`;
+        const awardedExp = addExpAndLevelUp(user, chibi, 250);
+        expMsg = `\n✨ Team slot bonus: **+${awardedExp} EXP** awarded to you and **${chibi.name}**!`;
       }
       saveUsers(db);
 
@@ -557,6 +594,7 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
+    // Battle Command (Connected to Win/Lose EXP System: Win 300-500exp, Lose 100-300exp)
     if (interaction.commandName === 'cbattle') {
       const opponent = interaction.options.getUser('opponent');
       if (opponent.bot || opponent.id === userId) return interaction.reply({ content: '❌ You cannot battle yourself or a bot!', ephemeral: true });
@@ -586,15 +624,24 @@ client.on('interactionCreate', async interaction => {
 
           const winner = p1Power >= p2Power ? interaction.user : opponent;
           const loser = winner.id === userId ? opponent : interaction.user;
+
           const winUser = db.users[winner.id];
           const winChibi = winUser.inventory.chibis.find(c => c.id === winUser.equippedChibi);
+          const loseUser = db.users[loser.id];
+          const loseChibi = loseUser.inventory.chibis.find(c => c.id === loseUser.equippedChibi);
 
           winUser.points += 150;
-          addExpAndLevelUp(winUser, winChibi, 300);
+          
+          // Battle EXP: Win (300-500exp), Lose (100-300exp)
+          const winExpBase = Math.floor(Math.random() * 201) + 300;
+          const loseExpBase = Math.floor(Math.random() * 201) + 100;
+
+          const actualWinExp = addExpAndLevelUp(winUser, winChibi, winExpBase);
+          const actualLoseExp = addExpAndLevelUp(loseUser, loseChibi, loseExpBase);
           saveUsers(db);
 
           await i.update({
-            content: `⚔️ **Battle Complete!** <@${winner.id}> won against <@${loser.id}> and earned **+150 Points** & **+300 EXP**!`,
+            content: `⚔️ **Battle Complete!** <@${winner.id}> won against <@${loser.id}> and earned **+150 Points** & **+${actualWinExp} EXP**! (<@${loser.id}> received **+${actualLoseExp} EXP** consolation).`,
             components: []
           });
         } else {
@@ -626,9 +673,9 @@ client.on('interactionCreate', async interaction => {
       collector.on('collect', m => {
         if (m.content.toLowerCase().includes(selected.a)) {
           user.points += 50;
-          addExpAndLevelUp(user, null, 100);
+          const awardedExp = addExpAndLevelUp(user, null, 100);
           saveUsers(db);
-          m.reply('🎉 Correct! You earned **+50 Points** and **+100 EXP**!');
+          m.reply(`🎉 Correct! You earned **+50 Points** and **+${awardedExp} EXP**!`);
         } else {
           m.reply(`❌ Incorrect! The correct answer was **${selected.a}**.`);
         }
@@ -644,7 +691,7 @@ client.on('interactionCreate', async interaction => {
         .setColor('#2ecc71')
         .addFields(
           { name: '📊 Level & EXP', value: `Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)`, inline: true },
-          { name: '🎲 Best Roll', value: `${user.bestRoll} ${user.bestChibi ? `(${user.bestChibi})` : ''}`, inline: true },
+          { name: '🎲 Best Roll', value: `${user.bestRoll} ${user.bestChibi ? `${user.bestChibi}` : ''}`, inline: true },
           { name: '🏆 Rank & Points', value: `Rank: ${user.rank} | Points: ${user.points}`, inline: true },
           { name: '🔰 Clan', value: user.clan || 'None', inline: true }
         );
@@ -787,6 +834,7 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
+    // Admin Commands
     if (interaction.commandName.startsWith('admin-')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
@@ -807,6 +855,22 @@ client.on('interactionCreate', async interaction => {
         saveUsers(db);
 
         return interaction.reply({ content: `⚡ **Global Luck Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!` });
+      }
+
+      if (interaction.commandName === 'admin-set-xp') {
+        const mult = interaction.options.getNumber('multiplier');
+        const durationStr = interaction.options.getString('duration');
+        const durationMs = parseDurationToMs(durationStr);
+
+        if (!durationMs) {
+          return interaction.reply({ content: '❌ Invalid duration format! Use format like `30s`, `15m`, `2h`, `1d`, or `1w`.', ephemeral: true });
+        }
+
+        db.config.globalXpMultiplier = mult;
+        db.config.xpEventExpires = Date.now() + durationMs;
+        saveUsers(db);
+
+        return interaction.reply({ content: `✨ **Global XP Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!` });
       }
 
       if (interaction.commandName === 'admin-give-item') {
