@@ -75,6 +75,8 @@ function ensureUser(userId) {
       userLevel: 1,
       userExp: 0,
       lastDrop: 0,
+      lastDaily: 0,
+      streak: 0,
       permissions: false
     };
     saveUsers(db);
@@ -149,10 +151,113 @@ function parseOddsNumber(oddsString) {
   return numPart;
 }
 
+// 100+ Trivia Questions Bank
+const TRIVIA_BANK = [
+  { q: 'What is the powerhouse of the cell? Answer starts with M___', a: 'mitochondria' },
+  { q: 'What programming language is this bot written in? J______', a: 'javascript' },
+  { q: 'Which planet is known as the Red Planet? M___', a: 'mars' },
+  { q: 'What is the chemical symbol for gold? A_', a: 'au' },
+  { q: 'Who painted the Mona Lisa? L______', a: 'da vinci' },
+  { q: 'What is the capital city of Japan? T____', a: 'tokyo' },
+  { q: 'How many continents are there on Earth? S____', a: 'seven' },
+  { q: 'What gas do plants absorb from the atmosphere? C______ d______', a: 'carbon dioxide' },
+  { q: 'What is the largest mammal in the world? B____ w____', a: 'blue whale' },
+  { q: 'In what year did the Titanic sink? 1___', a: '1912' },
+  { q: 'What is the hardest natural substance on Earth? D______', a: 'diamond' },
+  { q: 'Which element has the atomic number 1? H_______', a: 'hydrogen' },
+  { q: 'What is the freezing point of water in Celsius? _ degrees', a: '0' },
+  { q: 'What is the largest planet in our solar system? J______', a: 'jupiter' },
+  { q: 'What currency is used in Japan? Y___', a: 'yen' },
+  { q: 'Who wrote "Romeo and Juliet"? W______ S________', a: 'william shakespeare' },
+  { q: 'What is the fastest land animal? C______', a: 'cheetah' },
+  { q: 'Which ocean is the largest? P______ O____', a: 'pacific ocean' },
+  { q: 'What is the capital of France? P____', a: 'paris' },
+  { q: 'How many bones are in the adult human body? ___', a: '206' },
+  { q: 'What is the main ingredient in guacamole? A_______', a: 'avocado' },
+  { q: 'Which country is home to the kangaroo? A________', a: 'australia' },
+  { q: 'What does CPU stand for? C______ p______ u___', a: 'central processing unit' },
+  { q: 'What is the speed of light approximately in km/s? ~______', a: '300000' },
+  { q: 'Who discovered penicillin? A______ F______', a: 'alexander fleming' },
+  { q: 'What is the national sport of Canada? L______', a: 'lacrosse' },
+  { q: 'What is the capital of Italy? R___', a: 'rome' },
+  { q: 'Which instrument has 88 keys? P____', a: 'piano' },
+  { q: 'What is the smallest prime number? _', a: '2' },
+  { q: 'What company developed Minecraft? M_____', a: 'mojang' },
+  { q: 'What is the tallest mountain in the world? M____ E______', a: 'mount everest' },
+  { q: 'Which superhero is known as the Dark Knight? B_____-____', a: 'batman' },
+  { q: 'What is the main language spoken in Brazil? P__________', a: 'portuguese' },
+  { q: 'What is the boiling point of water in Fahrenheit? ___ degrees', a: '212' },
+  { q: 'What is the rarest blood type? __ negative', a: 'ab negative' },
+  { q: 'Who painted "The Starry Night"? V___ G___', a: 'van gogh' },
+  { q: 'What is the currency of the United Kingdom? P____', a: 'pound' },
+  { q: 'Which gas makes up the majority of Earths atmosphere? N_______', a: 'nitrogen' },
+  { q: 'What is the capital of Egypt? C___', a: 'cairo' },
+  { q: 'How many players are on a standard soccer team on the field? __', a: '11' },
+  { q: 'What is the chemical symbol for iron? F_', a: 'fe' },
+  { q: 'Which planet is closest to the sun? M_______', a: 'mercury' },
+  { q: 'What is the longest river in the world? N___ R____', a: 'nile river' },
+  { q: 'Who wrote the Harry Potter series? J_ K_ R______', a: 'j. k. rowling' },
+  { q: 'What is the capital of Australia? C________', a: 'canberra' },
+  { q: 'What is the square root of 144? __', a: '12' },
+  { q: 'Which country invented tea? C____', a: 'china' },
+  { q: 'What is the capital of Spain? M______', a: 'madrid' },
+  { q: 'What do bees collect and use to make honey? N______', a: 'nectar' },
+  { q: 'What is the smallest country in the world? V_____ C___', a: 'vatican city' },
+  { q: 'What year did World War II end? 1___', a: '1945' },
+  { q: 'Which element is diamond made of? C_____', a: 'carbon' },
+  { q: 'What is the capital of Germany? B______', a: 'berlin' },
+  { q: 'What is the chemical formula for water? H__O', a: 'h2o' },
+  { q: 'Who was the first person to walk on the moon? N___ A______', a: 'neil armstrong' },
+  { q: 'What is the capital of South Korea? S____', a: 'seoul' },
+  { q: 'Which continent is the Sahara Desert located in? A_____', a: 'africa' },
+  { q: 'What is the national flower of Japan? C________', a: 'cherry blossom' },
+  { q: 'What is the capital of Canada? O______', a: 'ottawa' },
+  { q: 'How many colors are in a rainbow? _', a: 'seven' },
+  { q: 'What is the capital of India? N__ D____', a: 'new delhi' },
+  { q: 'Which metal is liquid at room temperature? M______', a: 'mercury' },
+  { q: 'What is the capital of Russia? M______', a: 'moscow' },
+  { q: 'Who invented the telephone? A_____ G_____ B____', a: 'alexander graham bell' },
+  { q: 'What is the capital of Mexico? M______ C___', a: 'mexico city' },
+  { q: 'Which animal is known as the Ship of the Desert? C____', a: 'camel' },
+  { q: 'What is the capital of Argentina? B_____ A_____', a: 'buenos aires' },
+  { q: 'What is the largest state in the US by area? A_____', a: 'alaska' },
+  { q: 'What is the capital of Greece? A____', a: 'athens' },
+  { q: 'Which bird is universally recognized as a symbol of peace? D___', a: 'dove' },
+  { q: 'What is the capital of Thailand? B______', a: 'bangkok' },
+  { q: 'How many legs does a spider have? _', a: 'eight' },
+  { q: 'What is the capital of China? B______', a: 'beijing' },
+  { q: 'Which gas is most abundant in the sun? H_______', a: 'hydrogen' },
+  { q: 'What is the capital of Brazil? B________', a: 'brasilia' },
+  { q: 'What is the name of our galaxy? M____ W___', a: 'milky way' },
+  { q: 'What is the capital of Ireland? D______', a: 'dublin' },
+  { q: 'Who painted the Sistine Chapel ceiling? M_________', a: 'michelangelo' },
+  { q: 'What is the capital of Turkey? A____', a: 'ankara' },
+  { q: 'What is the primary color of a school bus? Y_____', a: 'yellow' },
+  { q: 'What is the capital of Sweden? S________', a: 'stockholm' },
+  { q: 'Which mammal can fly? B__', a: 'bat' },
+  { q: 'What is the capital of Norway? O___', a: 'oslo' },
+  { q: 'What is the tallest building in the world? B____ K______', a: 'burj khalifa' },
+  { q: 'What is the capital of Portugal? L_____', a: 'lisbon' },
+  { q: 'Which ocean is off the coast of California? P______', a: 'pacific' },
+  { q: 'What is the capital of Switzerland? B___', a: 'bern' },
+  { q: 'What is the main ingredient in bread? F____', a: 'flour' },
+  { q: 'What is the capital of New Zealand? W_________', a: 'wellington' },
+  { q: 'Which planet has the most moons? S______', a: 'saturn' },
+  { q: 'What is the capital of Poland? W______', a: 'warsaw' },
+  { q: 'How many days are in a leap year? ___', a: '366' },
+  { q: 'What is the capital of Denmark? C__________', a: 'copenhagen' },
+  { q: 'What is the chemical symbol for silver? A_', a: 'ag' },
+  { q: 'What is the capital of Finland? H_______', a: 'helsinki' },
+  { q: 'Which animal is known for changing its colors? C__________', a: 'chameleon' },
+  { q: 'What is the capital of Austria? V______', a: 'vienna' },
+  { q: 'What is the largest desert in the world? A__________ D_____', a: 'antarctic desert' },
+  { q: 'What is the capital of Belgium? B_______', a: 'brussels' },
+  { q: 'Who wrote "The Odyssey"? H____', a: 'homer' }
+];
+
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
   
-  // Set Bot Status: Playing +help and tracking server count
   const updateStatus = () => {
     const serverCount = client.guilds.cache.size;
     client.user.setActivity(`+help | Serving ${serverCount} servers`, { type: 0 });
@@ -173,7 +278,6 @@ client.on('messageCreate', async message => {
   const rarityIconsMap = getRarityIconMap();
 
   try {
-    // Check expired events
     const now = Date.now();
     if (db.config.luckEventExpires && now > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
@@ -186,7 +290,6 @@ client.on('messageCreate', async message => {
       saveUsers(db);
     }
 
-    // 1. +start
     if (command === 'start') {
       if (user.started) return message.reply('⚠️ You have already started your Chibi RPG journey!');
       user.started = true;
@@ -196,11 +299,11 @@ client.on('messageCreate', async message => {
       return message.reply('🎉 Welcome to Chibi RPG RNG! You have been awarded **20x Dice** 🎲 and your profile is initialized.');
     }
 
-    if (!user.started && command !== 'help') {
+    if (!user.started && command !== 'help' && command !== 'status') {
       return message.reply('❌ You must type `+start` before using any bot commands!');
     }
 
-    // 2. +help
+    // +help
     if (command === 'help') {
       const embed = new EmbedBuilder()
         .setTitle('🌸 Chibi RPG RNG - Help Center')
@@ -208,15 +311,70 @@ client.on('messageCreate', async message => {
         .setDescription('Explore the categories below to navigate your adventure:')
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
+          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards\n`+points` - Check points\n`+rank` / `+ranks` - View ranks & leaderboards' },
           { name: '⚔️ RPG & Battling', value: '`+stats` - Check equipped chibi stats\n`+equipteam [id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - Challenge players' },
-          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+rank`, `+points`, `+ranks`\n`+trade [@user]` - Trade chibis' },
+          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+cclanjoin`, `+cclaninfo`, `+ccreateclan`\n`+meme`, `+trivia`' }
         )
         .setFooter({ text: `Playing +help • Serving ${client.guilds.cache.size} Servers` });
       return message.reply({ embeds: [embed] });
     }
 
-    // 3. +roll (Nerfed rarities: SRR 0.01%, UTR 0.001%, Shiny 0.0010%)
+    // +status (Bot Ping, Status, Language Details)
+    if (command === 'status') {
+      const ping = client.ws.ping;
+      const uptimeSec = Math.floor(client.uptime / 1000);
+      const hours = Math.floor(uptimeSec / 3600);
+      const minutes = Math.floor((uptimeSec % 3600) / 60);
+      const seconds = uptimeSec % 60;
+
+      const embed = new EmbedBuilder()
+        .setTitle('🤖 Bot System Status & Info')
+        .setColor('#3498db')
+        .addFields(
+          { name: '📶 Latency / Ping', value: `${ping}ms`, inline: true },
+          { name: '⏱️ Uptime', value: `${hours}h ${minutes}m ${seconds}s`, inline: true },
+          { name: '🌐 Connected Servers', value: `${client.guilds.cache.size} Servers`, inline: true },
+          { name: '💻 Programming Language', value: 'Node.js (JavaScript - Discord.js v14)', inline: true },
+          { name: '⚙️ Status', value: '🟢 Online & Operational', inline: true }
+        )
+        .setFooter({ text: `Requested by ${message.author.username}` });
+      return message.reply({ embeds: [embed] });
+    }
+
+    // +daily (Streak rewards: 5 streak = 5x dice, 50 = 10x, 100 = 20x, non-stackable)
+    if (command === 'daily') {
+      const nowTime = Date.now();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+
+      if (nowTime - user.lastDaily < twentyFourHours) {
+        const remainingTime = Math.ceil((twentyFourHours - (nowTime - user.lastDaily)) / 1000 / 60);
+        return message.reply(`⏳ You have already claimed your daily reward! Please wait another **${remainingTime} minutes**.`);
+      }
+
+      // Check streak (if more than 48 hours passed, reset streak, else increment)
+      const fortyEightHours = 48 * 60 * 60 * 1000;
+      if (user.lastDaily && nowTime - user.lastDaily > fortyEightHours) {
+        user.streak = 1;
+      } else {
+        user.streak = (user.streak || 0) + 1;
+      }
+
+      user.lastDaily = nowTime;
+
+      // Milestone rewards (non-stackable)
+      let rewardDice = 0;
+      if (user.streak >= 100) rewardDice = 20;
+      else if (user.streak >= 50) rewardDice = 10;
+      else if (user.streak >= 5) rewardDice = 5;
+
+      user.dice += rewardDice;
+      saveUsers(db);
+
+      return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
+    }
+
+    // +roll (Nerfed chances: SRR 0.01%, UTR 0.001%, Shiny 0.0010%)
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -243,7 +401,6 @@ client.on('messageCreate', async message => {
       const equippedChibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
 
       for (let i = 0; i < qty; i++) {
-        // Nerfed custom weights for rarities
         const customWeights = { C: 40, U: 25, R: 10, SR: 3, SRR: 0.01, UTR: 0.001 };
         const adjustedRarities = gameData.rarities.map(r => {
           let w = customWeights[r.key] !== undefined ? customWeights[r.key] : r.weight;
@@ -325,15 +482,15 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 4. +drop
+    // +drop
     if (command === 'drop') {
-      const now = Date.now();
+      const dropNow = Date.now();
       const cooldownMs = gameData.settings.dropCooldownSeconds * 1000;
-      if (now - user.lastDrop < cooldownMs) {
-        const timeLeft = Math.ceil((cooldownMs - (now - user.lastDrop)) / 1000);
+      if (dropNow - user.lastDrop < cooldownMs) {
+        const timeLeft = Math.ceil((cooldownMs - (dropNow - user.lastDrop)) / 1000);
         return message.reply(`⏳ Please wait ${timeLeft} more seconds before claiming your next Chibi Drop!`);
       }
-      user.lastDrop = now;
+      user.lastDrop = dropNow;
 
       const totalDropWeight = gameData.dropTable.reduce((sum, d) => sum + d.weight, 0);
       let randD = Math.random() * totalDropWeight;
@@ -352,7 +509,7 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // 5. +inventory
+    // +inventory
     if (command === 'inventory') {
       const chibiList =
         user.inventory.chibis
@@ -375,7 +532,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 6. +shop
+    // +shop
     if (command === 'shop') {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('buy_spray').setLabel('Buy Spray (5 🎲)').setStyle(ButtonStyle.Primary),
@@ -411,10 +568,9 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // 7. +collections (Cleaned format with quantity and Order buttons)
+    // +collections (Clean format without "-" & "()", with quantity, and order buttons)
     if (command === 'collections') {
       const getFormattedCollection = (sortBy = 'rarity') => {
-        // Group chibis by unique key (emoji + name + shiny status)
         const grouped = {};
         user.inventory.chibis.forEach(c => {
           const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
@@ -441,7 +597,7 @@ client.on('messageCreate', async message => {
         }
 
         return entries
-          .map(e => `${e.count}x ${rarityIconsMap[e.rarity]} ${e.emoji} ${e.isShiny ? SHINY_ICON : ''} ${e.date}`)
+          .map(e => `${e.count}x ${rarityIconsMap[e.rarity]} ${e.emoji} ${e.name} ${e.isShiny ? SHINY_ICON : ''} ${e.date}`)
           .join('\n') || 'Your collection is empty.';
       };
 
@@ -468,7 +624,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // 8. +stats
+    // +stats
     if (command === 'stats') {
       if (!user.equippedChibi) return message.reply('❌ You do not have a chibi equipped! Use `+equipteam` first.');
       const chibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
@@ -491,7 +647,6 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 9. +rank, +points, +ranks
     if (command === 'rank') return message.reply(`🏆 Your current rank is: **${user.rank}**`);
     if (command === 'points') return message.reply(`💰 Your current points balance is: **${user.points}**`);
 
@@ -516,7 +671,6 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 10. +equipteam
     if (command === 'equipteam') {
       const chibiId = args[0];
       const slot = parseInt(args[1]);
@@ -541,7 +695,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // 11. +battle (Win: 300-500exp, Lose: 100-300exp)
+    // +battle
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -597,7 +751,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // 12. +meme & +trivia
     if (command === 'meme') {
       const res = await fetch('https://meme-api.com/gimme');
       const data = await res.json();
@@ -605,13 +758,9 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
+    // +trivia (Uses the expanded 100+ question bank)
     if (command === 'trivia') {
-      const triviaList = [
-        { q: 'What is the powerhouse of the cell? Answer starts with M___', a: 'mitochondria' },
-        { q: 'What programming language is this bot written in? J______', a: 'javascript' },
-        { q: 'Which planet is known as the Red Planet? M___', a: 'mars' }
-      ];
-      const selected = triviaList[Math.floor(Math.random() * triviaList.length)];
+      const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
       await message.reply(`🧩 **Trivia Challenge:**\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`);
 
       const filter = m => m.author.id === userId;
@@ -630,7 +779,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // 13. +profile
     if (command === 'profile') {
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
       const embed = new EmbedBuilder()
@@ -646,7 +794,6 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 14. Clan Commands
     if (command === 'clanlist') {
       const clanNames = Object.keys(db.clans);
       const clanListText =
@@ -698,7 +845,6 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // 15. +trade
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
@@ -784,7 +930,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // 16. Admin Commands (+admin-luck-event, +admin-set-xp, +admin-give-item, +admin-set-rank, +admin-set-points, +admin-give-permission)
+    // Admin Commands
     if (command.startsWith('admin-')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
