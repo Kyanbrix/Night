@@ -10,6 +10,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
+const mongoose = require('mongoose');
 
 const client = new Client({
   intents: [
@@ -20,7 +21,6 @@ const client = new Client({
 });
 
 const DATA_FILE = path.join(__dirname, 'data.json');
-const USERS_FILE = path.join(__dirname, 'users.json');
 
 function loadGameData() {
   if (!fs.existsSync(DATA_FILE)) {
@@ -29,32 +29,78 @@ function loadGameData() {
   return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 }
 
-function loadUsers() {
-  if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(
-      USERS_FILE,
-      JSON.stringify({
-        users: {},
-        clans: {},
-        config: {
-          ownerId: '',
-          globalLuckMultiplier: 1.0,
-          luckEventExpires: 0,
-          globalXpMultiplier: 1.0,
-          xpEventExpires: 0
-        }
-      }, null, 2)
-    );
-  }
-  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-}
-
-function saveUsers(data) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2));
-}
-
 const gameData = loadGameData();
-let db = loadUsers();
+
+// MongoDB Schema & Model for Global Game State
+const GameStateSchema = new mongoose.Schema({
+  _id: { type: String, default: 'main_state' },
+  users: { type: Object, default: {} },
+  clans: { type: Object, default: {} },
+  config: {
+    type: Object,
+    default: {
+      ownerId: '',
+      globalLuckMultiplier: 1.0,
+      luckEventExpires: 0,
+      globalXpMultiplier: 1.0,
+      xpEventExpires: 0
+    }
+  }
+});
+
+const GameState = mongoose.model('GameState', GameStateSchema);
+
+let db = {
+  users: {},
+  clans: {},
+  config: {
+    ownerId: '',
+    globalLuckMultiplier: 1.0,
+    luckEventExpires: 0,
+    globalXpMultiplier: 1.0,
+    xpEventExpires: 0
+  }
+};
+
+async function initDatabase() {
+  try {
+    const mongoUri = process.env.MONGO_URI;
+    if (!mongoUri) {
+      throw new Error('MONGO_URI environment variable is missing!');
+    }
+    await mongoose.connect(mongoUri);
+    console.log('Connected to MongoDB successfully!');
+
+    let state = await GameState.findById('main_state');
+    if (!state) {
+      state = await GameState.create({ _id: 'main_state', users: {}, clans: {}, config: db.config });
+    }
+    db.users = state.users || {};
+    db.clans = state.clans || {};
+    db.config = state.config || db.config;
+  } catch (err) {
+    console.error('Database connection error:', err);
+    process.exit(1);
+  }
+}
+
+async function saveUsers() {
+  try {
+    let state = await GameState.findById('main_state');
+    if (!state) {
+      state = new GameState({ _id: 'main_state' });
+    }
+    state.users = db.users;
+    state.clans = db.clans;
+    state.config = db.config;
+    state.markModified('users');
+    state.markModified('clans');
+    state.markModified('config');
+    await state.save();
+  } catch (err) {
+    console.error('Failed to save data to MongoDB:', err);
+  }
+}
 
 const SHINY_ICON = '<:shiny:1571311476239630517>';
 
@@ -79,7 +125,7 @@ function ensureUser(userId) {
       streak: 0,
       permissions: false
     };
-    saveUsers(db);
+    saveUsers();
   }
 }
 
@@ -282,12 +328,12 @@ client.on('messageCreate', async message => {
     if (db.config.luckEventExpires && now > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
       db.config.luckEventExpires = 0;
-      saveUsers(db);
+      await saveUsers();
     }
     if (db.config.xpEventExpires && now > db.config.xpEventExpires) {
       db.config.globalXpMultiplier = 1.0;
       db.config.xpEventExpires = 0;
-      saveUsers(db);
+      await saveUsers();
     }
 
     if (command === 'start') {
@@ -295,7 +341,7 @@ client.on('messageCreate', async message => {
       user.started = true;
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
-      saveUsers(db);
+      await saveUsers();
       return message.reply('🎉 Welcome to Chibi RPG RNG! You have been awarded **20x Dice** 🎲 and your profile is initialized.');
     }
 
@@ -320,7 +366,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +status (Bot Ping, Status, Language Details)
+    // +status
     if (command === 'status') {
       const ping = client.ws.ping;
       const uptimeSec = Math.floor(client.uptime / 1000);
@@ -336,13 +382,13 @@ client.on('messageCreate', async message => {
           { name: '⏱️ Uptime', value: `${hours}h ${minutes}m ${seconds}s`, inline: true },
           { name: '🌐 Connected Servers', value: `${client.guilds.cache.size} Servers`, inline: true },
           { name: '💻 Programming Language', value: 'Node.js (JavaScript - Discord.js v14)', inline: true },
-          { name: '⚙️ Status', value: '🟢 Online & Operational', inline: true }
+          { name: '⚙️ Status', value: '🟢 Online & Operational (MongoDB Connected)', inline: true }
         )
         .setFooter({ text: `Requested by ${message.author.username}` });
       return message.reply({ embeds: [embed] });
     }
 
-    // +daily (Streak rewards: 5 streak = 5x dice, 50 = 10x, 100 = 20x, non-stackable)
+    // +daily
     if (command === 'daily') {
       const nowTime = Date.now();
       const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -352,7 +398,6 @@ client.on('messageCreate', async message => {
         return message.reply(`⏳ You have already claimed your daily reward! Please wait another **${remainingTime} minutes**.`);
       }
 
-      // Check streak (if more than 48 hours passed, reset streak, else increment)
       const fortyEightHours = 48 * 60 * 60 * 1000;
       if (user.lastDaily && nowTime - user.lastDaily > fortyEightHours) {
         user.streak = 1;
@@ -362,19 +407,18 @@ client.on('messageCreate', async message => {
 
       user.lastDaily = nowTime;
 
-      // Milestone rewards (non-stackable)
       let rewardDice = 0;
       if (user.streak >= 100) rewardDice = 20;
       else if (user.streak >= 50) rewardDice = 10;
       else if (user.streak >= 5) rewardDice = 5;
 
       user.dice += rewardDice;
-      saveUsers(db);
+      await saveUsers();
 
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
     }
 
-    // +roll (Nerfed chances: SRR 0.01%, UTR 0.001%, Shiny 0.0010%)
+    // +roll
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -424,7 +468,6 @@ client.on('messageCreate', async message => {
         const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
 
         const normalVal = parseOddsNumber(chibiTemplate.odds);
-        // Nerfed Shiny chance: 0.0010% base (1 in 100,000)
         let shinyVal = 100000;
         shinyVal = Math.max(1, Math.round(shinyVal / activeLuckMultiplier));
         const isShiny = Math.random() * shinyVal < 1;
@@ -461,7 +504,7 @@ client.on('messageCreate', async message => {
         }
       }
 
-      saveUsers(db);
+      await saveUsers();
 
       const luckNotice = activeLuckMultiplier > 1.0 ? `\n⚡ *Active Luck Boost: ${activeLuckMultiplier}x*` : '';
       const embed = new EmbedBuilder()
@@ -504,7 +547,7 @@ client.on('messageCreate', async message => {
       }
 
       user.dice += chosenDrop.dice;
-      saveUsers(db);
+      await saveUsers();
 
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
@@ -555,20 +598,20 @@ client.on('messageCreate', async message => {
           if (user.dice < 5) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 5;
           user.inventory.items.spray += 30;
-          saveUsers(db);
+          await saveUsers();
           await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, components: [] });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 15;
           user.inventory.items.clover += 50;
-          saveUsers(db);
+          await saveUsers();
           await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, components: [] });
         }
       });
       return;
     }
 
-    // +collections (Clean format without "-" & "()", with quantity, and order buttons)
+    // +collections
     if (command === 'collections') {
       const getFormattedCollection = (sortBy = 'rarity') => {
         const grouped = {};
@@ -690,7 +733,7 @@ client.on('messageCreate', async message => {
         const awardedExp = addExpAndLevelUp(user, chibi, 250);
         expMsg = `\n✨ Team slot bonus: **+${awardedExp} EXP** awarded to you and **${chibi.name}**!`;
       }
-      saveUsers(db);
+      await saveUsers();
 
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
@@ -738,7 +781,7 @@ client.on('messageCreate', async message => {
 
           const actualWinExp = addExpAndLevelUp(winUser, winChibi, winExpBase);
           const actualLoseExp = addExpAndLevelUp(loseUser, loseChibi, loseExpBase);
-          saveUsers(db);
+          await saveUsers();
 
           await i.update({
             content: `⚔️ **Battle Complete!** <@${winner.id}> won against <@${loser.id}> and earned **+150 Points** & **+${actualWinExp} EXP**! (<@${loser.id}> received **+${actualLoseExp} EXP** consolation).`,
@@ -758,7 +801,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +trivia (Uses the expanded 100+ question bank)
+    // +trivia
     if (command === 'trivia') {
       const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
       await message.reply(`🧩 **Trivia Challenge:**\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`);
@@ -766,11 +809,11 @@ client.on('messageCreate', async message => {
       const filter = m => m.author.id === userId;
       const collector = message.channel.createMessageCollector({ filter, time: 15000, max: 1 });
 
-      collector.on('collect', m => {
+      collector.on('collect', async m => {
         if (m.content.toLowerCase().includes(selected.a)) {
           user.points += 50;
           const awardedExp = addExpAndLevelUp(user, null, 100);
-          saveUsers(db);
+          await saveUsers();
           m.reply(`🎉 Correct! You earned **+50 Points** and **+${awardedExp} EXP**!`);
         } else {
           m.reply(`❌ Incorrect! The correct answer was **${selected.a}**.`);
@@ -809,7 +852,7 @@ client.on('messageCreate', async message => {
       if (db.clans[clanName]) return message.reply('❌ Clan already exists!');
       db.clans[clanName] = { name: clanName, leader: userId, viceLeader: null, members: [userId] };
       user.clan = clanName;
-      saveUsers(db);
+      await saveUsers();
       return message.reply(`✅ Successfully created and joined clan **${clanName}**!`);
     }
 
@@ -819,7 +862,7 @@ client.on('messageCreate', async message => {
       if (db.clans[clanName].members.includes(userId)) return message.reply('⚠️ You are already in this clan!');
       db.clans[clanName].members.push(userId);
       user.clan = clanName;
-      saveUsers(db);
+      await saveUsers();
       return message.reply(`✅ Successfully joined clan **${clanName}**!`);
     }
 
@@ -915,7 +958,7 @@ client.on('messageCreate', async message => {
             user.team = user.team.map(slotId => (slotId === transferredChibi.id ? null : slotId));
 
             db.users[target.id].inventory.chibis.push(transferredChibi);
-            saveUsers(db);
+            await saveUsers();
             collector.stop();
 
             return i.update({
@@ -948,7 +991,7 @@ client.on('messageCreate', async message => {
 
         db.config.globalLuckMultiplier = mult;
         db.config.luckEventExpires = Date.now() + durationMs;
-        saveUsers(db);
+        await saveUsers();
 
         return message.reply(`⚡ **Global Luck Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!`);
       }
@@ -964,7 +1007,7 @@ client.on('messageCreate', async message => {
 
         db.config.globalXpMultiplier = mult;
         db.config.xpEventExpires = Date.now() + durationMs;
-        saveUsers(db);
+        await saveUsers();
 
         return message.reply(`✨ **Global XP Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!`);
       }
@@ -982,7 +1025,7 @@ client.on('messageCreate', async message => {
         if (itemType === 'dice') db.users[target.id].dice += quantity;
         else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
         else if (itemType === 'clover') db.users[target.id].inventory.items.clover += quantity;
-        saveUsers(db);
+        await saveUsers();
 
         return message.reply(`🎁 Admin granted **${quantity}x** ${itemType} to <@${target.id}>.`);
       }
@@ -993,7 +1036,7 @@ client.on('messageCreate', async message => {
         if (!target || !newRank) return message.reply('❌ Usage: `+admin-set-rank [@user] [rank title]`');
         ensureUser(target.id);
         db.users[target.id].rank = newRank;
-        saveUsers(db);
+        await saveUsers();
         return message.reply(`🛡️ Admin updated rank for <@${target.id}> to **${newRank}**.`);
       }
 
@@ -1003,7 +1046,7 @@ client.on('messageCreate', async message => {
         if (!target || isNaN(pts)) return message.reply('❌ Usage: `+admin-set-points [@user] [points]`');
         ensureUser(target.id);
         db.users[target.id].points = pts;
-        saveUsers(db);
+        await saveUsers();
         return message.reply(`🛡️ Admin set points for <@${target.id}> to **${pts}**.`);
       }
 
@@ -1012,7 +1055,7 @@ client.on('messageCreate', async message => {
         if (!target) return message.reply('❌ Usage: `+admin-give-permission [@user]`');
         ensureUser(target.id);
         db.users[target.id].permissions = true;
-        saveUsers(db);
+        await saveUsers();
         return message.reply(`🛡️ Admin permissions granted to <@${target.id}>.`);
       }
     }
@@ -1022,4 +1065,7 @@ client.on('messageCreate', async message => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Initialize Database connection then start bot
+initDatabase().then(() => {
+  client.login(process.env.DISCORD_TOKEN);
+});
