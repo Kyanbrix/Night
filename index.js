@@ -302,6 +302,7 @@ const TRIVIA_BANK = [
 ];
 
 client.once('ready', async () => {
+  await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
   
   const updateStatus = () => {
@@ -358,7 +359,7 @@ client.on('messageCreate', async message => {
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
           { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards\n`+points` - Check points\n`+rank` / `+ranks` - View ranks & leaderboards' },
-          { name: '⚔️ RPG & Battling', value: '`+stats` - Check equipped chibi stats\n`+equipteam [id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - Challenge players' },
+          { name: '⚔️ RPG & Battling', value: '`+stats` - Check equipped chibi stats\n`+equipteam [chibi_id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - Challenge players' },
           { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+cclanjoin`, `+cclaninfo`, `+ccreateclan`\n`+meme`, `+trivia`' }
         )
@@ -418,7 +419,7 @@ client.on('messageCreate', async message => {
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
     }
 
-    // +roll (Updated to generate unique chibiId for duplicate tracking)
+    // +roll (Generates unique chibiId for duplicates)
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -442,7 +443,7 @@ client.on('messageCreate', async message => {
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
       let totalExpGained = 0;
-      const equippedChibi = user.inventory.chibis.find(c => c.id === user.equippedChibi);
+      const equippedChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
 
       for (let i = 0; i < qty; i++) {
         const customWeights = { C: 40, U: 25, R: 10, SR: 3, SRR: 0.01, UTR: 0.001 };
@@ -474,9 +475,9 @@ client.on('messageCreate', async message => {
 
         const pushChibi = () => {
           const generatedId = new mongoose.Types.ObjectId().toString();
-          user.inventory.chibis.push({
+          const newEntry = {
             id: generatedId,
-            chibiId: generatedId, // Unique ID for duplicate item management
+            chibiId: generatedId,
             name: chibiTemplate.name,
             rarity: chibiTemplate.rarity,
             emoji: chibiTemplate.emoji,
@@ -484,7 +485,8 @@ client.on('messageCreate', async message => {
             level: 1,
             exp: 0,
             date: new Date().toLocaleDateString()
-          });
+          };
+          user.inventory.chibis.push(newEntry);
           return generatedId;
         };
 
@@ -555,25 +557,32 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory (Displays unique IDs for duplicate chibis)
-    if (command === 'inventory') {
-      const chibiList =
-        user.inventory.chibis
-          .map(
-            (c, i) =>
-              `${i + 1}. \`[${(c.chibiId || c.id).slice(-6)}]\` ${rarityIconsMap[c.rarity]} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''} - Lv.${c.level}`
-          )
-          .slice(0, 15)
-          .join('\n') || 'No chibis collected yet.';
+    // +inventory (Shows unique IDs)
+    if (command === 'inventory' || command === 'collections') {
+      if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
+        return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
+      }
+
+      const chibiList = user.inventory.chibis
+        .map((c, i) => {
+          const uniqueId = c.chibiId || c.id;
+          const shortId = uniqueId.slice(-6);
+          const rIcon = rarityIconsMap[c.rarity] || '📦';
+          const sIcon = c.isShiny ? SHINY_ICON : '';
+          const isEquipped = (user.equippedChibi === uniqueId) ? ' ⭐ [Equipped]' : '';
+          return `**${i + 1}.** \`[${shortId}]\` ${rIcon} ${sIcon} **${c.name}** (Lv.${c.level})${isEquipped}`;
+        })
+        .slice(0, 15)
+        .join('\n') || 'No chibis collected yet.';
 
       const embed = new EmbedBuilder()
-        .setTitle(`🎒 ${message.author.username}'s Inventory (Unique IDs shown)`)
+        .setTitle(`🎒 ${message.author.username}'s Inventory`)
         .setColor('#3498db')
         .addFields(
-          { name: '🎲 Dice', value: `${user.dice} 🎲`, inline: true },
-          { name: '🧴 Spray', value: `${user.inventory.items.spray} Uses`, inline: true },
-          { name: '🍀 Clover', value: `${user.inventory.items.clover} Uses`, inline: true },
-          { name: '✨ Chibis', value: chibiList }
+          { name: '🎲 Dice', value: `${user.dice || 0} 🎲`, inline: true },
+          { name: '🧴 Spray', value: `${user.inventory.items?.spray || 0} Uses`, inline: true },
+          { name: '🍀 Clover', value: `${user.inventory.items?.clover || 0} Uses`, inline: true },
+          { name: '✨ Chibis (Use ID to equip)', value: chibiList }
         );
       return message.reply({ embeds: [embed] });
     }
@@ -614,65 +623,9 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +collections
-    if (command === 'collections') {
-      const getFormattedCollection = (sortBy = 'rarity') => {
-        const grouped = {};
-        user.inventory.chibis.forEach(c => {
-          const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
-          if (!grouped[key]) {
-            grouped[key] = {
-              rarity: c.rarity,
-              emoji: c.emoji,
-              name: c.name,
-              isShiny: c.isShiny,
-              date: c.date,
-              count: 0
-            };
-          }
-          grouped[key].count++;
-        });
-
-        let entries = Object.values(grouped);
-        const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
-
-        if (sortBy === 'rarity') {
-          entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
-        } else if (sortBy === 'alpha') {
-          entries.sort((a, b) => a.name.localeCompare(b.name));
-        }
-
-        return entries
-          .map(e => `${e.count}x ${rarityIconsMap[e.rarity]} ${e.emoji} ${e.name} ${e.isShiny ? SHINY_ICON : ''} ${e.date}`)
-          .join('\n') || 'Your collection is empty.';
-      };
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sort_rarity').setLabel('Order by Rarity').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('sort_alpha').setLabel('Order Alphabetical').setStyle(ButtonStyle.Secondary)
-      );
-
-      const embed = new EmbedBuilder()
-        .setTitle(`📖 ${message.author.username}'s Chibi Collection`)
-        .setColor('#9b59b6')
-        .setDescription(getFormattedCollection('rarity'));
-
-      const colMsg = await message.reply({ embeds: [embed], components: [row] });
-      const collector = colMsg.createMessageComponentCollector({ time: 60000 });
-
-      collector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: 'Not your collection session!', ephemeral: true });
-        const sortType = i.customId === 'sort_alpha' ? 'alpha' : 'rarity';
-        const updatedDesc = getFormattedCollection(sortType);
-        const newEmbed = EmbedBuilder.from(embed).setDescription(updatedDesc.length > 4000 ? updatedDesc.substring(0, 3996) + '...' : updatedDesc);
-        await i.update({ embeds: [newEmbed], components: [row] });
-      });
-      return;
-    }
-
     // +stats
     if (command === 'stats') {
-      if (!user.equippedChibi) return message.reply('❌ You do not have a chibi equipped! Use `+equipteam` first.');
+      if (!user.equippedChibi) return message.reply('❌ You do not have a chibi equipped! Use `+equipteam [chibi_id] [slot]` first.');
       const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
       if (!chibi) return message.reply('❌ Equipped chibi not found in inventory.');
 
@@ -717,15 +670,21 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
+    // +equipteam (Fully linked to chibiId and short ID suffix lookup)
     if (command === 'equipteam') {
       const chibiIdArg = args[0];
       const slot = parseInt(args[1]);
       if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
-        return message.reply('❌ Usage: `+equipteam [chibi_id or partial id] [slot 1-3]`');
+        return message.reply('❌ Usage: `+equipteam [chibi_id or short id] [slot 1-3]`\nExample: `+equipteam a1b2c3 1`');
       }
 
-      const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiIdArg || (c.chibiId || c.id).endsWith(chibiIdArg));
-      if (!chibi) return message.reply('❌ Chibi ID not found in your inventory.');
+      // Find chibi by full chibiId, id, or trailing short ID
+      const chibi = user.inventory.chibis.find(c => {
+        const uId = c.chibiId || c.id;
+        return uId === chibiIdArg || uId.endsWith(chibiIdArg);
+      });
+
+      if (!chibi) return message.reply('❌ Chibi ID not found in your inventory! Check `+inventory` for correct IDs.');
 
       const chibiUniqueId = chibi.chibiId || chibi.id;
       const wasEmpty = !user.team[slot - 1];
@@ -742,7 +701,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // +battle
+    // +battle (Linked to unique chibi IDs)
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -901,11 +860,14 @@ client.on('messageCreate', async message => {
         return message.reply('❌ You have no chibis in your inventory to trade!');
       }
 
-      const options = user.inventory.chibis.slice(0, 25).map(c => ({
-        label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
-        description: `ID: ${c.chibiId || c.id}`,
-        value: c.chibiId || c.id
-      }));
+      const options = user.inventory.chibis.slice(0, 25).map(c => {
+        const uId = c.chibiId || c.id;
+        return {
+          label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
+          description: `ID: ${uId}`,
+          value: uId
+        };
+      });
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('trade_chibi_select')
