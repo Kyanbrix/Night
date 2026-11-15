@@ -1,11 +1,13 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -103,6 +105,8 @@ async function saveUsers() {
 }
 
 const SHINY_ICON = '<:shiny:1571311476239630517>';
+const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
+const cooldowns = new Map();
 
 function getRarityIconMap() {
   const map = {};
@@ -112,10 +116,8 @@ function getRarityIconMap() {
   return map;
 }
 
-// Updated Rank Calculator using exact custom emojis and point ranges
 function updateUserRank(user) {
   const pts = user.points || 0;
-  
   if (pts >= 8002) {
     user.rank = '<:Inferno:1571314769741357117>';
   } else if (pts >= 5501) {
@@ -143,6 +145,7 @@ function ensureUser(userId) {
       team: [null, null, null],
       equippedChibi: null,
       bestRoll: 'None',
+      bestRollTier: 0,
       bestRollVal: 0,
       bestChibi: null,
       userLevel: 1,
@@ -224,7 +227,6 @@ function parseOddsNumber(oddsString) {
   return numPart;
 }
 
-// 100+ Trivia Questions Bank
 const TRIVIA_BANK = [
   { q: 'What is the powerhouse of the cell? Answer starts with M___', a: 'mitochondria' },
   { q: 'What programming language is this bot written in? J______', a: 'javascript' },
@@ -344,21 +346,52 @@ client.on('messageCreate', async message => {
   if (message.author.bot || !message.content.startsWith('+')) return;
 
   const args = message.content.slice(1).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
+  let command = args.shift().toLowerCase();
   const userId = message.author.id;
+
+  // Shortcut mapping
+  const shortcuts = {
+    h: 'help',
+    r: 'roll',
+    p: 'profile',
+    inv: 'inventory',
+    col: 'collections',
+    d: 'drop',
+    t: 'trade'
+  };
+  if (shortcuts[command]) {
+    command = shortcuts[command];
+  }
+
+  // 5-Second Rate Limiting Check
+  const cooldownAmount = 5000;
+  const nowTime = Date.now();
+  if (!cooldowns.has(userId)) {
+    cooldowns.set(userId, new Map());
+  }
+  const timestamps = cooldowns.get(userId);
+  if (timestamps.has(command)) {
+    const expirationTime = timestamps.get(command) + cooldownAmount;
+    if (nowTime < expirationTime) {
+      const timeLeft = (expirationTime - nowTime) / 1000;
+      return message.reply(`⏳ Please wait **${timeLeft.toFixed(1)} more seconds** before using \`+${command}\` again.`);
+    }
+  }
+  timestamps.set(command, nowTime);
+  setTimeout(() => timestamps.delete(command), cooldownAmount);
 
   ensureUser(userId);
   const user = db.users[userId];
   const rarityIconsMap = getRarityIconMap();
 
   try {
-    const now = Date.now();
-    if (db.config.luckEventExpires && now > db.config.luckEventExpires) {
+    const currentMs = Date.now();
+    if (db.config.luckEventExpires && currentMs > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
       db.config.luckEventExpires = 0;
       await saveUsers();
     }
-    if (db.config.xpEventExpires && now > db.config.xpEventExpires) {
+    if (db.config.xpEventExpires && currentMs > db.config.xpEventExpires) {
       db.config.globalXpMultiplier = 1.0;
       db.config.xpEventExpires = 0;
       await saveUsers();
@@ -380,19 +413,22 @@ client.on('messageCreate', async message => {
 
     // +help
     if (command === 'help') {
-      const embed = new EmbedBuilder()
-        .setTitle('🌸 Chibi RPG RNG - Help Center')
-        .setColor('#ff77aa')
-        .setDescription('Explore the categories below to navigate your adventure:')
-        .addFields(
-          { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
-          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards' },
-          { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points' },
-          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Interactive 2-Player Trade' },
-          { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`' }
+      const container = new ContainerBuilder()
+        .setAccentColor(0xff77aa)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent('# 🌸 Chibi RPG RNG - Help Center\nExplore the categories below to navigate your adventure:')
         )
-        .setFooter({ text: `Playing +help • Serving ${client.guilds.cache.size} Servers` });
-      return message.reply({ embeds: [embed] });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            '**🎲 Rolling & Drops**\n`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts\n\n' +
+            '**🎁 Rewards & Economy**\n`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards\n\n' +
+            '**⚔️ RPG & Battling**\n`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points\n\n' +
+            '**🎒 Inventory & Profile**\n`+inventory` (`+inv`), `+collections` (`+col`)\n`+profile` (`+p`), `+status` - Bot info & ping\n`+trade` (`+t`) [@user] - Interactive 2-Player Trade\n\n' +
+            '**🏛️ Clans & Fun**\n`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`'
+          )
+        );
+      return message.reply({ containers: [container] });
     }
 
     // +status
@@ -403,38 +439,38 @@ client.on('messageCreate', async message => {
       const minutes = Math.floor((uptimeSec % 3600) / 60);
       const seconds = uptimeSec % 60;
 
-      const embed = new EmbedBuilder()
-        .setTitle('🤖 Bot System Status & Info')
-        .setColor('#3498db')
-        .addFields(
-          { name: '📶 Latency / Ping', value: `${ping}ms`, inline: true },
-          { name: '⏱️ Uptime', value: `${hours}h ${minutes}m ${seconds}s`, inline: true },
-          { name: '🌐 Connected Servers', value: `${client.guilds.cache.size} Servers`, inline: true },
-          { name: '💻 Programming Language', value: 'Node.js (JavaScript - Discord.js v14)', inline: true },
-          { name: '⚙️ Status', value: '🟢 Online & Operational (MongoDB Connected)', inline: true }
-        )
-        .setFooter({ text: `Requested by ${message.author.username}` });
-      return message.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            '# 🤖 Bot System Status & Info\n\n' +
+            `📶 **Latency / Ping:** ${ping}ms\n` +
+            `⏱️ **Uptime:** ${hours}h ${minutes}m ${seconds}s\n` +
+            `🌐 **Connected Servers:** ${client.guilds.cache.size} Servers\n` +
+            `💻 **Runtime:** Node.js (Discord.js v14 - V2 Containers)\n` +
+            `⚙️ **Status:** 🟢 Online & Operational (MongoDB Connected)`
+          )
+        );
+      return message.reply({ containers: [container] });
     }
 
     // +daily
     if (command === 'daily') {
-      const nowTime = Date.now();
       const twentyFourHours = 24 * 60 * 60 * 1000;
       const fortyEightHours = 48 * 60 * 60 * 1000;
 
-      if (nowTime - user.lastDaily < twentyFourHours) {
-        const remainingTime = Math.ceil((twentyFourHours - (nowTime - user.lastDaily)) / 1000 / 60);
+      if (currentMs - user.lastDaily < twentyFourHours) {
+        const remainingTime = Math.ceil((twentyFourHours - (currentMs - user.lastDaily)) / 1000 / 60);
         return message.reply(`⏳ You have already claimed your daily reward! Please wait another **${remainingTime} minutes**.`);
       }
 
-      if (!user.lastDaily || nowTime - user.lastDaily > fortyEightHours) {
+      if (!user.lastDaily || currentMs - user.lastDaily > fortyEightHours) {
         user.streak = 1;
       } else {
         user.streak = (user.streak || 0) + 1;
       }
 
-      user.lastDaily = nowTime;
+      user.lastDaily = currentMs;
 
       let multiplier = 1;
       if (user.streak >= 100) multiplier = 5;
@@ -531,8 +567,14 @@ client.on('messageCreate', async message => {
         const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
         totalExpGained += addExpAndLevelUp(user, primaryChibi, baseExpRoll);
 
-        const currentRollVal = isShiny ? (shinyVal * 1000) : normalVal;
-        if (currentRollVal > (user.bestRollVal || 0)) {
+        // Robust Best Roll tracking with Rarity hierarchy evaluation
+        const currentTier = RARITY_HIERARCHY[chibiTemplate.rarity] || 1;
+        const savedTier = user.bestRollTier || 0;
+        const currentRollVal = isShiny ? (normalVal * 10) : normalVal;
+        const savedRollVal = user.bestRollVal || 0;
+
+        if (currentTier > savedTier || (currentTier === savedTier && currentRollVal > savedRollVal)) {
+          user.bestRollTier = currentTier;
           user.bestRollVal = currentRollVal;
           user.bestRoll = chibiTemplate.shinyOdds || chibiTemplate.odds;
           user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
@@ -543,33 +585,35 @@ client.on('messageCreate', async message => {
       await saveUsers();
 
       const luckNotice = activeLuckMultiplier > 1.0 ? `\n⚡ *Active Luck Boost: ${activeLuckMultiplier}x*` : '';
-      const embed = new EmbedBuilder()
-        .setTitle('🎲 Chibi Roll Results')
-        .setColor('#57f287')
-        .setDescription(
-          resultsSummary
-            .map(
-              r =>
-                `${rarityIconsMap[r.chibi.rarity]} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${
-                  r.duplicated ? '(🍀 Duplicated!)' : ''
-                }`
-            )
-            .join('\n') + `\n✨ Gained **+${totalExpGained} EXP**!` + luckNotice
-        )
-        .setFooter({ text: `Remaining Dice: ${user.dice} 🎲` });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x57f287)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            '# 🎲 Chibi Roll Results\n\n' +
+            resultsSummary
+              .map(
+                r =>
+                  `${rarityIconsMap[r.chibi.rarity]} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${
+                    r.duplicated ? '(🍀 Duplicated!)' : ''
+                  }`
+              )
+              .join('\n') +
+            `\n\n✨ Gained **+${totalExpGained} EXP**!` + luckNotice +
+            `\n🎲 Remaining Dice: ${user.dice}`
+          )
+        );
 
-      return message.reply({ embeds: [embed] });
+      return message.reply({ containers: [container] });
     }
 
     // +drop
     if (command === 'drop') {
-      const dropNow = Date.now();
       const cooldownMs = gameData.settings.dropCooldownSeconds * 1000;
-      if (dropNow - user.lastDrop < cooldownMs) {
-        const timeLeft = Math.ceil((cooldownMs - (dropNow - user.lastDrop)) / 1000);
+      if (currentMs - user.lastDrop < cooldownMs) {
+        const timeLeft = Math.ceil((cooldownMs - (currentMs - user.lastDrop)) / 1000);
         return message.reply(`⏳ Please wait ${timeLeft} more seconds before claiming your next Chibi Drop!`);
       }
-      user.lastDrop = dropNow;
+      user.lastDrop = currentMs;
 
       const totalDropWeight = gameData.dropTable.reduce((sum, d) => sum + d.weight, 0);
       let randD = Math.random() * totalDropWeight;
@@ -611,18 +655,20 @@ client.on('messageCreate', async message => {
         chibiList = chibiList.substring(0, 997) + '...';
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🎒 ${message.author.username}'s Inventory`)
-        .setColor('#3498db')
-        .addFields(
-          { name: '🎲 Dice', value: `${user.dice || 0} 🎲`, inline: true },
-          { name: '🧴 Spray', value: `${user.inventory.items?.spray || 0} Uses`, inline: true },
-          { name: '🍀 Clover', value: `${user.inventory.items?.clover || 0} Uses`, inline: true },
-          { name: '✨ Chibis (Use ID suffix to equip)', value: chibiList }
-        )
-        .setFooter({ text: `Total Chibis Owned: ${user.inventory.chibis.length}` });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🎒 ${message.author.username}'s Inventory\n\n` +
+            `🎲 **Dice:** ${user.dice || 0}\n` +
+            `🧴 **Spray:** ${user.inventory.items?.spray || 0} Uses\n` +
+            `🍀 **Clover:** ${user.inventory.items?.clover || 0} Uses\n\n` +
+            `✨ **Chibis (Use ID suffix to equip):**\n${chibiList}\n\n` +
+            `*Total Chibis Owned: ${user.inventory.chibis.length}*`
+          )
+        );
 
-      return message.reply({ embeds: [embed] });
+      return message.reply({ containers: [container] });
     }
 
     // +collections
@@ -671,20 +717,32 @@ client.on('messageCreate', async message => {
         new ButtonBuilder().setCustomId('sort_alpha').setLabel('Order Alphabetical').setStyle(ButtonStyle.Secondary)
       );
 
-      const embed = new EmbedBuilder()
-        .setTitle(`📖 ${message.author.username}'s Chibi Collection`)
-        .setColor('#9b59b6')
-        .setDescription(getFormattedCollection('rarity'))
-        .setFooter({ text: `Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}` });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 📖 ${message.author.username}'s Chibi Collection\n\n` +
+            getFormattedCollection('rarity') +
+            `\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`
+          )
+        );
 
-      const colMsg = await message.reply({ embeds: [embed], components: [row] });
+      const colMsg = await message.reply({ containers: [container], components: [row] });
       const collector = colMsg.createMessageComponentCollector({ time: 60000 });
 
       collector.on('collect', async i => {
         if (i.user.id !== userId) return i.reply({ content: 'Not your collection session!', ephemeral: true });
         const sortType = i.customId === 'sort_alpha' ? 'alpha' : 'rarity';
-        const newEmbed = EmbedBuilder.from(embed).setDescription(getFormattedCollection(sortType));
-        await i.update({ embeds: [newEmbed], components: [row] });
+        const newContainer = new ContainerBuilder()
+          .setAccentColor(0x9b59b6)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 📖 ${message.author.username}'s Chibi Collection\n\n` +
+              getFormattedCollection(sortType) +
+              `\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`
+            )
+          );
+        await i.update({ containers: [newContainer], components: [row] });
       });
       return;
     }
@@ -695,15 +753,16 @@ client.on('messageCreate', async message => {
         new ButtonBuilder().setCustomId('buy_spray').setLabel('Buy Spray (5 🎲)').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('buy_clover').setLabel('Buy Clover (15 🎲)').setStyle(ButtonStyle.Success)
       );
-      const embed = new EmbedBuilder()
-        .setTitle('🛒 Chibi Shop')
-        .setColor('#f1c40f')
-        .setDescription('Boost your rolling potential with shop items!')
-        .addFields(
-          { name: '🧴 Spray (5 🎲)', value: 'Use this for Awesome Chibi boost [30 Uses]' },
-          { name: '🍀 Clover (15 🎲)', value: 'Use this to duplicate Chibis while rolling [50 Uses]' }
+      const container = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            '# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n' +
+            '🧴 **Spray (5 🎲):** Use this for Awesome Chibi boost [30 Uses]\n' +
+            '🍀 **Clover (15 🎲):** Use this to duplicate Chibis while rolling [50 Uses]'
+          )
         );
-      const shopMsg = await message.reply({ embeds: [embed], components: [row] });
+      const shopMsg = await message.reply({ containers: [container], components: [row] });
 
       const collector = shopMsg.createMessageComponentCollector({ time: 30000 });
       collector.on('collect', async i => {
@@ -714,14 +773,14 @@ client.on('messageCreate', async message => {
           user.inventory.items.spray += 30;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, components: [] });
+          await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, containers: [], components: [] });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 15;
           user.inventory.items.clover += 50;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, components: [] });
+          await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, containers: [], components: [] });
         }
       });
       return;
@@ -760,13 +819,17 @@ client.on('messageCreate', async message => {
         );
       });
 
-      const embed = new EmbedBuilder()
-        .setTitle(`📜 ${message.author.username}'s Team Card`)
-        .setColor('#2ecc71')
-        .setDescription(teamLines.join('\n'))
-        .setFooter({ text: `Tip: Use +equipteam [id] [1-3] to assign chibis to your team slots!` });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 📜 ${message.author.username}'s Team Card\n\n` +
+            teamLines.join('\n') +
+            '\n\n*Tip: Use +equipteam [id] [1-3] to assign chibis to your team slots!*'
+          )
+        );
 
-      return message.reply({ embeds: [embed] });
+      return message.reply({ containers: [container] });
     }
 
     if (command === 'rank') {
@@ -798,11 +861,12 @@ client.on('messageCreate', async message => {
           )
           .join('\n') || 'No players on the leaderboard yet.';
 
-      const embed = new EmbedBuilder()
-        .setTitle('🏆 Global Ranks & Points Leaderboard')
-        .setColor('#f1c40f')
-        .setDescription(leaderboardText);
-      return message.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# 🏆 Global Ranks & Points Leaderboard\n\n${leaderboardText}`)
+        );
+      return message.reply({ containers: [container] });
     }
 
     // +equipteam
@@ -881,7 +945,6 @@ client.on('messageCreate', async message => {
 
           const isP1Winner = p1Power >= p2Power;
           const winner = isP1Winner ? message.author : opponent;
-          const loser = isP1Winner ? opponent : message.author;
 
           const winUser = isP1Winner ? p1User : p2User;
           const loseUser = isP1Winner ? p2User : p1User;
@@ -919,18 +982,19 @@ client.on('messageCreate', async message => {
             }).join('\n');
           };
 
-          const embed = new EmbedBuilder()
-            .setTitle(`⚔️ 3v3 Chibi Arena Clash Result`)
-            .setColor(isP1Winner ? '#f1c40f' : '#e74c3c')
-            .setDescription(`🏆 **Winner:** <@${winner.id}> triumphs in a fierce 3v3 showdown!`)
-            .addFields(
-              { name: `🛡️ ${message.author.username}'s Team Lineup`, value: renderTeamLines(p1Team), inline: false },
-              { name: `🛡️ ${opponent.username}'s Team Lineup`, value: renderTeamLines(p2Team), inline: false },
-              { name: '📊 Match Rewards', value: `✨ Victor earned **+${winReward.win} Points** & **+${totalExpWon} EXP**!\n💔 Loser lost **-${losePenalty.lose} Points**.` }
-            )
-            .setFooter({ text: `Clash concluded in 5 tactical turns!` });
+          const container = new ContainerBuilder()
+            .setAccentColor(isP1Winner ? 0xf1c40f : 0xe74c3c)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `# ⚔️ 3v3 Chibi Arena Clash Result\n\n` +
+                `🏆 **Winner:** <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n` +
+                `🛡️ **${message.author.username}'s Team Lineup:**\n${renderTeamLines(p1Team)}\n\n` +
+                `🛡️ **${opponent.username}'s Team Lineup:**\n${renderTeamLines(p2Team)}\n\n` +
+                `📊 **Match Rewards:** ✨ Victor earned **+${winReward.win} Points** & **+${totalExpWon} EXP**! 💔 Loser lost **-${losePenalty.lose} Points**.`
+              )
+            );
 
-          await i.update({ content: '', embeds: [embed], components: [] });
+          await i.update({ content: '', containers: [container], components: [] });
         } else {
           await i.update({ content: `❌ <@${opponent.id}> declined the 3v3 arena clash.`, components: [] });
         }
@@ -941,8 +1005,12 @@ client.on('messageCreate', async message => {
     if (command === 'meme') {
       const res = await fetch('https://meme-api.com/gimme');
       const data = await res.json();
-      const embed = new EmbedBuilder().setTitle(data.title).setImage(data.url).setColor('#e74c3c').setFooter({ text: `r/${data.subreddit}` });
-      return message.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# ${data.title}\n*(r/${data.subreddit})*`)
+        );
+      return message.reply({ containers: [container] });
     }
 
     // +trivia
@@ -967,20 +1035,24 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // +profile
     if (command === 'profile') {
       updateUserRank(user);
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
-      const embed = new EmbedBuilder()
-        .setTitle(`📊 ${message.author.username}'s RPG Profile`)
-        .setThumbnail(message.author.displayAvatarURL())
-        .setColor('#2ecc71')
-        .addFields(
-          { name: '📊 Level & EXP', value: `Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)`, inline: true },
-          { name: '🎲 Best Roll', value: `${user.bestRoll} ${user.bestChibi ? user.bestChibi : ''}`, inline: true },
-          { name: '🏆 Rank & Points', value: `Rank: ${user.rank} | Points: ${user.points}`, inline: true },
-          { name: '🔰 Clan', value: user.clan || 'None', inline: true }
+      
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 📊 ${message.author.username}'s RPG Profile\n\n` +
+            `📊 **Level & EXP:** Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\n` +
+            `🎲 **Best Roll:** ${user.bestRoll} ${user.bestChibi ? user.bestChibi : 'None'}\n` +
+            `🏆 **Rank & Points:** Rank: ${user.rank} | Points: ${user.points}\n` +
+            `🔰 **Clan:** ${user.clan || 'None'}`
+          )
         );
-      return message.reply({ embeds: [embed] });
+
+      return message.reply({ containers: [container] });
     }
 
     if (command === 'clanlist') {
@@ -988,8 +1060,10 @@ client.on('messageCreate', async message => {
       const clanListText =
         clanNames.map(c => `• **${c}** (Leader: <@${db.clans[c].leader}>, Members: ${db.clans[c].members.length})`).join('\n') ||
         'No clans available.';
-      const embed = new EmbedBuilder().setTitle('🏛️ Available Clans').setDescription(clanListText).setColor('#34495e');
-      return message.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x34495e)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏛️ Available Clans\n\n${clanListText}`));
+      return message.reply({ containers: [container] });
     }
 
     // +ccreateclan (Requires 100 Dice fee)
@@ -1036,13 +1110,17 @@ client.on('messageCreate', async message => {
         })
       );
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🔰 Clan Information`)
-        .setColor('#1abc9c')
-        .setDescription(
-          `**Clan Name:** ${clan.name}\n**Leader:** <@${clan.leader}>\n**Total Points:** ${totalPoints}\n\n**Members:**\n${memberLines.join('\n')}`
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🔰 Clan Information: ${clan.name}\n` +
+            `**Leader:** <@${clan.leader}>\n` +
+            `**Total Points:** ${totalPoints}\n\n` +
+            `**Members:**\n${memberLines.join('\n')}`
+          )
         );
-      return message.reply({ embeds: [embed] });
+      return message.reply({ containers: [container] });
     }
 
     // +trade (Revamped Interactive 2-Player Trade System with Cancel Button)
@@ -1092,17 +1170,19 @@ client.on('messageCreate', async message => {
               ? (p2OfferType === 'chibi' ? `${p2OfferData.emoji} **${p2OfferData.name}** \`[${(p2OfferData.chibiId || p2OfferData.id).slice(-6)}]\`` : `**${p2OfferData}x 🎲 Dice**`)
               : '*No offer yet*';
 
-            return new EmbedBuilder()
-              .setTitle('🤝 Secure Trade Session')
-              .setColor('#f1c40f')
-              .setDescription(
-                `<@${userId}> ${user.rank}\n` +
-                `|------------|\n` +
-                `${p1Display}\n` +
-                `|------------|\n` +
-                `${p2Display}\n` +
-                `|------------|\n` +
-                `<@${target.id}> ${targetUser.rank}`
+            return new ContainerBuilder()
+              .setAccentColor(0xf1c40f)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `# 🤝 Secure Trade Session\n\n` +
+                  `<@${userId}> ${user.rank}\n` +
+                  `|------------|\n` +
+                  `${p1Display}\n` +
+                  `|------------|\n` +
+                  `${p2Display}\n` +
+                  `|------------|\n` +
+                  `<@${target.id}> ${targetUser.rank}`
+                )
               );
           };
 
@@ -1118,7 +1198,7 @@ client.on('messageCreate', async message => {
 
           await i.update({
             content: `🤝 **Trade Session Active!** Both players, submit your offers below:`,
-            embeds: [renderTradeUI()],
+            containers: [renderTradeUI()],
             components: [actionRow1, actionRow2]
           });
 
@@ -1130,7 +1210,7 @@ client.on('messageCreate', async message => {
                 return si.reply({ content: 'You are not part of this trade session!', ephemeral: true });
               }
               sessionCollector.stop();
-              return si.update({ content: `❌ Trade session was cancelled by <@${si.user.id}>.`, embeds: [], components: [] });
+              return si.update({ content: `❌ Trade session was cancelled by <@${si.user.id}>.`, containers: [], components: [] });
             }
 
             if (si.customId === 'p1_offer' || si.customId === 'p2_offer') {
@@ -1181,7 +1261,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await collected.delete().catch(() => {});
-                await reqMsg.edit({ embeds: [renderTradeUI()] });
+                await reqMsg.edit({ containers: [renderTradeUI()] });
 
               } else if (typeInteraction.customId === 'choose_chibi') {
                 const activeUserObj = db.users[activeId];
@@ -1225,7 +1305,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await menuInteraction.update({ content: `✅ Chibi offer registered: **${chibiObj.name}**`, components: [] });
-                await reqMsg.edit({ embeds: [renderTradeUI()] });
+                await reqMsg.edit({ containers: [renderTradeUI()] });
               }
 
             } else if (si.customId === 'confirm_trade') {
@@ -1269,7 +1349,7 @@ client.on('messageCreate', async message => {
 
               return si.update({
                 content: `✅ **Trade Successfully Completed Between <@${userId}> and <@${target.id}>!**`,
-                embeds: [renderTradeUI()],
+                containers: [renderTradeUI()],
                 components: []
               });
             }
