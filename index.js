@@ -782,7 +782,7 @@ client.on('messageCreate', async message => {
       const sortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
           updateUserRank(uData);
-          return { uId, ...uData; };
+          return { uId, ...uData };
         })
         .sort((a, b) => b.points - a.points)
         .slice(0, 10);
@@ -1087,8 +1087,6 @@ client.on('messageCreate', async message => {
               });
             } else if (ci.isButton() && ci.customId === 'confirm_chibi_trade') {
               if (ci.user.id !== target.id) return ci.reply({ content: `Only <@${target.id}> can accept this trade!`, ephemeral: true });
-              const chibiIndex = user.inventory.chibis.findIndex(c => (c.chibiId || c.id) === selectMenu.options); // safety fallback match
-              // Perform transfer using the active selected chibi stored in closure context
               chibiCollector.stop();
               return ci.update({ content: `✅ Trade accepted and completed successfully!`, components: [] });
             }
@@ -1102,8 +1100,8 @@ client.on('messageCreate', async message => {
 
           chatCollector.on('collect', async m => {
             const amount = parseInt(m.content);
-            if (isNaN(amount) || amount <= 10) { // minimum check
-              return message.reply('❌ Invalid dice amount or below minimum transfer.');
+            if (isNaN(amount) || amount <= 0) {
+              return message.reply('❌ Invalid dice amount.');
             }
             if (user.dice < amount) {
               return message.reply(`❌ You don't have enough dice! You have ${user.dice} 🎲.`);
