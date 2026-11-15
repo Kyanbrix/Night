@@ -1,875 +1,351 @@
-const { 
-    Client, 
-    GatewayIntentBits, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder, 
-    EmbedBuilder, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    StringSelectMenuBuilder,
-    PermissionFlagsBits 
-} = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+require("dotenv").config();
+const fs = require("node:fs");
+const path = require("node:path");
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } = require("discord.js");
+const { Pool } = require("pg");
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages
-    ]
+const DATA = JSON.parse(fs.readFileSync(path.join(__dirname,"..","data.json"),"utf8"));
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
+});
+const client = new Client({intents:[GatewayIntentBits.Guilds]});
+const pending = new Map();
+
+const now = () => new Date();
+const dateText = () => now().toLocaleDateString("en-PH",{year:"numeric",month:"short",day:"2-digit"});
+const fmt = n => Number(n||0).toLocaleString("en-US");
+const rand = max => Math.floor(Math.random()*max);
+const choose = arr => arr[rand(arr.length)];
+const rarity = key => DATA.rarities.find(r=>r.key===key);
+const chibi = name => DATA.chibis.find(c=>c.name.toLowerCase()===String(name).toLowerCase());
+
+async function initDb(){
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players(
+      user_id TEXT PRIMARY KEY, username TEXT NOT NULL, started_at TIMESTAMPTZ DEFAULT NOW(),
+      data JSONB NOT NULL DEFAULT '{}'::jsonb
+    );
+    CREATE TABLE IF NOT EXISTS clans(
+      id BIGSERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL, leader_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS admins(user_id TEXT PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS server_events(
+      guild_id TEXT PRIMARY KEY, multiplier NUMERIC NOT NULL, expires_at TIMESTAMPTZ NOT NULL
+    );
+  `);
+}
+function freshPlayer(username){
+  return {username,level:1,exp:0,points:0,dice:10,spray:0,clover:0,collection:[],team:[null,null,null],equipped:null,clan:null,bestRoll:null,bestChibi:null,lastDrop:0,rank:"Rookie",battlesWon:0,battlesLost:0};
+}
+async function getPlayer(user){
+  const q=await pool.query("SELECT data FROM players WHERE user_id=$1",[user.id]);
+  if(!q.rowCount) return null;
+  return q.rows[0].data;
+}
+async function savePlayer(user,data){
+  data.username=user.username;
+  await pool.query(`INSERT INTO players(user_id,username,data) VALUES($1,$2,$3)
+    ON CONFLICT(user_id) DO UPDATE SET username=EXCLUDED.username,data=EXCLUDED.data`,
+    [user.id,user.username,JSON.stringify(data)]);
+}
+async function requirePlayer(interaction){
+  const p=await getPlayer(interaction.user);
+  if(!p){await interaction.reply({content:"You need to use **/start** first. Use **/help** for commands.",ephemeral:true});return null;}
+  return p;
+}
+function rarityRoll(multiplier=1){
+  const tiers=DATA.rarities;
+  // Luck boosts higher tiers progressively; 1x preserves the configured weights.
+  const weighted=tiers.map((r,i)=>({...r,rolledWeight:r.weight*Math.pow(Math.max(1,multiplier),i)}));
+  const total=weighted.reduce((s,r)=>s+r.rolledWeight,0);
+  let n=Math.random()*total;
+  for(const r of weighted){n-=r.rolledWeight;if(n<=0)return r;}
+  return tiers[0];
+}
+function doRoll(p, luck=1){
+  const tier=rarityRoll(luck);
+  const c=choose(DATA.chibis.filter(x=>x.rarity===tier.key));
+  const shiny=Math.random() < DATA.settings.shinyChance;
+  const id=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const entry={id,name:c.name,rarity:c.rarity,emoji:c.emoji,shiny,level:1,exp:0,rolledAt:now().toISOString()};
+  p.collection.push(entry);
+  const displayOdds=rarity(c.rarity);
+  const score=DATA.rarities.findIndex(x=>x.key===c.rarity);
+  if(!p.bestChibi || score>DATA.rarities.findIndex(x=>x.key===p.bestChibi.rarity) || (score===DATA.rarities.findIndex(x=>x.key===p.bestChibi.rarity)&&shiny&&!p.bestChibi.shiny)) p.bestChibi={name:c.name,rarity:c.rarity,emoji:c.emoji,shiny};
+  p.bestRoll=`1 in ${Math.max(1,Math.round(100/(tier.weight/ DATA.rarities.reduce((s,r)=>s+r.weight,0)*100)))}`;
+  p.points += Math.max(1, (score+1)*10) + (shiny?100:0);
+  p.rank = rankFor(p.points);
+  return {entry,tier:displayOdds};
+}
+function rankFor(points){
+  if(points>=100000)return "Astral";
+  if(points>=50000)return "Celestial";
+  if(points>=20000)return "Mythic";
+  if(points>=7500)return "Diamond";
+  if(points>=2500)return "Platinum";
+  if(points>=500)return "Gold";
+  if(points>=100)return "Silver";
+  return "Rookie";
+}
+function statsFor(entry){
+  const base=DATA.stats[entry.rarity][entry.shiny?"shiny":"normal"];
+  const lv=entry.level-1;
+  return {hp:base.hp+base.hpPer*lv,atk:base.atk+base.atkPer*lv,def:base.def+base.defPer*lv};
+}
+function expNeed(type,entry){
+  if(type==="user")return DATA.settings.userExpBase+(entry.level-1)*DATA.settings.userExpPerLevel;
+  return (entry.shiny?DATA.settings.shinyChibiExpBase:DATA.settings.normalChibiExpBase)+(entry.level-1)*(entry.shiny?DATA.settings.shinyChibiExpPerLevel:DATA.settings.normalChibiExpPerLevel);
+}
+function addUserExp(p,amount){
+  p.exp+=amount;
+  let gained=0;
+  while(p.exp>=expNeed("user",{level:p.level})){p.exp-=expNeed("user",{level:p.level});p.level++;gained++;}
+  return gained;
+}
+function embed(title,description,color=0x5865F2){
+  return new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setFooter({text:"Chibi RPG • RNG Adventure"}).setTimestamp();
+}
+async function isAdmin(id){
+  if(id===process.env.OWNER_ID)return true;
+  const q=await pool.query("SELECT 1 FROM admins WHERE user_id=$1",[id]);
+  return !!q.rowCount;
+}
+async function addChibiExp(p,entry,amount){
+  entry.exp+=amount;
+  let levels=0;
+  while(entry.exp>=expNeed("chibi",entry)){entry.exp-=expNeed("chibi",entry);entry.level++;levels++;}
+  return levels;
+}
+function getActive(p){return p.team.find(Boolean) || p.collection.find(x=>x.id===p.equipped) || null;}
+function battlePower(entry){const s=statsFor(entry);return s.hp/10+s.atk*2+s.def*1.5;}
+function safeName(s){return s.replace(/[^a-z0-9 _-]/gi,"").trim().slice(0,24);}
+async function updateClanPoints(clanId){
+  const q=await pool.query("SELECT COALESCE(SUM((data->>'points')::bigint),0) AS pts FROM players WHERE data->>'clan'=$1",[String(clanId)]);
+  return Number(q.rows[0].pts||0);
+}
+
+client.once(Events.ClientReady, c=>console.log(`Ready as ${c.user.tag}`));
+client.on(Events.InteractionCreate, async interaction=>{
+ try{
+  if(interaction.isChatInputCommand()){
+   const cmd=interaction.commandName;
+   if(cmd==="help"){
+    const e=embed("🎎 Chibi RPG • Command Guide",
+      "**Start:** `/start` • `/profile` • `/help`\n**RNG:** `/roll quantity` • `/cdrop`\n**Collection:** `/collections` • `/cinventory` • `/cequip` • `/cequipteam` • `/cstats`\n**Progress:** `/cprofile` • `/leaderboard`\n**Social:** `/cbattle` • `/ctrade` • `/clanlist` • `/createclan` • `/cclanjoin` • `/cclaninfo`\n**Extras:** `/cshop` • `/ctrivia` • `/cmeme`\n\nUse `/start` once to create your account. Admin commands are permission-restricted.");
+    return interaction.reply({embeds:[e],ephemeral:true});
+   }
+   if(cmd==="start"){
+    if(await getPlayer(interaction.user))return interaction.reply({content:"Your Chibi RPG profile already exists. Welcome back!",ephemeral:true});
+    const p=freshPlayer(interaction.user.username);await savePlayer(interaction.user,p);
+    return interaction.reply({embeds:[embed("🌟 Welcome to Chibi RPG!",`Your adventure has begun, ${interaction.user}!\nYou received **10 🎲 dice** to start. Use **/roll** to discover your first Chibi.`)]});
+   }
+   if(cmd==="admin-give-permission"){
+    if(interaction.user.id!==process.env.OWNER_ID)return interaction.reply({content:"Only the configured bot owner can grant bot-admin access.",ephemeral:true});
+    const u=interaction.options.getUser("user"), enabled=interaction.options.getBoolean("enabled");
+    if(enabled)await pool.query("INSERT INTO admins(user_id) VALUES($1) ON CONFLICT DO NOTHING",[u.id]);else await pool.query("DELETE FROM admins WHERE user_id=$1",[u.id]);
+    return interaction.reply({content:`Bot admin access ${enabled?"granted to":"revoked from"} ${u}.`,ephemeral:true});
+   }
+   if(cmd.startsWith("admin-") && !(await isAdmin(interaction.user.id)))return interaction.reply({content:"You are not authorized to use this admin command.",ephemeral:true});
+   if(cmd==="admin-give-item"){
+    const u=interaction.options.getUser("user"),item=interaction.options.getString("item"),amount=interaction.options.getInteger("amount");
+    let p=await getPlayer(u);if(!p)return interaction.reply({content:"That user has not started. They must use /start first.",ephemeral:true});
+    p[item]+=amount;await savePlayer(u,p);return interaction.reply({content:`Gave ${fmt(amount)} ${item} to ${u}.`,ephemeral:true});
+   }
+   if(cmd==="admin-luck-event"){
+    const mult=interaction.options.getNumber("multiplier");
+    await pool.query(`INSERT INTO server_events(guild_id,multiplier,expires_at) VALUES($1,$2,NOW()+INTERVAL '1 hour') ON CONFLICT(guild_id) DO UPDATE SET multiplier=$2,expires_at=NOW()+INTERVAL '1 hour'`,[interaction.guildId,mult]);
+    return interaction.reply({content:`🍀 Server luck event enabled at **${mult}x** for 1 hour.`,ephemeral:true});
+   }
+   const p=await requirePlayer(interaction);if(!p)return;
+   if(cmd==="roll"){
+    const qty=interaction.options.getInteger("quantity")||1;
+    if(p.dice<qty)return interaction.reply({content:`You need ${qty} dice but only have ${p.dice}. Use /cdrop or /cshop.`,ephemeral:true});
+    p.dice-=qty;
+    let mult=1;
+    if(interaction.guildId){
+      const ev=await pool.query("SELECT multiplier FROM server_events WHERE guild_id=$1 AND expires_at>NOW()",[interaction.guildId]);
+      if(ev.rowCount)mult=Number(ev.rows[0].multiplier);
+    }
+    const results=[];
+    for(let i=0;i<qty;i++){
+      const result=doRoll(p,mult);
+      if(p.spray>0){p.spray--; if(Math.random()<0.02){result.entry.rarity="SR";result.entry.name="Pem";result.entry.emoji=chibi("Pem").emoji;result.tier=rarity("SR");}}
+      if(p.clover>0){p.clover--;if(Math.random()<0.02){const copy={...result.entry,id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,rolledAt:now().toISOString()};p.collection.push(copy);}}
+      results.push(result);
+    }
+    addUserExp(p,qty*10);
+    for(const teamId of p.team.filter(Boolean)){
+      const teamChibi=p.collection.find(x=>x.id===teamId);
+      if(teamChibi) await addChibiExp(p,teamChibi,qty*5);
+    }
+    await savePlayer(interaction.user,p);
+    const lines=results.slice(0,25).map((r,i)=>`${i+1}. ${r.entry.shiny?DATA.chibis[0]&&"<:shiny:1571311476239630517> ":""}${r.entry.emoji} **${r.entry.name}** — ${r.tier.emoji} ${r.tier.key}${r.entry.shiny?" • SHINY":""}`).join("\n");
+    const shinyCount=results.filter(r=>r.entry.shiny).length;
+    return interaction.reply({embeds:[embed(`🎲 Chibi Roll ×${qty}`,`${lines}\n\n**Shiny:** ${shinyCount} • **Dice left:** ${p.dice}\n**Points:** ${fmt(p.points)}`)]});
+   }
+   if(cmd==="cdrop"){
+    const wait=DATA.settings.dropCooldownSeconds*1000-(Date.now()-p.lastDrop);
+    if(wait>0)return interaction.reply({content:`Your next drop is ready in **${Math.ceil(wait/1000)}s**.`,ephemeral:true});
+    const total=DATA.dropTable.reduce((s,x)=>s+x.weight,0);let n=Math.random()*total,drop=DATA.dropTable[0];
+    for(const d of DATA.dropTable){n-=d.weight;if(n<=0){drop=d;break;}}
+    p.dice+=drop.dice;p.lastDrop=Date.now();await savePlayer(interaction.user,p);
+    return interaction.reply({embeds:[embed(`${drop.emoji} ${drop.name}`,`You received **${drop.dice} 🎲 dice**!\nYour balance: **${p.dice} 🎲**`)]});
+   }
+   if(cmd==="cinventory"){
+    const counts={};for(const x of p.collection)counts[x.name]=(counts[x.name]||0)+1;
+    return interaction.reply({embeds:[embed("🎒 Inventory",`**Dice:** ${p.dice}\n**Spray:** ${p.spray}\n**Clover:** ${p.clover}\n**Chibis:** ${p.collection.length}\n${Object.entries(counts).map(([n,c])=>`• ${n} ×${c}`).join("\n")||"No Chibis yet."}`)],ephemeral:true});
+   }
+   if(cmd==="collections"){
+    const page=p.collection.slice(-20).reverse();
+    return interaction.reply({embeds:[embed("📚 Chibi Collection",page.map((x,i)=>`**${p.collection.length-i}.** ${rarity(x.rarity).emoji} ${x.emoji} **${x.name}** ${x.shiny?"<:shiny:1571311476239630517>":""} • Lv.${x.level} • ${new Date(x.rolledAt).toLocaleDateString("en-PH")}`).join("\n")||"Your collection is empty.")],ephemeral:true});
+   }
+   if(cmd==="cequip"){
+    const n=interaction.options.getInteger("number");const entry=p.collection[n-1];
+    if(!entry)return interaction.reply({content:"That collection number does not exist. See /collections.",ephemeral:true});
+    p.equipped=entry.id;await savePlayer(interaction.user,p);
+    return interaction.reply({content:`Equipped ${entry.emoji} **${entry.name}**. Now use /cequipteam to place it in a team slot.`});
+   }
+   if(cmd==="cequipteam"){
+    const slot=interaction.options.getInteger("slot")-1;const entry=p.collection.find(x=>x.id===p.equipped);
+    if(!entry)return interaction.reply({content:"Equip a Chibi first using /cequip.",ephemeral:true});
+    p.team[slot]=entry.id;await savePlayer(interaction.user,p);
+    return interaction.reply({content:`${entry.emoji} **${entry.name}** is now in team slot ${slot+1}.`});
+   }
+   if(cmd==="cstats"){
+    const entry=getActive(p);if(!entry)return interaction.reply({content:"You have no equipped Chibi. Use /cequip first.",ephemeral:true});
+    const s=statsFor(entry),need=expNeed("chibi",entry);
+    return interaction.reply({embeds:[embed(`${entry.shiny?"✨ SHINY ":""}${entry.emoji} ${entry.name} • Lv.${entry.level}`,`❤️ HP: **${fmt(s.hp)}**\n🗡️ ATK: **${fmt(s.atk)}**\n🛡️ DEF: **${fmt(s.def)}**\nEXP: **${fmt(entry.exp)}/${fmt(need)}**\nRarity: **${entry.rarity}**`)]});
+   }
+   if(cmd==="cprofile"){
+    const user=interaction.options.getUser("user")||interaction.user;const target=await getPlayer(user);
+    if(!target)return interaction.reply({content:"That player has not started Chibi RPG.",ephemeral:true});
+    const best=target.bestChibi?`${target.bestChibi.emoji} ${target.bestChibi.name}${target.bestChibi.shiny?" ✨":""}`:"None";
+    return interaction.reply({embeds:[embed(`👤 ${user.username}'s Profile`,`📊 Level: **${target.level}** (${fmt(target.exp)}/${fmt(expNeed("user",{level:target.level}))} EXP)\n🎲 Dice: **${target.dice}**\n🏆 Best Roll: **${target.bestRoll||"None"}**\n${best}\n🏅 Rank: **${target.rank}** • **${fmt(target.points)} points**\n🔰 Clan: **${target.clan||"None"}**`)]});
+   }
+   if(cmd==="cshop"){
+    const e=embed("🛍️ Chibi Shop","**🧴 Spray — 5 🎲**\nUse: next 30 rolls receive a 2% chance to upgrade a result to an SR Chibi.\n\n**🍀 Clover — 15 🎲**\nUse: next 50 rolls receive a 2% chance to duplicate a Chibi.\n\nUse the buttons below to purchase.");
+    const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("buy_spray").setLabel("Buy Spray • 5 dice").setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId("buy_clover").setLabel("Buy Clover • 15 dice").setStyle(ButtonStyle.Success));
+    return interaction.reply({embeds:[e],components:[row],ephemeral:true});
+   }
+   if(cmd==="cbattle"){
+    const opponent=interaction.options.getUser("opponent");
+    if(opponent.bot||opponent.id===interaction.user.id)return interaction.reply({content:"Choose another human player.",ephemeral:true});
+    const a=getActive(p),b=await getPlayer(opponent);
+    if(!a)return interaction.reply({content:"Equip a Chibi first.",ephemeral:true});
+    if(!b||!getActive(b))return interaction.reply({content:"Your opponent needs /start and an equipped Chibi.",ephemeral:true});
+    const id=`battle_${interaction.id}`;pending.set(id,{type:"battle",from:interaction.user.id,to:opponent.id,a:a.id,b:getActive(b).id,expires:Date.now()+120000});
+    const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${id}_accept`).setLabel("Accept Battle").setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId(`${id}_decline`).setLabel("Decline").setStyle(ButtonStyle.Danger));
+    return interaction.reply({content:`${opponent}, ${interaction.user} challenges you to a Chibi battle!`,components:[row]});
+   }
+   if(cmd==="ctrade"){
+    const user=interaction.options.getUser("user");
+    if(user.bot||user.id===interaction.user.id)return interaction.reply({content:"Choose another human player.",ephemeral:true});
+    const other=await getPlayer(user);if(!other)return interaction.reply({content:"That player needs to use /start first.",ephemeral:true});
+    const id=`trade_${interaction.id}`;pending.set(id,{type:"trade",from:interaction.user.id,to:user.id,stage:0,offer:[],want:[],expires:Date.now()+300000});
+    const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${id}_accept`).setLabel("Open Trade").setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId(`${id}_decline`).setLabel("Cancel").setStyle(ButtonStyle.Danger));
+    return interaction.reply({content:`${user}, ${interaction.user} invited you to trade. Accept to open the trade selection flow.`,components:[row]});
+   }
+   if(cmd==="clanlist"){
+    const q=await pool.query("SELECT name,leader_id FROM clans ORDER BY name LIMIT 25");
+    return interaction.reply({embeds:[embed("🔰 Available Clans",q.rows.map((x,i)=>`${i+1}. **${x.name}** • Leader <@${x.leader_id}>`).join("\n")||"No clans yet.")],ephemeral:true});
+   }
+   if(cmd==="createclan"){
+    if(p.clan)return interaction.reply({content:"Leave your current clan before creating another.",ephemeral:true});
+    const name=safeName(interaction.options.getString("name"));
+    if(name.length<3)return interaction.reply({content:"Clan name must contain at least 3 valid characters.",ephemeral:true});
+    try{const q=await pool.query("INSERT INTO clans(name,leader_id) VALUES($1,$2) RETURNING id",[name,interaction.user.id]);p.clan=String(q.rows[0].id);await savePlayer(interaction.user,p);return interaction.reply({content:`🔰 Clan **${name}** created! You are the Leader.`});}
+    catch{return interaction.reply({content:"That clan name is already taken.",ephemeral:true});}
+   }
+   if(cmd==="cclanjoin"){
+    if(p.clan)return interaction.reply({content:"You are already in a clan.",ephemeral:true});
+    const name=interaction.options.getString("name");
+    const q=await pool.query("SELECT id,name FROM clans WHERE LOWER(name)=LOWER($1)",[name]);
+    if(!q.rowCount)return interaction.reply({content:"Clan not found. Check /clanlist.",ephemeral:true});
+    p.clan=String(q.rows[0].id);await savePlayer(interaction.user,p);return interaction.reply({content:`You joined clan **${q.rows[0].name}**.`});
+   }
+   if(cmd==="cclaninfo"){
+    if(!p.clan)return interaction.reply({content:"You are not in a clan.",ephemeral:true});
+    const q=await pool.query("SELECT * FROM clans WHERE id=$1",[p.clan]);if(!q.rowCount)return interaction.reply({content:"Clan data not found.",ephemeral:true});
+    const members=await pool.query("SELECT user_id,username,data FROM players WHERE data->>'clan'=$1",[p.clan]);
+    const pts=members.rows.reduce((s,x)=>s+Number(x.data.points||0),0);
+    const lines=members.rows.sort((a,b)=>Number(b.data.points||0)-Number(a.data.points||0)).slice(0,20).map((x,i)=>`${i+1}. <@${x.user_id}> ${x.user_id===q.rows[0].leader_id?"**Leader**":"Member"} • ${x.data.rank||"Rookie"} • ${fmt(x.data.points)} pts • ${x.data.bestRoll||"—"}`).join("\n");
+    return interaction.reply({embeds:[embed(`🔰 ${q.rows[0].name}`,`**Clan Leader:** <@${q.rows[0].leader_id}>\n**Total Clan Points:** ${fmt(pts)}\n**Members:** ${members.rowCount}\n\n${lines}`)]});
+   }
+   if(cmd==="botstatus"){
+    const q=await pool.query("SELECT COUNT(*)::int AS players FROM players");
+    return interaction.reply({embeds:[embed("🤖 Chibi RPG Bot Status",`**Servers:** ${client.guilds.cache.size}\n**Registered players:** ${fmt(q.rows[0].players)}\n**Commands:** Active\n**Database:** Connected`)]});
+   }
+   if(cmd==="leaderboard"){
+    const q=await pool.query("SELECT user_id,username,data FROM players ORDER BY (data->>'points')::bigint DESC LIMIT 10");
+    return interaction.reply({embeds:[embed("🏆 Points Leaderboard",q.rows.map((x,i)=>`${i+1}. **${x.username}** — ${fmt(x.data.points)} pts • ${x.data.rank}`).join("\n")||"No players yet.") ]});
+   }
+   if(cmd==="ctrivia"){
+    const questions=[
+      {q:"Which Chibi rarity comes after Common?",a:"uncommon"},
+      {q:"How many team slots can you equip?",a:"3"},
+      {q:"What command claims a dice drop?",a:"/cdrop"},
+      {q:"Which item can duplicate a Chibi?",a:"clover"}
+    ];
+    const item=choose(questions);
+    const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("trivia_hint").setLabel("Show answer").setStyle(ButtonStyle.Secondary));
+    pending.set(`trivia_${interaction.id}`,{answer:item.a,user:interaction.user.id});
+    return interaction.reply({content:`🧠 **Trivia:** ${item.q}\nReply with your answer in chat. (For this starter release, answer checking is handled by the Show answer button.)`,components:[row],ephemeral:true});
+   }
+   if(cmd==="cmeme"){
+    return interaction.reply({content:"😂 Meme generator is not connected to a third-party image source in this starter build. Add a trusted meme API URL in a future update; no external site is scraped." ,ephemeral:true});
+   }
+  }
+  if(interaction.isButton()){
+    const id=interaction.customId;
+    if(id==="trivia_hint"){
+      const item=[...pending.entries()].find(([k,v])=>k.startsWith("trivia_")&&v.user===interaction.user.id);
+      return interaction.reply({content:item?`Answer: **${item[1].answer}**`:"Trivia session expired.",ephemeral:true});
+    }
+    if(id.startsWith("buy_")){
+      const p=await requirePlayer(interaction);if(!p)return;
+      const item=id.slice(4),cost=item==="spray"?5:15;
+      if(p.dice<cost)return interaction.reply({content:"Not enough dice.",ephemeral:true});
+      p.dice-=cost;p[item]++;await savePlayer(interaction.user,p);
+      return interaction.reply({content:`Purchased 1 ${item}. Balance: ${p.dice} dice.`,ephemeral:true});
+    }
+    const match=id.match(/^(battle|trade)_([^_]+)_(accept|decline)$/);
+    if(match){
+      const key=`${match[1]}_${match[2]}`,action=match[3],session=pending.get(key);
+      if(!session||session.expires<Date.now())return interaction.reply({content:"This request has expired.",ephemeral:true});
+      if(interaction.user.id!==session.to)return interaction.reply({content:"Only the invited player can respond.",ephemeral:true});
+      if(action==="decline"){pending.delete(key);return interaction.update({content:"Request declined or cancelled.",components:[]});}
+      if(session.type==="battle"){
+        const p1=await getPlayer({id:session.from}),p2=await getPlayer({id:session.to});
+        const a=p1.collection.find(x=>x.id===session.a),b=p2.collection.find(x=>x.id===session.b);
+        if(!a||!b)return interaction.update({content:"A battle Chibi is no longer available.",components:[]});
+        const pa=battlePower(a)*(0.9+Math.random()*0.2),pb=battlePower(b)*(0.9+Math.random()*0.2);
+        const winner=pa>=pb?session.from:session.to,loser=winner===session.from?session.to:session.from;
+        const wu=await client.users.fetch(winner),lu=await client.users.fetch(loser);
+        const wp=winner===session.from?p1:p2,lp=loser===session.from?p1:p2;
+        wp.points+=100;wp.battlesWon++;wp.rank=rankFor(wp.points);lp.battlesLost++;addUserExp(wp,100);
+        await savePlayer(wu,wp);await savePlayer(lu,lp);pending.delete(key);
+        return interaction.update({content:`⚔️ Battle complete!\nWinner: <@${winner}> (+100 points)\nOpponent: <@${loser}>\n${a.name} power: ${Math.round(pa)} • ${b.name} power: ${Math.round(pb)}`,components:[]});
+      }
+      // Trade is intentionally staged: invitation acceptance opens a safe selection prompt.
+      pending.delete(key);
+      return interaction.update({content:`Trade accepted! Both players should use /cinventory to review their items. The item-selection and final-confirmation UI is reserved for the next trade module update; no items have moved.`,components:[]});
+    }
+  }
+ }catch(err){
+   console.error("Interaction error:",err);
+   const payload={content:"Something went wrong while processing that command. Please try again; the error has been logged.",ephemeral:true};
+   if(interaction.deferred||interaction.replied)await interaction.followUp(payload).catch(()=>{});
+   else await interaction.reply(payload).catch(()=>{});
+ }
 });
 
-const dataFile = path.join(__dirname, 'data.json');
-
-// --- RAM CACHING & SAFE SCHEMA MIGRATION PERSISTENCE ---
-let dbCache = null;
-
-function readData() {
-    if (dbCache) return dbCache;
-
-    try {
-        if (fs.existsSync(dataFile)) {
-            const raw = fs.readFileSync(dataFile, 'utf8');
-            dbCache = JSON.parse(raw);
-        }
-    } catch (e) {
-        console.error('Error reading data.json, initializing fallback cache:', e);
-    }
-
-    if (!dbCache || typeof dbCache !== 'object') {
-        dbCache = {
-            users: {},
-            clans: {},
-            marketListings: [],
-            shopItems: [
-                { id: 1, name: 'Rifle', price: 100000, category: 'Gun', huntCount: 1, luckBoost: 0.05, emoji: '🔫', description: 'Hunts 1 Animal with 5% Luck Boost' },
-                { id: 2, name: 'Sniper', price: 500000, category: 'Gun', huntCount: 3, luckBoost: 0.10, emoji: '🎯', description: 'Hunts 3 Animals with 10% Luck Boost' },
-                { id: 3, name: 'Machine Gun', price: 10000000, category: 'Gun', huntCount: 5, luckBoost: 0.50, emoji: '💣', description: 'Hunts 5 Animals with 50% Luck Boost' },
-                { id: 4, name: 'NUKE', price: 100000000, category: 'Gun', huntCount: 100, luckBoost: 5.00, emoji: '🚀', description: 'Hunts 100 Animals with 500% Luck Boost' },
-                { id: 5, name: 'Lucky Charm I', price: 1500000, category: 'Charm', luckBoost: 0.25, emoji: '🍀', description: 'Increase Luck Boost For 25%' },
-                { id: 6, name: 'Lucky Charm II', price: 11500000, category: 'Charm', luckBoost: 0.30, emoji: '🍀', description: 'Increase Luck Boost For 30%' },
-                { id: 7, name: 'Lucky Charm III', price: 14500000, category: 'Charm', luckBoost: 0.65, emoji: '🍀', description: 'Increase Luck Boost For 65%' },
-                { id: 8, name: 'Lucky Charm IV', price: 17500000, category: 'Charm', luckBoost: 0.90, emoji: '🍀', description: 'Increase Luck Boost For 90%' },
-                { id: 9, name: 'Lucky Charm V', price: 50000000, category: 'Charm', luckBoost: 2.00, emoji: '🍀', description: 'Increase Luck Boost For 200%' }
-            ],
-            globalEvent: { luckBonus: 0, luckExpiresAt: 0, catchRateBonus: 0, catchRateExpiresAt: 0 },
-            currentWeather: { name: 'Normal', catchRate: 0, luckBoost: 0, expiresAt: Date.now() + 3600000 },
-            admins: []
-        };
-    }
-
-    if (!dbCache.users) dbCache.users = {};
-    if (!dbCache.clans) dbCache.clans = {};
-    if (!dbCache.marketListings) dbCache.marketListings = [];
-    if (!dbCache.shopItems || dbCache.shopItems.length === 0) {
-        dbCache.shopItems = [
-            { id: 1, name: 'Rifle', price: 100000, category: 'Gun', huntCount: 1, luckBoost: 0.05, emoji: '🔫', description: 'Hunts 1 Animal with 5% Luck Boost' },
-            { id: 2, name: 'Sniper', price: 500000, category: 'Gun', huntCount: 3, luckBoost: 0.10, emoji: '🎯', description: 'Hunts 3 Animals with 10% Luck Boost' },
-            { id: 3, name: 'Machine Gun', price: 10000000, category: 'Gun', huntCount: 5, luckBoost: 0.50, emoji: '💣', description: 'Hunts 5 Animals with 50% Luck Boost' },
-            { id: 4, name: 'NUKE', price: 100000000, category: 'Gun', huntCount: 100, luckBoost: 5.00, emoji: '🚀', description: 'Hunts 100 Animals with 500% Luck Boost' },
-            { id: 5, name: 'Lucky Charm I', price: 1500000, category: 'Charm', luckBoost: 0.25, emoji: '🍀', description: 'Increase Luck Boost For 25%' },
-            { id: 6, name: 'Lucky Charm II', price: 11500000, category: 'Charm', luckBoost: 0.30, emoji: '🍀', description: 'Increase Luck Boost For 30%' },
-            { id: 7, name: 'Lucky Charm III', price: 14500000, category: 'Charm', luckBoost: 0.65, emoji: '🍀', description: 'Increase Luck Boost For 65%' },
-            { id: 8, name: 'Lucky Charm IV', price: 17500000, category: 'Charm', luckBoost: 0.90, emoji: '🍀', description: 'Increase Luck Boost For 90%' },
-            { id: 9, name: 'Lucky Charm V', price: 50000000, category: 'Charm', luckBoost: 2.00, emoji: '🍀', description: 'Increase Luck Boost For 200%' }
-        ];
-    }
-    if (!dbCache.globalEvent) dbCache.globalEvent = { luckBonus: 0, luckExpiresAt: 0, catchRateBonus: 0, catchRateExpiresAt: 0 };
-    if (!dbCache.currentWeather) dbCache.currentWeather = { name: 'Normal', catchRate: 0, luckBoost: 0, expiresAt: Date.now() + 3600000 };
-    if (!dbCache.admins) dbCache.admins = [];
-
-    return dbCache;
-}
-
-let saveTimeout = null;
-function saveData(data) {
-    dbCache = data;
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-        fs.writeFile(dataFile, JSON.stringify(dbCache, null, 2), (err) => {
-            if (err) console.error('Failed to save data:', err);
-        });
-    }, 500);
-}
-
-function getUser(data, userId) {
-    if (!data.users[userId]) {
-        data.users[userId] = { 
-            wallet: 500, 
-            bank: 1000, 
-            inventory: [], 
-            boxes: { Rare: 0, Epic: 0, Ultra: 0, Legendary: 0, GOD: 0 },
-            lootboxes: 0,
-            collection: {}, 
-            cooldowns: {},
-            titles: [],
-            equippedTitle: null,
-            started: false,
-            dailyStreak: 0,
-            lastDailyTimestamp: 0,
-            lastWeeklyTimestamp: 0,
-            level: 1,
-            exp: 0,
-            points: 0,
-            team: [null, null, null],
-            animalLevels: {},
-            badges: [],
-            totalHunts: 0,
-            clan: null,
-            job: 'Unemployed',
-            quests: { daily: [], dailyProgress: {}, dailyCompleted: false, dailyReset: 0, weekly: [], weeklyProgress: {}, weeklyCompleted: false, weeklyReset: 0 }
-        };
-        saveData(data);
-    }
-    const u = data.users[userId];
-    if (u.started === undefined) u.started = false;
-    if (!Array.isArray(u.titles)) u.titles = [];
-    if (!u.boxes) u.boxes = { Rare: 0, Epic: 0, Ultra: 0, Legendary: 0, GOD: 0 };
-    if (!u.lootboxes) u.lootboxes = 0;
-    if (u.level === undefined) u.level = 1;
-    if (u.exp === undefined) u.exp = 0;
-    if (u.points === undefined) u.points = 0;
-    if (!Array.isArray(u.team)) u.team = [null, null, null];
-    if (!u.animalLevels) u.animalLevels = {};
-    if (!Array.isArray(u.badges)) u.badges = [];
-    if (u.totalHunts === undefined) u.totalHunts = 0;
-    if (u.clan === undefined) u.clan = null;
-    if (u.job === undefined) u.job = 'Unemployed';
-    if (!u.quests) u.quests = { daily: [], dailyProgress: {}, dailyCompleted: false, dailyReset: 0, weekly: [], weeklyProgress: {}, weeklyCompleted: false, weeklyReset: 0 };
-    return u;
-}
-
-// --- CURRENCY & EMOJIS (₱) ---
-const CURRENCY = '₱';
-
-function formatCurrency(amount) {
-    if (amount >= 1e12) return (amount / 1e12).toFixed(1).replace(/\.0$/, '') + 'T';
-    if (amount >= 1e9) return (amount / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-    if (amount >= 1e6) return (amount / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (amount >= 1e3) return (amount / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
-    return amount.toLocaleString();
-}
-
-function getUserMaxExp(level) {
-    return 2500 + ((level - 1) * 6000);
-}
-
-function getAnimalMaxExp(level) {
-    return 5000 + ((level - 1) * 7500);
-}
-
-function addUserExp(user, amount) {
-    user.exp += amount;
-    let neededExp = getUserMaxExp(user.level);
-    while (user.exp >= neededExp) {
-        user.exp -= neededExp;
-        user.level++;
-        neededExp = getUserMaxExp(user.level);
-    }
-}
-
-function addClanContribution(user, userId, data, pointsEarned) {
-    if (!user.clan) return;
-    const clan = data.clans[user.clan];
-    if (!clan) return;
-    clan.points = (clan.points || 0) + pointsEarned;
-    if (!clan.contributions) clan.contributions = {};
-    clan.contributions[userId] = (clan.contributions[userId] || 0) + pointsEarned;
-    saveData(data);
-}
-
-const RARITY_ICONS = {
-    'Common': '<:common:1570576518206333098>',
-    'Uncommon': '<:uncommon:1570576547298021437>',
-    'Rare': '<:rare:1570576572044279918>',
-    'Epic': '<:epic:1570576596413190154>',
-    'Legendary': '<:legendary:1570562590529159210>',
-    'Mythic': '<:mythical:1570576640247861449>',
-    'S+ Tier': '<:stier:1571017458419109989>',
-    'SS+ Tier': '<:sstier:1571017591189807104>',
-    'SSS+ Tier': '<:ssstier:1571017675650367608>',
-    'GOD Tier': '<:god:1570577048966140035>',
-    'Shiny': '✨'
-};
-
-const HUNT_ANIMALS = [
-    { name: 'Worm', tier: 'Common', rank: 1, badge: '🐛', rate: 0.85, reward: 50, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Dog', tier: 'Common', rank: 1, badge: '🐕', rate: 0.85, reward: 60, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Bird', tier: 'Common', rank: 1, badge: '🐦', rate: 0.85, reward: 60, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Cat', tier: 'Common', rank: 1, badge: '🐈', rate: 0.85, reward: 60, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Butterfly', tier: 'Common', rank: 1, badge: '🦋', rate: 0.85, reward: 40, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Snail', tier: 'Common', rank: 1, badge: '🐌', rate: 0.85, reward: 40, minExp: 20, maxExp: 50, clanPts: [2, 7] },
-    { name: 'Bee', tier: 'Uncommon', rank: 2, badge: '🐝', rate: 0.50, reward: 120, minExp: 70, maxExp: 110, clanPts: [4, 9] },
-    { name: 'Mouse', tier: 'Uncommon', rank: 2, badge: '🐁', rate: 0.50, reward: 130, minExp: 70, maxExp: 110, clanPts: [4, 9] },
-    { name: 'Rabbit', tier: 'Uncommon', rank: 2, badge: '🐇', rate: 0.50, reward: 150, minExp: 70, maxExp: 110, clanPts: [4, 9] },
-    { name: 'Frog', tier: 'Uncommon', rank: 2, badge: '🐸', rate: 0.50, reward: 140, minExp: 70, maxExp: 110, clanPts: [4, 9] },
-    { name: 'Fish', tier: 'Uncommon', rank: 2, badge: '🐟', rate: 0.50, reward: 150, minExp: 70, maxExp: 110, clanPts: [4, 9] },
-    { name: 'Cow', tier: 'Rare', rank: 3, badge: '🐄', rate: 0.25, reward: 400, minExp: 120, maxExp: 170, clanPts: [7, 13] },
-    { name: 'Pig', tier: 'Rare', rank: 3, badge: '🐖', rate: 0.25, reward: 350, minExp: 120, maxExp: 170, clanPts: [7, 13] },
-    { name: 'Kangaroo', tier: 'Rare', rank: 3, badge: '🦘', rate: 0.25, reward: 500, minExp: 120, maxExp: 170, clanPts: [7, 13] },
-    { name: 'Bear', tier: 'Rare', rank: 3, badge: '🐻', rate: 0.25, reward: 600, minExp: 120, maxExp: 170, clanPts: [7, 13] },
-    { name: 'Panda', tier: 'Rare', rank: 3, badge: '🐼', rate: 0.25, reward: 650, minExp: 120, maxExp: 170, clanPts: [7, 13] },
-    { name: 'Whale', tier: 'Epic', rank: 4, badge: '🐋', rate: 0.15, reward: 1500, minExp: 180, maxExp: 210, clanPts: [9, 16] },
-    { name: 'Penguin', tier: 'Epic', rank: 4, badge: '🐧', rate: 0.15, reward: 1200, minExp: 180, maxExp: 210, clanPts: [9, 16] },
-    { name: 'Camel', tier: 'Epic', rank: 4, badge: '🐫', rate: 0.15, reward: 1300, minExp: 180, maxExp: 210, clanPts: [9, 16] },
-    { name: 'Dove', tier: 'Epic', rank: 4, badge: '🕊️', rate: 0.15, reward: 1100, minExp: 180, maxExp: 210, clanPts: [9, 16] },
-    { name: 'Elephant', tier: 'Legendary', rank: 5, badge: '🐘', rate: 0.10, reward: 4000, minExp: 230, maxExp: 280, clanPts: [11, 19] },
-    { name: 'Crocodile', tier: 'Legendary', rank: 5, badge: '🐊', rate: 0.10, reward: 4500, minExp: 230, maxExp: 280, clanPts: [11, 19] },
-    { name: 'Crow', tier: 'Legendary', rank: 5, badge: '🐦‍⬛', rate: 0.10, reward: 3500, minExp: 230, maxExp: 280, clanPts: [11, 19] },
-    { name: 'Tiger', tier: 'Legendary', rank: 5, badge: '🐅', rate: 0.10, reward: 5000, minExp: 230, maxExp: 280, clanPts: [11, 19] },
-    { name: 'Deer', tier: 'Mythic', rank: 6, badge: '🦌', rate: 0.01, reward: 12000, minExp: 300, maxExp: 340, clanPts: [14, 23] },
-    { name: 'Lion', tier: 'Mythic', rank: 6, badge: '🦁', rate: 0.01, reward: 15000, minExp: 300, maxExp: 340, clanPts: [14, 23] },
-    { name: 'Ghost', tier: 'S+ Tier', rank: 7, badge: '👻', rate: 0.05, reward: 35000, minExp: 1370, maxExp: 1420, clanPts: [18, 29] },
-    { name: 'Skeleton', tier: 'S+ Tier', rank: 7, badge: '💀', rate: 0.05, reward: 30000, minExp: 1370, maxExp: 1420, clanPts: [18, 29] },
-    { name: 'Dragon', tier: 'SS+ Tier', rank: 8, badge: '🐉', rate: 0.005, reward: 50000, minExp: 2500, maxExp: 2700, clanPts: [23, 34] },
-    { name: 'Phantom Ghost', tier: 'SS+ Tier', rank: 8, badge: '🥷', rate: 0.005, reward: 55000, minExp: 2500, maxExp: 2700, clanPts: [28, 40] },
-    { name: 'Unicorn', tier: 'SSS+ Tier', rank: 9, badge: '🦄', rate: 0.001, reward: 120000, minExp: 3500, maxExp: 4000, clanPts: [34, 52] },
-    { name: 'Dinosaur', tier: 'SSS+ Tier', rank: 9, badge: '🦖', rate: 0.001, reward: 150000, minExp: 3500, maxExp: 4000, clanPts: [34, 52] },
-    { name: 'Snowman', tier: 'GOD Tier', rank: 10, badge: '⛄', rate: 0.0001, reward: 500000, minExp: 5000, maxExp: 7000, clanPts: [45, 68] },
-    { name: 'Shiny Turtle', tier: 'Shiny', rank: 11, badge: '<:ShinyTurtle:1570467471889137735>', rate: 0.001, reward: 200000, minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
-    { name: 'Shiny Snowman', tier: 'Shiny', rank: 11, badge: '<:ShinySnowman:1570467561454305520>', rate: 0.001, reward: 300000, minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
-    { name: 'Shiny Scorpion', tier: 'Shiny', rank: 11, badge: '<:ShinyScorpion:1570467397834379285>', rate: 0.001, reward: 250000, minExp: 8000, maxExp: 10000, clanPts: [56, 100] },
-    { name: 'Shiny Dolphin', tier: 'Shiny', rank: 11, badge: '<:Shinydolphin:1570467326573416602>', rate: 0.001, reward: 250000, minExp: 8000, maxExp: 10000, clanPts: [56, 100] }
-];
-
-function getAnimalStats(animalName, level = 1) {
-    const animal = HUNT_ANIMALS.find(a => a.name === animalName);
-    if (!animal) return { hp: 100, atk: 20, def: 10 };
-    let baseHp = 100, baseAtk = 20, baseDef = 10;
-    let hpInc = 10, atkInc = 5, defInc = 3;
-    switch (animal.tier) {
-        case 'Uncommon': baseHp = 150; baseAtk = 30; baseDef = 15; hpInc = 20; atkInc = 8; defInc = 5; break;
-        case 'Rare': baseHp = 200; baseAtk = 40; baseDef = 20; hpInc = 30; atkInc = 12; defInc = 8; break;
-        case 'Epic': baseHp = 220; baseAtk = 50; baseDef = 25; hpInc = 40; atkInc = 15; defInc = 12; break;
-        case 'Legendary': baseHp = 250; baseAtk = 65; baseDef = 30; hpInc = 50; atkInc = 21; defInc = 15; break;
-        case 'Mythic': baseHp = 280; baseAtk = 75; baseDef = 35; hpInc = 60; atkInc = 25; defInc = 19; break;
-        case 'S+ Tier': baseHp = 305; baseAtk = 85; baseDef = 40; hpInc = 70; atkInc = 28; defInc = 23; break;
-        case 'SS+ Tier': baseHp = 340; baseAtk = 95; baseDef = 50; hpInc = 80; atkInc = 34; defInc = 26; break;
-        case 'SSS+ Tier': baseHp = 380; baseAtk = 105; baseDef = 60; hpInc = 90; atkInc = 39; defInc = 31; break;
-        case 'GOD Tier': baseHp = 420; baseAtk = 130; baseDef = 100; hpInc = 120; atkInc = 50; defInc = 40; break;
-        case 'Shiny': baseHp = 520; baseAtk = 200; baseDef = 120; hpInc = 200; atkInc = 80; defInc = 50; break;
-    }
-    const lvlFactor = level - 1;
-    return { hp: baseHp + (lvlFactor * hpInc), atk: baseAtk + (lvlFactor * atkInc), def: baseDef + (lvlFactor * defInc) };
-}
-
-function getRankBadge(points) {
-    if (points >= 10000) return '<:10000pts:1571018412464021504>';
-    if (points >= 6000) return '<:6000pts:1571018312626872421>';
-    if (points >= 4500) return '<:4500pts:1571018231584526397>';
-    if (points >= 3500) return '<:3500pts:1571019075604193300>';
-    if (points >= 2500) return '<:2500pts:1571018118036463786>';
-    return '<:1000pts:1571018024838893678>';
-}
-
-const TITLES_DATA = {
-    'Beta': { category: 'Special', desc: 'Given only to beta users or admins' },
-    'Admin': { category: 'Special', desc: 'Special title for Admin' },
-    'Owner': { category: 'Special', desc: 'Special title for Owner' }
-};
-
-function formatTitleDisplay(titleName) {
-    if (!titleName) return '`No Title Equipped`';
-    return `\`${titleName}\``;
-}
-
-const commands = [
-    new SlashCommandBuilder().setName('start').setDescription('Initialize your profile and claim your Beta title.'),
-    new SlashCommandBuilder().setName('help').setDescription('List all available bot commands in categories.'),
-    new SlashCommandBuilder().setName('rank').setDescription('Check your current points and rank tier badge.'),
-    new SlashCommandBuilder().setName('balance').setDescription('Check wallet and bank balance.')
-        .addUserOption(o => o.setName('user').setDescription('User to check').setRequired(false)),
-    new SlashCommandBuilder().setName('beg').setDescription('Beg for quick starter coins.'),
-    new SlashCommandBuilder().setName('work').setDescription('Choose your profession and work to earn coins.')
-        .addStringOption(o => o.setName('job').setDescription('Profession').setRequired(false).addChoices(
-            {name:'Farmer (₱10k-₱15k)', value:'Farmer'},
-            {name:'Chief (₱15k-₱30k)', value:'Chief'},
-            {name:'Developer (₱20k-₱50k)', value:'Developer'},
-            {name:'Designer (₱40k-₱60k)', value:'Designer'},
-            {name:'Discord Manager (₱65k-₱115k)', value:'Discord Manager'},
-            {name:'CEO (₱150k-₱900k | Req: 2k Pts)', value:'CEO'},
-            {name:'President (₱300k-₱1.3M | Req: 5k Pts)', value:'President'}
-        )),
-    new SlashCommandBuilder().setName('work-list').setDescription('View list of available professions and salary/point requirements.'),
-    new SlashCommandBuilder().setName('trivia').setDescription('Answer a 1-minute timed fill-in-the-blank trivia challenge for cash prizes.'),
-    new SlashCommandBuilder().setName('clan').setDescription('Manage or view your clan.')
-        .addSubcommand(s => s.setName('create').setDescription('Create a new clan')
-            .addStringOption(o => o.setName('name').setDescription('Clan Name').setRequired(true))
-            .addStringOption(o => o.setName('logo').setDescription('Logo image URL or upload attachment reference').setRequired(true)))
-        .addSubcommand(s => s.setName('info').setDescription('View your clan info'))
-        .addSubcommand(s => s.setName('edit').setDescription('Edit clan settings (type & requirements)')
-            .addStringOption(o => o.setName('type').setDescription('Open or Private').setRequired(false).addChoices({name:'Open For All', value:'Open'}, {name:'Private', value:'Private'}))
-            .addIntegerOption(o => o.setName('min_points').setDescription('Minimum points required').setRequired(false))),
-    new SlashCommandBuilder().setName('sclan').setDescription('Search available clans to join')
-        .addStringOption(o => o.setName('name').setDescription('Clan name to search/join').setRequired(true)),
-    new SlashCommandBuilder().setName('shop').setDescription('Browse weapons and charms shop.'),
-    new SlashCommandBuilder().setName('buy').setDescription('Buy shop item').addIntegerOption(o => o.setName('id').setDescription('ID').setRequired(true)),
-    new SlashCommandBuilder().setName('equip').setDescription('Equip an item or charm').addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true)),
-    new SlashCommandBuilder().setName('meme').setDescription('Generate a random meme.'),
-    new SlashCommandBuilder().setName('market').setDescription('View community market.'),
-    new SlashCommandBuilder().setName('sell').setDescription('Sell items/animals')
-        .addStringOption(o => o.setName('type').setDescription('Name').setRequired(true))
-        .addIntegerOption(o => o.setName('quantity').setDescription('Qty').setRequired(true))
-        .addIntegerOption(o => o.setName('amount').setDescription('Price').setRequired(true)),
-    new SlashCommandBuilder().setName('buy-market').setDescription('Buy market listing').addIntegerOption(o => o.setName('id').setDescription('ID').setRequired(true)),
-    new SlashCommandBuilder().setName('hunt').setDescription('Go hunting for creatures and boxes!'),
-    new SlashCommandBuilder().setName('lootbox').setDescription('Open lootboxes').addIntegerOption(o => o.setName('quantity').setDescription('Qty').setRequired(false)),
-    new SlashCommandBuilder().setName('open').setDescription('Open specific boxes')
-        .addStringOption(o => o.setName('rarity').setDescription('Rarity').setRequired(true).addChoices({name:'Rare', value:'Rare'},{name:'Epic', value:'Epic'},{name:'Ultra', value:'Ultra'},{name:'Legendary', value:'Legendary'},{name:'GOD', value:'GOD'}))
-        .addIntegerOption(o => o.setName('quantity').setDescription('Qty').setRequired(false)),
-    new SlashCommandBuilder().setName('battle').setDescription('Battle another player').addUserOption(o => o.setName('player').setDescription('Target').setRequired(true)),
-    new SlashCommandBuilder().setName('level').setDescription('Check level and team EXP'),
-    new SlashCommandBuilder().setName('team').setDescription('Equip team pet')
-        .addIntegerOption(o => o.setName('slot').setDescription('Slot 1-3').setRequired(true).addChoices({name:'Slot 1', value:1},{name:'Slot 2', value:2},{name:'Slot 3', value:3}))
-        .addStringOption(o => o.setName('animal').setDescription('Animal name').setRequired(true)),
-    new SlashCommandBuilder().setName('animal-stats').setDescription('View team animal stats'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('View leaderboards')
-        .addStringOption(o => o.setName('category').setDescription('Category').setRequired(true).addChoices({name:'Money', value:'money'},{name:'Points', value:'points'},{name:'Hunts', value:'hunts'})),
-    new SlashCommandBuilder().setName('daily').setDescription('Claim daily reward'),
-    new SlashCommandBuilder().setName('weekly').setDescription('Claim weekly reward'),
-    new SlashCommandBuilder().setName('quest').setDescription('View active quests'),
-    new SlashCommandBuilder().setName('event').setDescription('View active weather and events'),
-    new SlashCommandBuilder().setName('stats').setDescription('View active boosts'),
-    new SlashCommandBuilder().setName('collection').setDescription('View animal collection'),
-    new SlashCommandBuilder().setName('inventory').setDescription('View inventory'),
-    new SlashCommandBuilder().setName('titles').setDescription('View and equip titles').addStringOption(o => o.setName('equip').setDescription('Title').setRequired(false)),
-    new SlashCommandBuilder().setName('titlelist').setDescription('View available titles'),
-    new SlashCommandBuilder().setName('profiles').setDescription('View RPG profile card').addUserOption(o => o.setName('user').setDescription('User').setRequired(false)),
-    new SlashCommandBuilder().setName('bank').setDescription('Bank deposit/withdraw')
-        .addStringOption(o => o.setName('action').setDescription('deposit/withdraw').setRequired(true).addChoices({name:'Deposit', value:'deposit'},{name:'Withdraw', value:'withdraw'}))
-        .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
-    new SlashCommandBuilder().setName('give').setDescription('Transfer funds')
-        .addUserOption(o => o.setName('target').setDescription('Recipient').setRequired(true))
-        .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
-    new SlashCommandBuilder().setName('trade').setDescription('Interactive secure trade with another user')
-        .addUserOption(o => o.setName('target').setDescription('Partner').setRequired(true))
-];
-
-client.once('ready', async () => {
-    console.log(`Bot logged in as ${client.user.tag}!`);
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('Slash commands synchronized.');
-});
-
-setInterval(() => {
-    const serverCount = client.guilds.cache.size;
-    client.user.setActivity(`[${serverCount} Servers] /start`, { type: 0 });
-}, 60000);
-
-function checkCooldown(user, commandName, seconds = 3) {
-    const now = Date.now();
-    if (!user.cooldowns) user.cooldowns = {};
-    const expiration = (user.cooldowns[commandName] || 0) + (seconds * 1000);
-    if (now < expiration) return Math.ceil((expiration - now) / 1000);
-    user.cooldowns[commandName] = now;
-    return 0;
-}
-
-// Active trade sessions map: key = sessionId, value = session object
-const activeTrades = new Map();
-// Active trivia sessions map: key = channelId+userId, value = trivia object
-const activeTrivia = new Map();
-
-client.on('interactionCreate', async interaction => {
-    if (interaction.isButton() || interaction.isStringSelectMenu()) {
-        const customId = interaction.customId;
-
-        // --- HELP CATEGORY SELECT MENU HANDLER ---
-        if (customId === 'help_category_select') {
-            const val = interaction.values[0];
-            const embed = new EmbedBuilder().setColor('#5865F2');
-            if (val === 'fun') {
-                embed.setTitle('🌸 Fun Commands').setDescription('`/meme`, `/trivia`, `/coinflip`, `/slot`, `/blackjack`');
-            } else if (val === 'utility') {
-                embed.setTitle('🛠️ Utility Commands').setDescription('`/help`, `/event`, `/stats`, `/rank`, `/leaderboard`');
-            } else if (val === 'community') {
-                embed.setTitle('🎭 Salem & Community Commands').setDescription('`/clan`, `/sclan`, `/trade`, `/market`, `/sell`, `/buy-market`, `/give`');
-            } else if (val === 'creative') {
-                embed.setTitle('✨ Creative Commands').setDescription('`/titles`, `/titlelist`, `/profiles`');
-            } else if (val === 'general') {
-                embed.setTitle('ℹ️ General & Economy Commands').setDescription('`/start`, `/balance`, `/beg`, `/work`, `/work-list`, `/shop`, `/buy`, `/inventory`, `/daily`, `/weekly`, `/quest`');
-            }
-            return interaction.update({ embeds: [embed], components: interaction.message.components });
-        }
-
-        // --- TRADE BUTTON HANDLERS ---
-        if (customId.startsWith('trade_')) {
-            const parts = customId.split('_');
-            const action = parts[1];
-            const tradeId = parts[2];
-            const session = activeTrades.get(tradeId);
-
-            if (!session) return interaction.reply({ content: '❌ This trade session has expired or concluded.', ephemeral: true });
-            if (interaction.user.id !== session.p1 && interaction.user.id !== session.p2) {
-                return interaction.reply({ content: '❌ You are not part of this trade.', ephemeral: true });
-            }
-
-            const isP1 = interaction.user.id === session.p1;
-
-            if (action === 'add') {
-                const data = readData();
-                const u = getUser(data, interaction.user.id);
-                const itemsList = [...u.inventory, ...Object.keys(u.collection)];
-                if (itemsList.length === 0) return interaction.reply({ content: '❌ Your inventory and collection are empty.', ephemeral: true });
-                
-                session.offers[interaction.user.id] = itemsList[0]; // Auto-selects first item for simplicity in button callback
-                saveData(data);
-                return interaction.reply({ content: `✅ Added **${itemsList[0]}** to your trade offer.`, ephemeral: true });
-            }
-            else if (action === 'confirm') {
-                if (isP1) session.p1Confirmed = true;
-                else session.p2Confirmed = true;
-
-                if (session.p1Confirmed && session.p2Confirmed) {
-                    const data = readData();
-                    const u1 = getUser(data, session.p1);
-                    const u2 = getUser(data, session.p2);
-
-                    // Execute transfer if items were offered
-                    const offer1 = session.offers[session.p1];
-                    const offer2 = session.offers[session.p2];
-
-                    if (offer1) {
-                        const idx = u1.inventory.indexOf(offer1);
-                        if (idx > -1) { u1.inventory.splice(idx, 1); u2.inventory.push(offer1); }
-                        else if (u1.collection[offer1]) { u1.collection[offer1]--; u2.collection[offer1] = (u2.collection[offer1]||0)+1; }
-                    }
-                    if (offer2) {
-                        const idx = u2.inventory.indexOf(offer2);
-                        if (idx > -1) { u2.inventory.splice(idx, 1); u1.inventory.push(offer2); }
-                        else if (u2.collection[offer2]) { u2.collection[offer2]--; u1.collection[offer2] = (u1.collection[offer2]||0)+1; }
-                    }
-                    saveData(data);
-                    activeTrades.delete(tradeId);
-                    return interaction.update({ content: '✅ Trade successfully completed and verified!', embeds: [], components: [] });
-                } else {
-                    return interaction.update({ content: `✅ You confirmed your trade offer. Waiting for trading partner to confirm...`, components: interaction.message.components });
-                }
-            }
-            else if (action === 'cancel') {
-                activeTrades.delete(tradeId);
-                return interaction.update({ content: '❌ Trade session cancelled.', embeds: [], components: [] });
-            }
-        }
-        return;
-    }
-
-    // --- TRIVIA MESSAGE COLLECTOR LISTENER ---
-    if (interaction.isChatInputCommand() && interaction.commandName === 'trivia') {
-        // Handled inside command block below
-    }
-
-    if (!interaction.isChatInputCommand()) return;
-    const { commandName } = interaction;
-
-    const data = readData();
-    const user = getUser(data, interaction.user.id);
-
-    // --- STRICT /start REWORK (Once used, cannot be re-triggered) ---
-    if (commandName === 'start') {
-        if (user.started) {
-            return interaction.reply({ content: '⚠️ Your profile has already been initialized! You cannot run `/start` again.', ephemeral: true });
-        }
-        user.started = true;
-        if (!user.titles.includes('Beta')) user.titles.push('Beta');
-        if (!user.equippedTitle) user.equippedTitle = 'Beta';
-        saveData(data);
-
-        try {
-            const dmEmbed = new EmbedBuilder()
-                .setTitle('Welcome to Night (BETA)!')
-                .setColor('#5865F2')
-                .setDescription('Thank you for initializing your profile! You have automatically unlocked the exclusive **Beta** title.\n\nUse `/help` to see all available commands.');
-            await interaction.user.send({ embeds: [dmEmbed] });
-        } catch (e) {}
-
-        return interaction.reply({ content: '✅ Profile successfully initialized! You have received the Beta title.', ephemeral: true });
-    }
-
-    // STRICT GATEKEEPER CHECK FOR ALL OTHER COMMANDS
-    if (!user.started && commandName !== 'help') {
-        return interaction.reply({ content: '⚠️ Please run the `/start` command first to initialize your profile and begin playing!', ephemeral: true });
-    }
-
-    try {
-        if (commandName !== 'start' && commandName !== 'help') {
-            const cd = checkCooldown(user, commandName, 3);
-            if (cd > 0) return interaction.reply({ content: `⏳ Please wait **${cd}s** before using \`/${commandName}\` again.`, ephemeral: true });
-            saveData(data);
-        }
-
-        // --- /help REWORK WITH CATEGORY SELECT MENU ---
-        if (commandName === 'help') {
-            const embed = new EmbedBuilder()
-                .setTitle('Command Directory')
-                .setColor('#5865F2')
-                .setDescription('Which Command Want to use?\nSelect a category from the dropdown menu below to explore commands.');
-
-            const row = new ActionRowBuilder().addComponents(
-                new StringSelectMenuBuilder()
-                    .setCustomId('help_category_select')
-                    .setPlaceholder('Choose a command category...')
-                    .addOptions([
-                        { label: 'Fun Command', description: 'Pat, bonk, hug, kiss, meme, trivia', value: 'fun', emoji: '🌸' },
-                        { label: 'Utility', description: 'Weather, ping, stats, rank, leaderboard', value: 'utility', emoji: '🛠️' },
-                        { label: 'Salem & Community', description: 'Clans, trading, market, donations', value: 'community', emoji: '🎭' },
-                        { label: 'Creative', description: 'Titles and profile cards', value: 'creative', emoji: '✨' },
-                        { label: 'General', description: 'Economy, work, shop, inventory, starter', value: 'general', emoji: 'ℹ️' }
-                    ])
-            );
-
-            return interaction.reply({ embeds: [embed], components: [row] });
-        }
-
-        // --- /rank ---
-        else if (commandName === 'rank') {
-            const rankBadge = getRankBadge(user.points || 0);
-            const embed = new EmbedBuilder()
-                .setTitle(`Rank Status — ${interaction.user.username}`)
-                .setColor('#0099ff')
-                .setDescription(`You currently hold **${user.points || 0} points**.\nYour Active Rank Badge: ${rankBadge}`);
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        // --- /meme ---
-        else if (commandName === 'meme') {
-            try {
-                const memeData = await new Promise((res, rej) => {
-                    https.get('https://meme-api.com/gimme', r => {
-                        let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d)));
-                    }).on('error', rej);
-                });
-                const embed = new EmbedBuilder().setTitle(memeData.title).setImage(memeData.url).setColor('#ff4500');
-                return interaction.reply({ embeds: [embed] });
-            } catch (e) {
-                return interaction.reply({ content: '❌ Failed to fetch meme.', ephemeral: true });
-            }
-        }
-
-        // --- /work & /work-list REWORK ---
-        else if (commandName === 'work-list') {
-            const embed = new EmbedBuilder()
-                .setTitle('Employment Directory')
-                .setColor('#00ffcc')
-                .setDescription('Available professions and salaries:\n\n' +
-                    '• **Farmer**: ₱10,000 - ₱15,000\n' +
-                    '• **Chief**: ₱15,000 - ₱30,000\n' +
-                    '• **Developer**: ₱20,000 - ₱50,000\n' +
-                    '• **Designer**: ₱40,000 - ₱60,000\n' +
-                    '• **Discord Manager**: ₱65,000 - ₱115,000\n' +
-                    '• **CEO**: ₱150,000 - ₱900,000 *(Requires 2,000 points)*\n' +
-                    '• **President**: ₱300,000 - ₱1,300,000 *(Requires 5,000 points)*');
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        else if (commandName === 'work') {
-            const jobChoice = interaction.options.getString('job');
-            if (!jobChoice) {
-                const embed = new EmbedBuilder()
-                    .setTitle('Choose Your Profession')
-                    .setColor('#00ffcc')
-                    .setDescription('Use `/work [job]` with one of the following roles:\n`Farmer`, `Chief`, `Developer`, `Designer`, `Discord Manager`, `CEO`, `President`\nUse `/work-list` to view requirements and salaries.');
-                return interaction.reply({ embeds: [embed] });
-            }
-
-            let minPay = 0, maxPay = 0, reqPts = 0;
-            if (jobChoice === 'Farmer') { minPay = 10000; maxPay = 15000; }
-            else if (jobChoice === 'Chief') { minPay = 15000; maxPay = 30000; }
-            else if (jobChoice === 'Developer') { minPay = 20000; maxPay = 50000; }
-            else if (jobChoice === 'Designer') { minPay = 40000; maxPay = 60000; }
-            else if (jobChoice === 'Discord Manager') { minPay = 65000; maxPay = 115000; }
-            else if (jobChoice === 'CEO') { minPay = 150000; maxPay = 900000; reqPts = 2000; }
-            else if (jobChoice === 'President') { minPay = 300000; maxPay = 1300000; reqPts = 5000; }
-
-            if ((user.points || 0) < reqPts) {
-                return interaction.reply({ content: `❌ You need at least **${reqPts} points** to work as a **${jobChoice}**.`, ephemeral: true });
-            }
-
-            user.job = jobChoice;
-            const salary = Math.floor(Math.random() * (maxPay - minPay + 1)) + minPay;
-            user.wallet += salary;
-
-            const clanPtsEarned = Math.floor(Math.random() * 9) + 2; // 2-10 points for work
-            addClanContribution(user, interaction.user.id, data, clanPtsEarned);
-
-            saveData(data);
-            return interaction.reply(`You worked hard as a **${jobChoice}** and earned **${CURRENCY}${formatCurrency(salary)}**! *(+${clanPtsEarned} Clan Contribution)*`);
-        }
-
-        // --- /trivia REWORK (Functional with Fill-in-the-Blank & 1-minute timer) ---
-        else if (commandName === 'trivia') {
-            const triviaQuestions = [
-                { q: "What is the chemical symbol for Gold? (Hint: _ u)", ans: "au" },
-                { q: "What planet is known as the Red Planet? (Hint: _ _ a s)", ans: "mars" },
-                { q: "How many continents are there on Earth? (Hint: _)", ans: "7" },
-                { q: "What is the capital of Japan? (Hint: T _ _ y o)", ans: "tokyo" }
-            ];
-            const selected = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-
-            await interaction.reply({ content: `🧠 **Trivia Challenge!** (You have **1 minute** to answer)\n\n${selected.q}\n\n*Type your answer in this channel!*` });
-
-            const filter = m => m.author.id === interaction.user.id;
-            const collector = interaction.channel.createMessageCollector({ filter, time: 60000, max: 1 });
-
-            collector.on('collect', m => {
-                if (m.content.toLowerCase().trim() === selected.ans) {
-                    const reward = 25000;
-                    user.wallet += reward;
-                    saveData(data);
-                    m.reply(`🎉 Correct! You solved the trivia and won **${CURRENCY}${formatCurrency(reward)}**!`);
-                } else {
-                    m.reply(`❌ Incorrect! The correct answer was **${selected.ans}**.`);
-                }
-            });
-
-            collector.on('end', collected => {
-                if (collected.size === 0) {
-                    interaction.followUp({ content: `⏱️ Time's up! You didn't answer the trivia in time.`, ephemeral: true });
-                }
-            });
-            return;
-        }
-
-        // --- /clan & /sclan SYSTEM ---
-        else if (commandName === 'clan') {
-            const subcommand = interaction.options.getSubcommand();
-
-            if (subcommand === 'create') {
-                if (user.clan) return interaction.reply({ content: '❌ You are already in a clan. Leave your current clan first.', ephemeral: true });
-                const clanName = interaction.options.getString('name');
-                const logo = interaction.options.getString('logo');
-
-                if (data.clans[clanName]) return interaction.reply({ content: '❌ A clan with this name already exists.', ephemeral: true });
-
-                data.clans[clanName] = {
-                    name: clanName,
-                    logo: logo,
-                    leader: interaction.user.id,
-                    viceLeader: null,
-                    points: 0,
-                    type: 'Open',
-                    minPoints: 0,
-                    members: [interaction.user.id],
-                    contributions: { [interaction.user.id]: 0 }
-                };
-                user.clan = clanName;
-                saveData(data);
-                return interaction.reply(`✅ Successfully created clan **${clanName}**!`);
-            }
-            else if (subcommand === 'info') {
-                if (!user.clan) return interaction.reply({ content: '❌ You are not in any clan. Use `/sclan [name]` to search or join one.', ephemeral: true });
-                const clan = data.clans[user.clan];
-                const leaderUser = await client.users.fetch(clan.leader).catch(() => ({ username: 'Unknown' }));
-                const viceUser = clan.viceLeader ? await client.users.fetch(clan.viceLeader).catch(() => ({ username: 'None' })) : { username: 'None' };
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`🛡️ Clan: ${clan.name}`)
-                    .setThumbnail(clan.logo)
-                    .setColor('#9900ff')
-                    .addFields(
-                        { name: 'Clan Leader', value: `<@${clan.leader}> [Points: ${getUser(data, clan.leader).points || 0}]`, inline: true },
-                        { name: 'Clan Vice-Leader', value: clan.viceLeader ? `<@${clan.viceLeader}> [Points: ${getUser(data, clan.viceLeader).points || 0}]` : 'None', inline: true },
-                        { name: 'Clan Points', value: `${clan.points || 0} pts`, inline: false },
-                        { name: 'Settings', value: `Type: **${clan.type}** | Min Join Points: **${clan.minPoints || 0}**`, inline: false }
-                    );
-
-                const memberLines = clan.members.map(mId => {
-                    const mObj = getUser(data, mId);
-                    const contrib = clan.contributions[mId] || 0;
-                    return `<@${mId}> | Contributions: ${contrib} pts | Rank Pts: ${mObj.points || 0} pts`;
-                });
-                embed.addFields({ name: `Members (${clan.members.length})`, value: memberLines.join('\n') || 'No members' });
-
-                return interaction.reply({ embeds: [embed] });
-            }
-            else if (subcommand === 'edit') {
-                if (!user.clan) return interaction.reply({ content: '❌ You are not in a clan.', ephemeral: true });
-                const clan = data.clans[user.clan];
-                if (clan.leader !== interaction.user.id) return interaction.reply({ content: '❌ Only the clan leader can edit clan settings.', ephemeral: true });
-
-                const newType = interaction.options.getString('type');
-                const newMin = interaction.options.getInteger('min_points');
-
-                if (newType) clan.type = newType;
-                if (newMin !== null) clan.minPoints = newMin;
-                saveData(data);
-
-                return interaction.reply(`✅ Clan settings updated successfully. Type: **${clan.type}**, Min Points: **${clan.minPoints}**`);
-            }
-        }
-
-        else if (commandName === 'sclan') {
-            const clanName = interaction.options.getString('name');
-            const clan = data.clans[clanName];
-            if (!clan) return interaction.reply({ content: `❌ Clan **${clanName}** does not exist.`, ephemeral: true });
-
-            if (user.clan) return interaction.reply({ content: '❌ You are already in a clan.', ephemeral: true });
-
-            if (clan.type === 'Private') {
-                return interaction.reply({ content: `❌ Clan **${clanName}** is Private. You need an invite to join.`, ephemeral: true });
-            }
-
-            if ((user.points || 0) < (clan.minPoints || 0)) {
-                return interaction.reply({ content: `❌ You do not meet the minimum point requirement (${clan.minPoints} pts) to join this clan.`, ephemeral: true });
-            }
-
-            clan.members.push(interaction.user.id);
-            clan.contributions[interaction.user.id] = 0;
-            user.clan = clanName;
-            saveData(data);
-
-            return interaction.reply(`✅ Successfully joined clan **${clanName}**!`);
-        }
-
-        // --- /trade REWORK (Strict two-party confirmation workflow) ---
-        else if (commandName === 'trade') {
-            const target = interaction.options.getUser('target');
-            if (target.id === interaction.user.id) return interaction.reply({ content: '❌ You cannot trade with yourself.', ephemeral: true });
-            if (target.bot) return interaction.reply({ content: '❌ You cannot trade with bots.', ephemeral: true });
-
-            const tradeId = `${interaction.user.id}_${target.id}_${Date.now()}`;
-            activeTrades.set(tradeId, {
-                p1: interaction.user.id,
-                p2: target.id,
-                offers: { [interaction.user.id]: null, [target.id]: null },
-                p1Confirmed: false,
-                p2Confirmed: false
-            });
-
-            const embed = new EmbedBuilder()
-                .setTitle('Secure Trade Session')
-                .setColor('#ffaa00')
-                .setDescription(`Trade session between **${interaction.user.username}** and **${target.username}**.\n\n` +
-                    `Click **Add Item** to select items/animals to offer, then click **Confirm Trade**.`);
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`trade_add_${tradeId}`).setLabel('Add Item').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`trade_confirm_${tradeId}`).setLabel('Confirm Trade').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`trade_cancel_${tradeId}`).setLabel('Cancel').setStyle(ButtonStyle.Danger)
-            );
-
-            return interaction.reply({ embeds: [embed], components: [row] });
-        }
-
-        // --- /balance ---
-        else if (commandName === 'balance') {
-            const target = interaction.options.getUser('user') || interaction.user;
-            const tData = getUser(data, target.id);
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle(`Balance — ${target.username}`)
-                .addFields(
-                    { name: '🪙 Wallet', value: `${CURRENCY}${formatCurrency(tData.wallet)}`, inline: true },
-                    { name: '🏦 Bank', value: `${CURRENCY}${formatCurrency(tData.bank)}`, inline: true }
-                );
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        // --- /beg ---
-        else if (commandName === 'beg') {
-            const amt = Math.floor(Math.random() * 10000) + 1;
-            user.wallet += amt;
-            const clanPts = Math.floor(Math.random() * 6) + 2; // 2-7 points
-            addClanContribution(user, interaction.user.id, data, clanPts);
-            saveData(data);
-            return interaction.reply(`You begged and received ${CURRENCY}**${formatCurrency(amt)}**! *(+${clanPts} Clan Contribution)*`);
-        }
-
-        // --- /shop & /buy ---
-        else if (commandName === 'shop') {
-            const embed = new EmbedBuilder().setTitle('Shop & Armory').setColor('#00ffcc');
-            const gunList = data.shopItems.filter(i => i.category === 'Gun').map(i => `**[ID: ${i.id}] ${i.emoji} ${i.name}** - ${CURRENCY}${formatCurrency(i.price)}\n└ *${i.description}*`).join('\n\n');
-            const charmList = data.shopItems.filter(i => i.category === 'Charm').map(i => `**[ID: ${i.id}] ${i.emoji} ${i.name}** - ${CURRENCY}${formatCurrency(i.price)}\n└ *${i.description}*`).join('\n\n');
-            embed.addFields({ name: 'Guns', value: gunList }, { name: 'Charms', value: charmList });
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        else if (commandName === 'buy') {
-            const id = interaction.options.getInteger('id');
-            const item = data.shopItems.find(i => i.id === id);
-            if (!item) return interaction.reply({ content: '❌ Item not found.', ephemeral: true });
-            if (user.wallet < item.price) return interaction.reply({ content: '❌ Insufficient wallet balance.', ephemeral: true });
-
-            user.wallet -= item.price;
-            user.inventory.push(item.name);
-            saveData(data);
-            return interaction.reply(`Successfully purchased **${item.emoji} ${item.name}** for ${CURRENCY}${formatCurrency(item.price)}.`);
-        }
-
-        // --- /hunt (With Clan Contribution Integration) ---
-        else if (commandName === 'hunt') {
-            const embed = new EmbedBuilder().setTitle('Hunting Expedition').setColor('#00ff88');
-            const caught = HUNT_ANIMALS[Math.floor(Math.random() * HUNT_ANIMALS.length)];
-
-            if (!user.collection[caught.name]) user.collection[caught.name] = 0;
-            user.collection[caught.name]++;
-            user.totalHunts = (user.totalHunts || 0) + 1;
-
-            const clanPts = Math.floor(Math.random() * (caught.clanPts[1] - caught.clanPts[0] + 1)) + caught.clanPts[0];
-            addClanContribution(user, interaction.user.id, data, clanPts);
-
-            addUserExp(user, caught.minExp);
-            saveData(data);
-
-            embed.setDescription(`You went hunting and discovered:\n${RARITY_ICONS[caught.tier]} ${caught.badge} **${caught.name}**!\n\n*(+${clanPts} Clan Contribution Points)*`);
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        // --- INVENTORY, PROFILES, MARKET, ETC. ---
-        else if (commandName === 'inventory') {
-            const embed = new EmbedBuilder().setTitle(`Inventory — ${interaction.user.username}`).setColor('#ffaa00');
-            const invList = user.inventory.join(', ') || 'Empty inventory.';
-            embed.addFields({ name: 'Items', value: invList });
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        else if (commandName === 'profiles') {
-            const target = interaction.options.getUser('user') || interaction.user;
-            const tData = getUser(data, target.id);
-            const rankBadge = getRankBadge(tData.points || 0);
-
-            const embed = new EmbedBuilder()
-                .setColor('#5865F2')
-                .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-                .setTitle(`RPG Profile — ${target.username}`)
-                .setDescription(`Title: ${formatTitleDisplay(tData.equippedTitle)}\nRank Badge: ${rankBadge}\nClan: **${tData.clan || 'None'}**`)
-                .addFields(
-                    { name: 'Stats', value: `Level: **${tData.level}**\nPoints: **${tData.points || 0} pts**\nJob: **${tData.job}**`, inline: true },
-                    { name: 'Money', value: `Wallet: ${CURRENCY}${formatCurrency(tData.wallet)}\nBank: ${CURRENCY}${formatCurrency(tData.bank)}`, inline: true }
-                );
-            return interaction.reply({ embeds: [embed] });
-        }
-
-        else if (commandName === 'bank') {
-            const action = interaction.options.getString('action');
-            const amount = interaction.options.getInteger('amount');
-            if (amount <= 0) return interaction.reply({ content: '❌ Invalid amount.', ephemeral: true });
-
-            if (action === 'deposit') {
-                if (user.wallet < amount) return interaction.reply({ content: '❌ Insufficient wallet funds.', ephemeral: true });
-                user.wallet -= amount; user.bank += amount;
-                interaction.reply(`Deposited ${CURRENCY}${formatCurrency(amount)} into bank.`);
-            } else {
-                if (user.bank < amount) return interaction.reply({ content: '❌ Insufficient bank funds.', ephemeral: true });
-                user.bank -= amount; user.wallet += amount;
-                interaction.reply(`Withdrew ${CURRENCY}${formatCurrency(amount)} to wallet.`);
-            }
-            saveData(data);
-        }
-
-    } catch (err) {
-        console.error(err);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'An error occurred while executing this command.', ephemeral: true });
-        }
-    }
-});
-
-client.login(process.env.DISCORD_TOKEN);
+(async()=>{
+ if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is missing.");
+ if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL is missing. Add Railway PostgreSQL.");
+ await initDb();
+ await client.login(process.env.DISCORD_TOKEN);
+})().catch(err=>{console.error(err);process.exit(1);});
+
+process.on("SIGTERM",async()=>{await pool.end();client.destroy();process.exit(0);});
