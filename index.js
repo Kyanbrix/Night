@@ -383,7 +383,7 @@ client.on('messageCreate', async message => {
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
           { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards' },
           { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points' },
-          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis & dice' },
+          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Interactive 2-Player Trade' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`' }
         )
         .setFooter({ text: `Playing +help • Serving ${client.guilds.cache.size} Servers` });
@@ -831,7 +831,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // +battle (3v3 Team Arena Clash with Tiered Point Rewards & Penalties)
+    // +battle
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -882,14 +882,13 @@ client.on('messageCreate', async message => {
           const loseUser = isP1Winner ? p2User : p1User;
           const winTeam = isP1Winner ? p1Team : p2Team;
 
-          // Helper to calculate bracket-based random points win/loss
           const getBattlePoints = (pts) => {
-            if (pts >= 8002) return { win: Math.floor(Math.random() * 31) + 120, lose: 75 }; // 120-150 points, lose 75
-            if (pts >= 5501) return { win: Math.floor(Math.random() * 31) + 90, lose: 50 };  // 90-120 points, lose 50
-            if (pts >= 4001) return { win: Math.floor(Math.random() * 31) + 70, lose: 30 };  // 70-100 points, lose 30
-            if (pts >= 2501) return { win: Math.floor(Math.random() * 31) + 50, lose: 20 };  // 50-80 points, lose 20
-            if (pts >= 1000) return { win: Math.floor(Math.random() * 21) + 20, lose: 10 };  // 20-40 points, lose 10
-            return { win: Math.floor(Math.random() * 11) + 10, lose: 5 };                  // 10-20 points, lose 5
+            if (pts >= 8002) return { win: Math.floor(Math.random() * 31) + 120, lose: 75 };
+            if (pts >= 5501) return { win: Math.floor(Math.random() * 31) + 90, lose: 50 };
+            if (pts >= 4001) return { win: Math.floor(Math.random() * 31) + 70, lose: 30 };
+            if (pts >= 2501) return { win: Math.floor(Math.random() * 31) + 50, lose: 20 };
+            if (pts >= 1000) return { win: Math.floor(Math.random() * 21) + 20, lose: 10 };
+            return { win: Math.floor(Math.random() * 11) + 10, lose: 5 };
           };
 
           const winReward = getBattlePoints(winUser.points);
@@ -1041,93 +1040,224 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +trade
+    // +trade (Revamped Interactive 2-Player Trade System)
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
       ensureUser(target.id);
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('trade_chibi').setLabel('Trade Chibis').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('trade_dice').setLabel('Trade Dice 🎲').setStyle(ButtonStyle.Success)
+      const targetUser = db.users[target.id];
+      updateUserRank(user);
+      updateUserRank(targetUser);
+
+      // Step 1: Request trade acceptance
+      const acceptRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('accept_trade_req').setLabel('Accept Trade').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('cancel_trade_req').setLabel('Decline').setStyle(ButtonStyle.Danger)
       );
 
-      const tradeMenuMsg = await message.reply({
-        content: `🤝 Trade initiated between <@${userId}> and <@${target.id}>!\n<@${userId}>, select what you would like to trade:`,
-        components: [row]
+      const reqMsg = await message.reply({
+        content: `🤝 <@${target.id}>, you have been invited to trade by <@${userId}>!`,
+        components: [acceptRow]
       });
 
-      const filter = i => i.user.id === userId;
-      const collector = tradeMenuMsg.createMessageComponentCollector({ filter, time: 60000 });
+      const reqCollector = reqMsg.createMessageComponentCollector({ time: 60000 });
 
-      collector.on('collect', async i => {
-        if (i.customId === 'trade_chibi') {
-          if (user.inventory.chibis.length === 0) {
-            return i.reply({ content: '❌ You have no chibis in your inventory to trade!', ephemeral: true });
-          }
+      reqCollector.on('collect', async i => {
+        if (i.user.id !== target.id) return i.reply({ content: 'This trade invitation is not for you!', ephemeral: true });
 
-          const options = user.inventory.chibis.slice(0, 25).map(c => {
-            const uId = c.chibiId || c.id;
-            return {
-              label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
-              description: `ID: ${uId}`,
-              value: uId
-            };
+        if (i.customId === 'cancel_trade_req') {
+          reqCollector.stop();
+          return i.update({ content: `❌ Trade invitation declined by <@${target.id}>.`, components: [] });
+        }
+
+        if (i.customId === 'accept_trade_req') {
+          reqCollector.stop();
+
+          // Active Trade State
+          let p1OfferType = null; // 'chibi' or 'dice'
+          let p1OfferData = null; // chibi object or dice amount
+          let p2OfferType = null;
+          let p2OfferData = null;
+
+          const renderTradeUI = () => {
+            const p1Display = p1OfferData 
+              ? (p1OfferType === 'chibi' ? `${p1OfferData.emoji} **${p1OfferData.name}** \`[${(p1OfferData.chibiId || p1OfferData.id).slice(-6)}]\`` : `**${p1OfferData}x 🎲 Dice**`)
+              : '*No offer yet*';
+
+            const p2Display = p2OfferData 
+              ? (p2OfferType === 'chibi' ? `${p2OfferData.emoji} **${p2OfferData.name}** \`[${(p2OfferData.chibiId || p2OfferData.id).slice(-6)}]\`` : `**${p2OfferData}x 🎲 Dice**`)
+              : '*No offer yet*';
+
+            return new EmbedBuilder()
+              .setTitle('🤝 Secure Trade Session')
+              .setColor('#f1c40f')
+              .setDescription(
+                `<@${userId}> ${user.rank}\n` +
+                `|------------|\n` +
+                `${p1Display}\n` +
+                `|------------|\n` +
+                `${p2Display}\n` +
+                `|------------|\n` +
+                `<@${target.id}> ${targetUser.rank}`
+              );
+          };
+
+          const actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('p1_offer').setLabel(`${message.author.username}'s Offer`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('p2_offer').setLabel(`${target.username}'s Offer`).setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('confirm_trade').setLabel('Confirm & Complete').setStyle(ButtonStyle.Secondary)
+          );
+
+          await i.update({
+            content: `🤝 **Trade Session Active!** Both players, submit your offers below:`,
+            embeds: [renderTradeUI()],
+            components: [actionRow]
           });
 
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('trade_chibi_select')
-            .setPlaceholder('Choose a Chibi to offer')
-            .addOptions(options);
+          const sessionCollector = reqMsg.createMessageComponentCollector({ time: 300000 });
 
-          const selectRow = new ActionRowBuilder().addComponents(selectMenu);
-          await i.update({ content: `🤝 Select a Chibi to trade to <@${target.id}>:`, components: [selectRow] });
+          sessionCollector.on('collect', async si => {
+            if (si.customId === 'p1_offer' || si.customId === 'p2_offer') {
+              const activeId = si.customId === 'p1_offer' ? userId : target.id;
+              if (si.user.id !== activeId) {
+                return si.reply({ content: `That is not your offer button!`, ephemeral: true });
+              }
 
-          const chibiCollector = tradeMenuMsg.createMessageComponentCollector({ time: 300000 });
-          chibiCollector.on('collect', async ci => {
-            if (ci.isStringSelectMenu() && ci.customId === 'trade_chibi_select') {
-              if (ci.user.id !== userId) return ci.reply({ content: 'Not your trade!', ephemeral: true });
-              const selectedChibiId = ci.values[0];
-              const offeredChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === selectedChibiId);
-
-              const confirmRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('confirm_chibi_trade').setLabel('Confirm Trade').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('cancel_trade').setLabel('Cancel').setStyle(ButtonStyle.Danger)
+              const typeRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('choose_chibi').setLabel('Trade Chibi').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('choose_dice').setLabel('Trade Dice 🎲').setStyle(ButtonStyle.Success)
               );
 
-              await ci.update({
-                content: `🤝 <@${userId}> offered **${offeredChibi.emoji} ${offeredChibi.name} ${offeredChibi.isShiny ? SHINY_ICON : ''}** (${offeredChibi.rarity}).\n<@${target.id}>, click Confirm Trade to accept!`,
-                components: [confirmRow]
+              await si.reply({ content: `What would you like to offer?`, components: [typeRow], ephemeral: true });
+
+              const typeInteraction = await si.channel.awaitMessageComponent({
+                filter: int => int.user.id === activeId,
+                time: 30000
+              }).catch(() => null);
+
+              if (!typeInteraction) return;
+
+              if (typeInteraction.customId === 'choose_dice') {
+                await typeInteraction.update({ content: `🎲 Type the amount of Dice you wish to offer in chat (e.g. \`50\`):`, components: [] });
+                const chatMsg = await typeInteraction.channel.awaitMessageStream ? null : typeInteraction.channel.awaitMessages({
+                  filter: m => m.author.id === activeId,
+                  max: 1,
+                  time: 30000
+                }).catch(() => null);
+
+                const collected = chatMsg?.first();
+                if (!collected) return;
+                const amt = parseInt(collected.content);
+                const activeUserObj = db.users[activeId];
+
+                if (isNaN(amt) || amt <= 0 || activeUserObj.dice < amt) {
+                  return collected.reply('❌ Invalid amount or insufficient dice!');
+                }
+
+                if (activeId === userId) {
+                  p1OfferType = 'dice';
+                  p1OfferData = amt;
+                } else {
+                  p2OfferType = 'dice';
+                  p2OfferData = amt;
+                }
+                await collected.delete().catch(() => {});
+                await reqMsg.edit({ embeds: [renderTradeUI()] });
+
+              } else if (typeInteraction.customId === 'choose_chibi') {
+                const activeUserObj = db.users[activeId];
+                if (!activeUserObj.inventory.chibis || activeUserObj.inventory.chibis.length === 0) {
+                  return typeInteraction.update({ content: '❌ You have no chibis to trade!', components: [] });
+                }
+
+                const options = activeUserObj.inventory.chibis.slice(0, 25).map(c => {
+                  const uId = c.chibiId || c.id;
+                  return {
+                    label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
+                    description: `ID: ${uId.slice(-6)}`,
+                    value: uId
+                  };
+                });
+
+                const menu = new StringSelectMenuBuilder()
+                  .setCustomId('select_chibi_trade')
+                  .setPlaceholder('Select a Chibi to offer')
+                  .addOptions(options);
+
+                const menuRow = new ActionRowBuilder().addComponents(menu);
+                await typeInteraction.update({ content: 'Select your chibi offer:', components: [menuRow] });
+
+                const menuInteraction = await typeInteraction.channel.awaitMessageComponent({
+                  filter: int => int.user.id === activeId && int.isStringSelectMenu(),
+                  time: 30000
+                }).catch(() => null);
+
+                if (!menuInteraction) return;
+
+                const chosenId = menuInteraction.values[0];
+                const chibiObj = activeUserObj.inventory.chibis.find(c => (c.chibiId || c.id) === chosenId);
+
+                if (activeId === userId) {
+                  p1OfferType = 'chibi';
+                  p1OfferData = chibiObj;
+                } else {
+                  p2OfferType = 'chibi';
+                  p2OfferData = chibiObj;
+                }
+
+                await menuInteraction.update({ content: `✅ Chibi offer registered: **${chibiObj.name}**`, components: [] });
+                await reqMsg.edit({ embeds: [renderTradeUI()] });
+              }
+
+            } else if (si.customId === 'confirm_trade') {
+              if (si.user.id !== userId && si.user.id !== target.id) {
+                return si.reply({ content: 'You are not part of this trade session!', ephemeral: true });
+              }
+
+              if (!p1OfferData || !p2OfferData) {
+                return si.reply({ content: '❌ Both players must submit an offer before confirming!', ephemeral: true });
+              }
+
+              // Execute transfer safely
+              const p1Obj = db.users[userId];
+              const p2Obj = db.users[target.id];
+
+              // Transfer P1 offer -> P2
+              if (p1OfferType === 'dice') {
+                if (p1Obj.dice < p1OfferData) return si.reply({ content: '❌ Player 1 no longer has enough dice!', ephemeral: true });
+                p1Obj.dice -= p1OfferData;
+                p2Obj.dice += p1OfferData;
+              } else {
+                const idx = p1Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1OfferData.chibiId || p1OfferData.id));
+                if (idx === -1) return si.reply({ content: '❌ Player 1 no longer has the offered chibi!', ephemeral: true });
+                const [transferred] = p1Obj.inventory.chibis.splice(idx, 1);
+                p2Obj.inventory.chibis.push(transferred);
+              }
+
+              // Transfer P2 offer -> P1
+              if (p2OfferType === 'dice') {
+                if (p2Obj.dice < p2OfferData) return si.reply({ content: '❌ Player 2 no longer has enough dice!', ephemeral: true });
+                p2Obj.dice -= p2OfferData;
+                p1Obj.dice += p2OfferData;
+              } else {
+                const idx = p2Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2OfferData.chibiId || p2OfferData.id));
+                if (idx === -1) return si.reply({ content: '❌ Player 2 no longer has the offered chibi!', ephemeral: true });
+                const [transferred] = p2Obj.inventory.chibis.splice(idx, 1);
+                p1Obj.inventory.chibis.push(transferred);
+              }
+
+              updateUserRank(p1Obj);
+              updateUserRank(p2Obj);
+              await saveUsers();
+              sessionCollector.stop();
+
+              return si.update({
+                content: `✅ **Trade Successfully Completed Between <@${userId}> and <@${target.id}>!**`,
+                embeds: [renderTradeUI()],
+                components: []
               });
-            } else if (ci.isButton() && ci.customId === 'confirm_chibi_trade') {
-              if (ci.user.id !== target.id) return ci.reply({ content: `Only <@${target.id}> can accept this trade!`, ephemeral: true });
-              chibiCollector.stop();
-              return ci.update({ content: `✅ Trade accepted and completed successfully!`, components: [] });
             }
-          });
-
-        } else if (i.customId === 'trade_dice') {
-          await i.update({ content: `🎲 Type the amount of Dice you want to trade to <@${target.id}> in chat (e.g. \`10\`):`, components: [] });
-
-          const chatFilter = m => m.author.id === userId;
-          const chatCollector = message.channel.createMessageCollector({ filter: chatFilter, time: 30000, max: 1 });
-
-          chatCollector.on('collect', async m => {
-            const amount = parseInt(m.content);
-            if (isNaN(amount) || amount <= 0) {
-              return message.reply('❌ Invalid dice amount.');
-            }
-            if (user.dice < amount) {
-              return message.reply(`❌ You don't have enough dice! You have ${user.dice} 🎲.`);
-            }
-
-            user.dice -= amount;
-            db.users[target.id].dice += amount;
-            updateUserRank(user);
-            updateUserRank(db.users[target.id]);
-            await saveUsers();
-
-            return message.reply(`✅ Successfully traded **${amount} 🎲 Dice** to <@${target.id}>!`);
           });
         }
       });
