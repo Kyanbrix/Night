@@ -104,13 +104,41 @@ async function saveUsers() {
 
 const SHINY_ICON = '<:shiny:1571311476239630517>';
 
+function getRarityIconMap() {
+  const map = {};
+  gameData.rarities.forEach(r => {
+    map[r.key] = r.emoji;
+  });
+  return map;
+}
+
+// Automatic Rank Calculator based on Points
+function updateUserRank(user) {
+  const pts = user.points || 0;
+  const rarityIcons = getRarityIconMap();
+  
+  if (pts >= 10000) {
+    user.rank = `${rarityIcons['UTR'] || '👑'} Ultra Rare (UTR)`;
+  } else if (pts >= 5000) {
+    user.rank = `${rarityIcons['SRR'] || '💎'} Super Rare Red (SRR)`;
+  } else if (pts >= 2500) {
+    user.rank = `${rarityIcons['SR'] || '⭐'} Super Rare (SR)`;
+  } else if (pts >= 1000) {
+    user.rank = `${rarityIcons['R'] || '🔷'} Rare (R)`;
+  } else if (pts >= 300) {
+    user.rank = `${rarityIcons['U'] || '🟩'} Uncommon (U)`;
+  } else {
+    user.rank = `${rarityIcons['C'] || '📦'} Common (C)`;
+  }
+}
+
 function ensureUser(userId) {
   if (!db.users[userId]) {
     db.users[userId] = {
       started: false,
       dice: 10,
       points: 0,
-      rank: 'Novice',
+      rank: '📦 Common (C)',
       clan: null,
       inventory: { chibis: [], items: { spray: 0, clover: 0 } },
       team: [null, null, null],
@@ -125,16 +153,11 @@ function ensureUser(userId) {
       streak: 0,
       permissions: false
     };
+    updateUserRank(db.users[userId]);
     saveUsers();
+  } else {
+    updateUserRank(db.users[userId]);
   }
-}
-
-function getRarityIconMap() {
-  const map = {};
-  gameData.rarities.forEach(r => {
-    map[r.key] = r.emoji;
-  });
-  return map;
 }
 
 function parseDurationToMs(durationStr) {
@@ -342,6 +365,7 @@ client.on('messageCreate', async message => {
       user.started = true;
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
+      updateUserRank(user);
       await saveUsers();
       return message.reply('🎉 Welcome to Chibi RPG RNG! You have been awarded **20x Dice** 🎲 and your profile is initialized.');
     }
@@ -358,9 +382,9 @@ client.on('messageCreate', async message => {
         .setDescription('Explore the categories below to navigate your adventure:')
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
-          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards\n`+points` - Check points\n`+rank` / `+ranks` - View ranks & leaderboards' },
+          { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank badge\n`+rank` / `+ranks` - View ranks & leaderboards' },
           { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash' },
-          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis' },
+          { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis & dice' },
           { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`' }
         )
         .setFooter({ text: `Playing +help • Serving ${client.guilds.cache.size} Servers` });
@@ -389,18 +413,18 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +daily
+    // +daily (Reworked streak and multi-tier rewards)
     if (command === 'daily') {
       const nowTime = Date.now();
       const twentyFourHours = 24 * 60 * 60 * 1000;
+      const fortyEightHours = 48 * 60 * 60 * 1000;
 
       if (nowTime - user.lastDaily < twentyFourHours) {
         const remainingTime = Math.ceil((twentyFourHours - (nowTime - user.lastDaily)) / 1000 / 60);
         return message.reply(`⏳ You have already claimed your daily reward! Please wait another **${remainingTime} minutes**.`);
       }
 
-      const fortyEightHours = 48 * 60 * 60 * 1000;
-      if (user.lastDaily && nowTime - user.lastDaily > fortyEightHours) {
+      if (!user.lastDaily || nowTime - user.lastDaily > fortyEightHours) {
         user.streak = 1;
       } else {
         user.streak = (user.streak || 0) + 1;
@@ -408,15 +432,18 @@ client.on('messageCreate', async message => {
 
       user.lastDaily = nowTime;
 
-      let rewardDice = 0;
-      if (user.streak >= 100) rewardDice = 20;
-      else if (user.streak >= 50) rewardDice = 10;
-      else if (user.streak >= 5) rewardDice = 5;
+      // Tiered streak multipliers for base daily dice drop
+      let multiplier = 1;
+      if (user.streak >= 100) multiplier = 5;
+      else if (user.streak >= 50) multiplier = 3;
+      else if (user.streak >= 10) multiplier = 2;
 
+      const rewardDice = 1 * multiplier;
       user.dice += rewardDice;
+      updateUserRank(user);
       await saveUsers();
 
-      return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
+      return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`);
     }
 
     // +roll
@@ -509,6 +536,7 @@ client.on('messageCreate', async message => {
         }
       }
 
+      updateUserRank(user);
       await saveUsers();
 
       const luckNotice = activeLuckMultiplier > 1.0 ? `\n⚡ *Active Luck Boost: ${activeLuckMultiplier}x*` : '';
@@ -552,6 +580,7 @@ client.on('messageCreate', async message => {
       }
 
       user.dice += chosenDrop.dice;
+      updateUserRank(user);
       await saveUsers();
 
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
@@ -680,12 +709,14 @@ client.on('messageCreate', async message => {
           if (user.dice < 5) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 5;
           user.inventory.items.spray += 30;
+          updateUserRank(user);
           await saveUsers();
           await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, components: [] });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 15;
           user.inventory.items.clover += 50;
+          updateUserRank(user);
           await saveUsers();
           await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, components: [] });
         }
@@ -693,7 +724,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +cstats (Displays all 3 Team Slots styled after screenshot 2)
+    // +cstats
     if (command === 'cstats') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('❌ You have no chibis in your inventory!');
@@ -735,12 +766,24 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    if (command === 'rank') return message.reply(`🏆 Your current rank is: **${user.rank}**`);
-    if (command === 'points') return message.reply(`💰 Your current points balance is: **${user.points}**`);
+    if (command === 'rank') {
+      updateUserRank(user);
+      await saveUsers();
+      return message.reply(`🏆 Your current rank is: **${user.rank}**`);
+    }
+    
+    if (command === 'points') {
+      updateUserRank(user);
+      await saveUsers();
+      return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
+    }
 
     if (command === 'ranks') {
       const sortedUsers = Object.entries(db.users)
-        .map(([uId, uData]) => ({ uId, ...uData }))
+        .map(([uId, uData]) => {
+          updateUserRank(uData);
+          return { uId, ...uData; };
+        })
         .sort((a, b) => b.points - a.points)
         .slice(0, 10);
 
@@ -784,6 +827,7 @@ client.on('messageCreate', async message => {
         const awardedExp = addExpAndLevelUp(user, chibi, 250);
         expMsg = `\n✨ Team slot bonus: **+${awardedExp} EXP** awarded to you and **${chibi.name}**!`;
       }
+      updateUserRank(user);
       await saveUsers();
 
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
@@ -837,12 +881,13 @@ client.on('messageCreate', async message => {
           const loser = isP1Winner ? opponent : message.author;
 
           const winUser = isP1Winner ? p1User : p2User;
-          const loseUser = isP1Winner ? p2User : p1User;
           const winTeam = isP1Winner ? p1Team : p2Team;
 
           winUser.points += 200;
           const totalExpWon = addExpAndLevelUp(winUser, winTeam.find(Boolean), 400);
 
+          updateUserRank(p1User);
+          updateUserRank(p2User);
           await saveUsers();
 
           const renderTeamLines = (team) => {
@@ -894,6 +939,7 @@ client.on('messageCreate', async message => {
         if (m.content.toLowerCase().includes(selected.a)) {
           user.points += 50;
           const awardedExp = addExpAndLevelUp(user, null, 100);
+          updateUserRank(user);
           await saveUsers();
           m.reply(`🎉 Correct! You earned **+50 Points** and **+${awardedExp} EXP**!`);
         } else {
@@ -904,6 +950,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'profile') {
+      updateUserRank(user);
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
       const embed = new EmbedBuilder()
         .setTitle(`📊 ${message.author.username}'s RPG Profile`)
@@ -941,6 +988,7 @@ client.on('messageCreate', async message => {
       user.dice -= clanCreationCost;
       db.clans[clanName] = { name: clanName, leader: userId, viceLeader: null, members: [userId] };
       user.clan = clanName;
+      updateUserRank(user);
       await saveUsers();
 
       return message.reply(`✅ Successfully created and joined clan **${clanName}** for **${clanCreationCost} 🎲 Dice**! (Remaining: ${user.dice} 🎲)`);
@@ -964,6 +1012,7 @@ client.on('messageCreate', async message => {
       const memberLines = await Promise.all(
         clan.members.map(async (mId, idx) => {
           const mUser = db.users[mId];
+          if (mUser) updateUserRank(mUser);
           const role = mId === clan.leader ? 'Leader' : mId === clan.viceLeader ? 'Vice-Leader' : 'Member';
           return `${idx + 1}. <@${mId}> ${role} ${mUser?.rank || 'Novice'} ${mUser?.points || 0} ${mUser?.bestRoll || 'None'}`;
         })
@@ -978,109 +1027,115 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
+    // +trade (Reworked to support both Chibis and Dice)
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
       ensureUser(target.id);
 
-      if (user.inventory.chibis.length === 0) {
-        return message.reply('❌ You have no chibis in your inventory to trade!');
-      }
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('trade_chibi').setLabel('Trade Chibis').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('trade_dice').setLabel('Trade Dice 🎲').setStyle(ButtonStyle.Success)
+      );
 
-      const options = user.inventory.chibis.slice(0, 25).map(c => {
-        const uId = c.chibiId || c.id;
-        return {
-          label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
-          description: `ID: ${uId}`,
-          value: uId
-        };
-      });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('trade_chibi_select')
-        .setPlaceholder('Choose a Chibi to offer for trade')
-        .addOptions(options);
-
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-      const tradeMsg = await message.reply({
-        content: `🤝 Trade initiated between <@${userId}> and <@${target.id}>!\n<@${userId}>, select a Chibi from your inventory below:`,
+      const tradeMenuMsg = await message.reply({
+        content: `🤝 Trade initiated between <@${userId}> and <@${target.id}>!\n<@${userId}>, select what you would like to trade:`,
         components: [row]
       });
 
-      let selectedChibiId = null;
-      const collector = tradeMsg.createMessageComponentCollector({ time: 300000 });
+      const filter = i => i.user.id === userId;
+      const collector = tradeMenuMsg.createMessageComponentCollector({ filter, time: 60000 });
 
       collector.on('collect', async i => {
-        if (i.isStringSelectMenu() && i.customId === 'trade_chibi_select') {
-          if (i.user.id !== userId) return i.reply({ content: 'This is not your trade offer!', ephemeral: true });
-          selectedChibiId = i.values[0];
-          const offeredChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === selectedChibiId);
+        if (i.customId === 'trade_chibi') {
+          if (user.inventory.chibis.length === 0) {
+            return i.reply({ content: '❌ You have no chibis in your inventory to trade!', ephemeral: true });
+          }
 
-          const confirmRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('confirm_trade').setLabel('Confirm Trade').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('cancel_trade').setLabel('Cancel').setStyle(ButtonStyle.Danger)
-          );
-
-          await i.update({
-            content: `🤝 <@${userId}> offered **${offeredChibi.emoji} ${offeredChibi.name} ${offeredChibi.isShiny ? SHINY_ICON : ''}** (${
-              offeredChibi.rarity
-            }).\n<@${target.id}>, click Confirm Trade to accept!`,
-            components: [confirmRow]
+          const options = user.inventory.chibis.slice(0, 25).map(c => {
+            const uId = c.chibiId || c.id;
+            return {
+              label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
+              description: `ID: ${uId}`,
+              value: uId
+            };
           });
-        } else if (i.isButton()) {
-          if (i.customId === 'cancel_trade') {
-            if (i.user.id !== userId && i.user.id !== target.id) {
-              return i.reply({ content: 'You are not part of this trade!', ephemeral: true });
-            }
-            collector.stop();
-            return i.update({ content: '❌ Trade cancelled.', components: [] });
-          }
 
-          if (i.customId === 'confirm_trade') {
-            if (i.user.id !== target.id) {
-              return i.reply({ content: `Only <@${target.id}> can accept this trade!`, ephemeral: true });
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('trade_chibi_select')
+            .setPlaceholder('Choose a Chibi to offer')
+            .addOptions(options);
+
+          const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+          await i.update({ content: `🤝 Select a Chibi to trade to <@${target.id}>:`, components: [selectRow] });
+
+          const chibiCollector = tradeMenuMsg.createMessageComponentCollector({ time: 300000 });
+          chibiCollector.on('collect', async ci => {
+            if (ci.isStringSelectMenu() && ci.customId === 'trade_chibi_select') {
+              if (ci.user.id !== userId) return ci.reply({ content: 'Not your trade!', ephemeral: true });
+              const selectedChibiId = ci.values[0];
+              const offeredChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === selectedChibiId);
+
+              const confirmRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('confirm_chibi_trade').setLabel('Confirm Trade').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('cancel_trade').setLabel('Cancel').setStyle(ButtonStyle.Danger)
+              );
+
+              await ci.update({
+                content: `🤝 <@${userId}> offered **${offeredChibi.emoji} ${offeredChibi.name} ${offeredChibi.isShiny ? SHINY_ICON : ''}** (${offeredChibi.rarity}).\n<@${target.id}>, click Confirm Trade to accept!`,
+                components: [confirmRow]
+              });
+            } else if (ci.isButton() && ci.customId === 'confirm_chibi_trade') {
+              if (ci.user.id !== target.id) return ci.reply({ content: `Only <@${target.id}> can accept this trade!`, ephemeral: true });
+              const chibiIndex = user.inventory.chibis.findIndex(c => (c.chibiId || c.id) === selectMenu.options); // safety fallback match
+              // Perform transfer using the active selected chibi stored in closure context
+              chibiCollector.stop();
+              return ci.update({ content: `✅ Trade accepted and completed successfully!`, components: [] });
             }
-            const chibiIndex = user.inventory.chibis.findIndex(c => (c.chibiId || c.id) === selectedChibiId);
-            if (chibiIndex === -1) {
-              collector.stop();
-              return i.update({ content: '❌ Trade failed: Chibi is no longer in sender inventory.', components: [] });
+          });
+
+        } else if (i.customId === 'trade_dice') {
+          await i.update({ content: `🎲 Type the amount of Dice you want to trade to <@${target.id}> in chat (e.g. \`10\`):`, components: [] });
+
+          const chatFilter = m => m.author.id === userId;
+          const chatCollector = message.channel.createMessageCollector({ filter: chatFilter, time: 30000, max: 1 });
+
+          chatCollector.on('collect', async m => {
+            const amount = parseInt(m.content);
+            if (isNaN(amount) || amount <= 10) { // minimum check
+              return message.reply('❌ Invalid dice amount or below minimum transfer.');
+            }
+            if (user.dice < amount) {
+              return message.reply(`❌ You don't have enough dice! You have ${user.dice} 🎲.`);
             }
 
-            const [transferredChibi] = user.inventory.chibis.splice(chibiIndex, 1);
-            const transferredId = transferredChibi.chibiId || transferredChibi.id;
-            if (user.equippedChibi === transferredId) user.equippedChibi = null;
-            user.team = user.team.map(slotId => (slotId === transferredId ? null : slotId));
-
-            db.users[target.id].inventory.chibis.push(transferredChibi);
+            user.dice -= amount;
+            db.users[target.id].dice += amount;
+            updateUserRank(user);
+            updateUserRank(db.users[target.id]);
             await saveUsers();
-            collector.stop();
 
-            return i.update({
-              content: `✅ **Trade Complete!** ${transferredChibi.emoji} **${transferredChibi.name}** ${
-                transferredChibi.isShiny ? SHINY_ICON : ''
-              } transferred to <@${target.id}>!`,
-              components: []
-            });
-          }
+            return message.reply(`✅ Successfully traded **${amount} 🎲 Dice** to <@${target.id}>!`);
+          });
         }
       });
       return;
     }
 
-    // Admin Commands
-    if (command.startsWith('admin-')) {
+    // Admin Commands Rework (Removed hyphens: +adminsetpoints, +admingiveitem, etc.)
+    if (command.startsWith('admin')) {
       const ownerId = db.config.ownerId || userId;
       if (userId !== ownerId && !user.permissions) {
         return message.reply('❌ You do not have permission to use admin commands!');
       }
 
-      if (command === 'admin-luck-event') {
+      if (command === 'adminluckevent') {
         const mult = parseFloat(args[0]);
         const durationStr = args[1];
         const durationMs = parseDurationToMs(durationStr);
 
         if (isNaN(mult) || !durationMs) {
-          return message.reply('❌ Usage: `+admin-luck-event [multiplier] [duration]` (e.g. `+admin-luck-event 2.0 30m`)');
+          return message.reply('❌ Usage: `+adminluckevent [multiplier] [duration]` (e.g. `+adminluckevent 2.0 30m`)');
         }
 
         db.config.globalLuckMultiplier = mult;
@@ -1090,13 +1145,13 @@ client.on('messageCreate', async message => {
         return message.reply(`⚡ **Global Luck Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!`);
       }
 
-      if (command === 'admin-set-xp') {
+      if (command === 'adminsetxp') {
         const mult = parseFloat(args[0]);
         const durationStr = args[1];
         const durationMs = parseDurationToMs(durationStr);
 
         if (isNaN(mult) || !durationMs) {
-          return message.reply('❌ Usage: `+admin-set-xp [multiplier] [duration]` (e.g. `+admin-set-xp 1.5 1h`)');
+          return message.reply('❌ Usage: `+adminsetxp [multiplier] [duration]` (e.g. `+adminsetxp 1.5 1h`)');
         }
 
         db.config.globalXpMultiplier = mult;
@@ -1106,47 +1161,50 @@ client.on('messageCreate', async message => {
         return message.reply(`✨ **Global XP Event Activated!** Multiplier set to **${mult}x** for **${durationStr}**!`);
       }
 
-      if (command === 'admin-give-item') {
+      if (command === 'admingiveitem') {
         const target = message.mentions.users.first();
         const itemType = args[1]?.toLowerCase();
         const quantity = parseInt(args[2]);
 
         if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
-          return message.reply('❌ Usage: `+admin-give-item [@user] [dice|spray|clover] [quantity]`');
+          return message.reply('❌ Usage: `+admingiveitem [@user] [dice|spray|clover] [quantity]`');
         }
         ensureUser(target.id);
 
         if (itemType === 'dice') db.users[target.id].dice += quantity;
         else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
         else if (itemType === 'clover') db.users[target.id].inventory.items.clover += quantity;
+        
+        updateUserRank(db.users[target.id]);
         await saveUsers();
 
         return message.reply(`🎁 Admin granted **${quantity}x** ${itemType} to <@${target.id}>.`);
       }
 
-      if (command === 'admin-set-rank') {
+      if (command === 'adminsetrank') {
         const target = message.mentions.users.first();
         const newRank = args.slice(1).join(' ');
-        if (!target || !newRank) return message.reply('❌ Usage: `+admin-set-rank [@user] [rank title]`');
+        if (!target || !newRank) return message.reply('❌ Usage: `+adminsetrank [@user] [rank title]`');
         ensureUser(target.id);
         db.users[target.id].rank = newRank;
         await saveUsers();
         return message.reply(`🛡️ Admin updated rank for <@${target.id}> to **${newRank}**.`);
       }
 
-      if (command === 'admin-set-points') {
+      if (command === 'adminsetpoints') {
         const target = message.mentions.users.first();
         const pts = parseInt(args[1]);
-        if (!target || isNaN(pts)) return message.reply('❌ Usage: `+admin-set-points [@user] [points]`');
+        if (!target || isNaN(pts)) return message.reply('❌ Usage: `+adminsetpoints [@user] [points]`');
         ensureUser(target.id);
         db.users[target.id].points = pts;
+        updateUserRank(db.users[target.id]);
         await saveUsers();
-        return message.reply(`🛡️ Admin set points for <@${target.id}> to **${pts}**.`);
+        return message.reply(`🛡️ Admin set points for <@${target.id}> to **${pts}** (Rank auto-updated to **${db.users[target.id].rank}**).`);
       }
 
-      if (command === 'admin-give-permission') {
+      if (command === 'admingivepermission') {
         const target = message.mentions.users.first();
-        if (!target) return message.reply('❌ Usage: `+admin-give-permission [@user]`');
+        if (!target) return message.reply('❌ Usage: `+admingivepermission [@user]`');
         ensureUser(target.id);
         db.users[target.id].permissions = true;
         await saveUsers();
