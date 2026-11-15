@@ -7,7 +7,8 @@ const {
   StringSelectMenuBuilder,
   ContainerBuilder,
   TextDisplayBuilder,
-  SeparatorBuilder
+  SeparatorBuilder,
+  MessageFlags
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -411,7 +412,7 @@ client.on('messageCreate', async message => {
       return message.reply('❌ You must type `+start` before using any bot commands!');
     }
 
-    // +help
+    // +help (Components V2 Container)
     if (command === 'help') {
       const container = new ContainerBuilder()
         .setAccentColor(0xff77aa)
@@ -421,17 +422,17 @@ client.on('messageCreate', async message => {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            '**🎲 Rolling & Drops**\n`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts\n\n' +
+            '**🎲 Rolling & Drops**\n`+roll [qty] [boost]` (`+r`) - Roll Chibis\n`+drop` (`+d`) - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts\n\n' +
             '**🎁 Rewards & Economy**\n`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards\n\n' +
             '**⚔️ RPG & Battling**\n`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points\n\n' +
             '**🎒 Inventory & Profile**\n`+inventory` (`+inv`), `+collections` (`+col`)\n`+profile` (`+p`), `+status` - Bot info & ping\n`+trade` (`+t`) [@user] - Interactive 2-Player Trade\n\n' +
             '**🏛️ Clans & Fun**\n`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`'
           )
         );
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +status
+    // +status (Components V2 Container)
     if (command === 'status') {
       const ping = client.ws.ping;
       const uptimeSec = Math.floor(client.uptime / 1000);
@@ -447,11 +448,11 @@ client.on('messageCreate', async message => {
             `📶 **Latency / Ping:** ${ping}ms\n` +
             `⏱️ **Uptime:** ${hours}h ${minutes}m ${seconds}s\n` +
             `🌐 **Connected Servers:** ${client.guilds.cache.size} Servers\n` +
-            `💻 **Runtime:** Node.js (Discord.js v14 - V2 Containers)\n` +
+            `💻 **Runtime:** Node.js (Discord.js v14 - Components V2)\n` +
             `⚙️ **Status:** 🟢 Online & Operational (MongoDB Connected)`
           )
         );
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +daily
@@ -485,7 +486,7 @@ client.on('messageCreate', async message => {
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`);
     }
 
-    // +roll
+    // +roll (Components V2 Container)
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -567,7 +568,6 @@ client.on('messageCreate', async message => {
         const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
         totalExpGained += addExpAndLevelUp(user, primaryChibi, baseExpRoll);
 
-        // Robust Best Roll tracking with Rarity hierarchy evaluation
         const currentTier = RARITY_HIERARCHY[chibiTemplate.rarity] || 1;
         const savedTier = user.bestRollTier || 0;
         const currentRollVal = isShiny ? (normalVal * 10) : normalVal;
@@ -603,7 +603,7 @@ client.on('messageCreate', async message => {
           )
         );
 
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +drop
@@ -633,26 +633,39 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory
+    // +inventory (Grouped View Components V2 Container)
     if (command === 'inventory') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
       }
 
-      let chibiList = user.inventory.chibis
-        .map((c, i) => {
-          const uniqueId = c.chibiId || c.id;
-          const shortId = uniqueId ? uniqueId.slice(-6) : 'unknown';
-          const rIcon = rarityIconsMap[c.rarity] || '📦';
-          const sIcon = c.isShiny ? SHINY_ICON : '';
-          const isEquippedSlot = user.team.indexOf(uniqueId);
-          const equipLabel = isEquippedSlot !== -1 ? ` ⭐ [Slot ${isEquippedSlot + 1}]` : '';
-          return `**${i + 1}.** \`[${shortId}]\` ${rIcon} ${sIcon} **${c.name}** (Lv.${c.level})${equipLabel}`;
-        })
-        .join('\n');
+      const grouped = {};
+      user.inventory.chibis.forEach(c => {
+        const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
+        const uniqueId = c.chibiId || c.id;
+        if (!grouped[key]) {
+          grouped[key] = {
+            rarity: c.rarity,
+            emoji: c.emoji || '✨',
+            name: c.name,
+            isShiny: c.isShiny,
+            count: 0,
+            firstId: uniqueId ? uniqueId.slice(-6) : 'unknown'
+          };
+        }
+        grouped[key].count++;
+      });
 
-      if (chibiList.length > 1000) {
-        chibiList = chibiList.substring(0, 997) + '...';
+      const entries = Object.values(grouped);
+      const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
+      entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
+
+      let chibiList = entries
+        .map((e, idx) => `**${idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
+        .join('\n') || 'Your inventory is empty.';
+
+      if (chibiList.length > 2000) {
+        chibiList = chibiList.substring(0, 1997) + '...';
       }
 
       const container = new ContainerBuilder()
@@ -663,12 +676,12 @@ client.on('messageCreate', async message => {
             `🎲 **Dice:** ${user.dice || 0}\n` +
             `🧴 **Spray:** ${user.inventory.items?.spray || 0} Uses\n` +
             `🍀 **Clover:** ${user.inventory.items?.clover || 0} Uses\n\n` +
-            `✨ **Chibis (Use ID suffix to equip):**\n${chibiList}\n\n` +
+            `✨ **Chibis (Grouped View):**\n${chibiList}\n\n` +
             `*Total Chibis Owned: ${user.inventory.chibis.length}*`
           )
         );
 
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +collections
@@ -709,7 +722,7 @@ client.on('messageCreate', async message => {
           .map((e, idx) => `**${idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
           .join('\n') || 'Your collection is empty.';
 
-        return formatted.length > 4000 ? formatted.substring(0, 3996) + '...' : formatted;
+        return formatted.length > 3000 ? formatted.substring(0, 2996) + '...' : formatted;
       };
 
       const row = new ActionRowBuilder().addComponents(
@@ -727,7 +740,7 @@ client.on('messageCreate', async message => {
           )
         );
 
-      const colMsg = await message.reply({ containers: [container], components: [row] });
+      const colMsg = await message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
       const collector = colMsg.createMessageComponentCollector({ time: 60000 });
 
       collector.on('collect', async i => {
@@ -742,7 +755,7 @@ client.on('messageCreate', async message => {
               `\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`
             )
           );
-        await i.update({ containers: [newContainer], components: [row] });
+        await i.update({ components: [newContainer], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
       });
       return;
     }
@@ -762,7 +775,7 @@ client.on('messageCreate', async message => {
             '🍀 **Clover (15 🎲):** Use this to duplicate Chibis while rolling [50 Uses]'
           )
         );
-      const shopMsg = await message.reply({ containers: [container], components: [row] });
+      const shopMsg = await message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, actionRows: [row] });
 
       const collector = shopMsg.createMessageComponentCollector({ time: 30000 });
       collector.on('collect', async i => {
@@ -773,20 +786,20 @@ client.on('messageCreate', async message => {
           user.inventory.items.spray += 30;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, containers: [], components: [] });
+          await i.update({ content: `✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`, components: [], flags: MessageFlags.IsComponentsV2 });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.reply({ content: '❌ Not enough dice!', ephemeral: true });
           user.dice -= 15;
           user.inventory.items.clover += 50;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, containers: [], components: [] });
+          await i.update({ content: `✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`, components: [], flags: MessageFlags.IsComponentsV2 });
         }
       });
       return;
     }
 
-    // +cstats
+    // +cstats (Components V2 Container)
     if (command === 'cstats') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('❌ You have no chibis in your inventory!');
@@ -829,7 +842,7 @@ client.on('messageCreate', async message => {
           )
         );
 
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     if (command === 'rank') {
@@ -866,7 +879,7 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`# 🏆 Global Ranks & Points Leaderboard\n\n${leaderboardText}`)
         );
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +equipteam
@@ -994,7 +1007,7 @@ client.on('messageCreate', async message => {
               )
             );
 
-          await i.update({ content: '', containers: [container], components: [] });
+          await i.update({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 });
         } else {
           await i.update({ content: `❌ <@${opponent.id}> declined the 3v3 arena clash.`, components: [] });
         }
@@ -1010,7 +1023,7 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`# ${data.title}\n*(r/${data.subreddit})*`)
         );
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +trivia
@@ -1035,11 +1048,38 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile
+    // +profile (Auto-syncs collection highest rarity & uses Components V2 Container)
     if (command === 'profile') {
       updateUserRank(user);
+
+      if (user.inventory && user.inventory.chibis && user.inventory.chibis.length > 0) {
+        let highestChibi = null;
+        let highestTier = 0;
+        let highestVal = 0;
+
+        for (const c of user.inventory.chibis) {
+          const tier = RARITY_HIERARCHY[c.rarity] || 1;
+          const template = gameData.chibis.find(t => t.name === c.name && t.rarity === c.rarity);
+          const oddsStr = template ? (c.isShiny ? template.shinyOdds : template.odds) : '1 in 1';
+          const val = parseOddsNumber(oddsStr);
+
+          if (tier > highestTier || (tier === highestTier && val > highestVal)) {
+            highestTier = tier;
+            highestVal = val;
+            highestChibi = { chibi: c, oddsStr };
+          }
+        }
+
+        if (highestChibi && (highestTier > (user.bestRollTier || 0) || (highestTier === (user.bestRollTier || 0) && highestVal > (user.bestRollVal || 0)))) {
+          user.bestRollTier = highestTier;
+          user.bestRollVal = highestVal;
+          user.bestRoll = highestChibi.oddsStr;
+          user.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.name} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
+          await saveUsers();
+        }
+      }
+
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
-      
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
         .addTextDisplayComponents(
@@ -1052,7 +1092,7 @@ client.on('messageCreate', async message => {
           )
         );
 
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     if (command === 'clanlist') {
@@ -1063,7 +1103,7 @@ client.on('messageCreate', async message => {
       const container = new ContainerBuilder()
         .setAccentColor(0x34495e)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏛️ Available Clans\n\n${clanListText}`));
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // +ccreateclan (Requires 100 Dice fee)
@@ -1120,10 +1160,10 @@ client.on('messageCreate', async message => {
             `**Members:**\n${memberLines.join('\n')}`
           )
         );
-      return message.reply({ containers: [container] });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +trade (Revamped Interactive 2-Player Trade System with Cancel Button)
+    // +trade (Revamped Interactive 2-Player Trade System with Components V2 Containers)
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
@@ -1198,8 +1238,9 @@ client.on('messageCreate', async message => {
 
           await i.update({
             content: `🤝 **Trade Session Active!** Both players, submit your offers below:`,
-            containers: [renderTradeUI()],
-            components: [actionRow1, actionRow2]
+            components: [renderTradeUI()],
+            flags: MessageFlags.IsComponentsV2,
+            actionRows: [actionRow1, actionRow2]
           });
 
           const sessionCollector = reqMsg.createMessageComponentCollector({ time: 300000 });
@@ -1210,7 +1251,7 @@ client.on('messageCreate', async message => {
                 return si.reply({ content: 'You are not part of this trade session!', ephemeral: true });
               }
               sessionCollector.stop();
-              return si.update({ content: `❌ Trade session was cancelled by <@${si.user.id}>.`, containers: [], components: [] });
+              return si.update({ content: `❌ Trade session was cancelled by <@${si.user.id}>.`, components: [], flags: MessageFlags.IsComponentsV2 });
             }
 
             if (si.customId === 'p1_offer' || si.customId === 'p2_offer') {
@@ -1261,7 +1302,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await collected.delete().catch(() => {});
-                await reqMsg.edit({ containers: [renderTradeUI()] });
+                await reqMsg.edit({ components: [renderTradeUI()], flags: MessageFlags.IsComponentsV2, actionRows: [actionRow1, actionRow2] });
 
               } else if (typeInteraction.customId === 'choose_chibi') {
                 const activeUserObj = db.users[activeId];
@@ -1305,7 +1346,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await menuInteraction.update({ content: `✅ Chibi offer registered: **${chibiObj.name}**`, components: [] });
-                await reqMsg.edit({ containers: [renderTradeUI()] });
+                await reqMsg.edit({ components: [renderTradeUI()], flags: MessageFlags.IsComponentsV2, actionRows: [actionRow1, actionRow2] });
               }
 
             } else if (si.customId === 'confirm_trade') {
@@ -1349,8 +1390,9 @@ client.on('messageCreate', async message => {
 
               return si.update({
                 content: `✅ **Trade Successfully Completed Between <@${userId}> and <@${target.id}>!**`,
-                containers: [renderTradeUI()],
-                components: []
+                components: [renderTradeUI()],
+                flags: MessageFlags.IsComponentsV2,
+                actionRows: []
               });
             }
           });
