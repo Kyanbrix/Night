@@ -1,95 +1,337 @@
 {
-  "users": {},
-  "marketListings": [],
-  "shopItems": [
+  "settings": {
+    "shinyChance": 1e-07,
+    "maxRollQuantity": 25,
+    "dropCooldownSeconds": 10,
+    "battleTimeoutMinutes": 2,
+    "tradeTimeoutMinutes": 5,
+    "userExpBase": 2000,
+    "userExpPerLevel": 500,
+    "normalChibiExpBase": 1500,
+    "normalChibiExpPerLevel": 450,
+    "shinyChibiExpBase": 2500,
+    "shinyChibiExpPerLevel": 600
+  },
+  "rarities": [
     {
-      "id": 1,
-      "name": "Rifle",
-      "price": 100000,
-      "category": "Gun",
-      "huntCount": 1,
-      "luckBoost": 0.05,
-      "description": "Hunts 1 Animal with 5% Luck Boost"
+      "key": "C",
+      "name": "Common",
+      "emoji": "<:common:1571309159679262720>",
+      "weight": 40
     },
     {
-      "id": 2,
-      "name": "Sniper",
-      "price": 500000,
-      "category": "Gun",
-      "huntCount": 3,
-      "luckBoost": 0.10,
-      "description": "Hunts 3 Animals with 10% Luck Boost"
+      "key": "U",
+      "name": "Uncommon",
+      "emoji": "<:uncommon:1571309216000377015>",
+      "weight": 25
     },
     {
-      "id": 3,
-      "name": "Machine Gun",
-      "price": 10000000,
-      "category": "Gun",
-      "huntCount": 5,
-      "luckBoost": 0.50,
-      "description": "Hunts 5 Animals with 50% Luck Boost"
+      "key": "R",
+      "name": "Rare",
+      "emoji": "<:rare:1571309272854171708>",
+      "weight": 10
     },
     {
-      "id": 4,
-      "name": "NUKE",
-      "price": 100000000,
-      "category": "Gun",
-      "huntCount": 100,
-      "luckBoost": 5.00,
-      "description": "Hunts 100 Animals with 500% Luck Boost"
+      "key": "SR",
+      "name": "Super Rare",
+      "emoji": "<:sr:1571309375895769159>",
+      "weight": 3
     },
     {
-      "id": 5,
-      "name": "Lucky Charm I",
-      "price": 1500000,
-      "category": "Charm",
-      "luckBoost": 0.25,
-      "description": "Increase Luck Boost For 25%"
+      "key": "SRR",
+      "name": "Super Super Rare",
+      "emoji": "<:srr:1571309440614006975>",
+      "weight": 0.005
     },
     {
-      "id": 6,
-      "name": "Lucky Charm II",
-      "price": 11500000,
-      "category": "Charm",
-      "luckBoost": 0.30,
-      "description": "Increase Luck Boost For 30%"
-    },
-    {
-      "id": 7,
-      "name": "Lucky Charm III",
-      "price": 14500000,
-      "category": "Charm",
-      "luckBoost": 0.65,
-      "description": "Increase Luck Boost For 65%"
-    },
-    {
-      "id": 8,
-      "name": "Lucky Charm IV",
-      "price": 17500000,
-      "category": "Charm",
-      "luckBoost": 0.90,
-      "description": "Increase Luck Boost For 90%"
-    },
-    {
-      "id": 9,
-      "name": "Lucky Charm V",
-      "price": 50000000,
-      "category": "Charm",
-      "luckBoost": 2.00,
-      "description": "Increase Luck Boost For 200%"
+      "key": "UTR",
+      "name": "Ultra Rare",
+      "emoji": "<:utr:1571309497547358218>",
+      "weight": 0.0001
     }
   ],
-  "globalEvent": {
-    "luckBonus": 0,
-    "luckExpiresAt": 0,
-    "catchRateBonus": 0,
-    "catchRateExpiresAt": 0
+  "chibis": [
+    {
+      "name": "Pampam",
+      "rarity": "C",
+      "emoji": "<:pampam:1571309970425651280>",
+      "odds": "1 in 30",
+      "shinyOdds": "1 in 10K"
+    },
+    {
+      "name": "Maisa",
+      "rarity": "C",
+      "emoji": "<:maisa:1571310872662642728>",
+      "odds": "1 in 150",
+      "shinyOdds": "1 in 25K"
+    },
+    {
+      "name": "Powey",
+      "rarity": "C",
+      "emoji": "<:powey:1571311363895328838>",
+      "odds": "1 in 400",
+      "shinyOdds": "1 in 150K"
+    },
+    {
+      "name": "Frey",
+      "rarity": "C",
+      "emoji": "<:frey:1571309910673592380>",
+      "odds": "1 in 1K",
+      "shinyOdds": "1 in 500K"
+    },
+    {
+      "name": "Mer",
+      "rarity": "U",
+      "emoji": "<:mer:1571309847293460510>",
+      "odds": "1 in 7K",
+      "shinyOdds": "1 in 5M"
+    },
+    {
+      "name": "Betty",
+      "rarity": "U",
+      "emoji": "<:betty:1571310808049127565>",
+      "odds": "1 in 10K",
+      "shinyOdds": "1 in 15M"
+    },
+    {
+      "name": "Tina",
+      "rarity": "U",
+      "emoji": "<:tina:1571310933505085540>",
+      "odds": "1 in 13K",
+      "shinyOdds": "1 in 25M"
+    },
+    {
+      "name": "Ley",
+      "rarity": "U",
+      "emoji": "<:ley:1571311143757291592>",
+      "odds": "1 in 20K",
+      "shinyOdds": "1 in 50M"
+    },
+    {
+      "name": "Kazuto",
+      "rarity": "R",
+      "emoji": "<:kazuto:1571309601872412843>",
+      "odds": "1 in 50K",
+      "shinyOdds": "1 in 80M"
+    },
+    {
+      "name": "Ellie",
+      "rarity": "R",
+      "emoji": "<:ellie:1571310327746793532>",
+      "odds": "1 in 100K",
+      "shinyOdds": "1 in 150M"
+    },
+    {
+      "name": "Kriz",
+      "rarity": "R",
+      "emoji": "<:kriz:1571310094048694292>",
+      "odds": "1 in 150K",
+      "shinyOdds": "1 in 300M"
+    },
+    {
+      "name": "Hajime",
+      "rarity": "R",
+      "emoji": "<:hajime:1571310497066782951>",
+      "odds": "1 in 300K",
+      "shinyOdds": "1 in 500M"
+    },
+    {
+      "name": "Pem",
+      "rarity": "SR",
+      "emoji": "<:pem:1571310654713896990>",
+      "odds": "1 in 500K",
+      "shinyOdds": "1 in 1B"
+    },
+    {
+      "name": "Al_Mezu",
+      "rarity": "SR",
+      "emoji": "<:al_mezu:1571309748970717285>",
+      "odds": "1 in 750K",
+      "shinyOdds": "1 in 3B"
+    },
+    {
+      "name": "Ev_Kazuto",
+      "rarity": "SR",
+      "emoji": "<:ev_kazuto:1571309671468241059>",
+      "odds": "1 in 1M",
+      "shinyOdds": "1 in 10B"
+    },
+    {
+      "name": "Miku",
+      "rarity": "SRR",
+      "emoji": "<:miku:1571310441307705446>",
+      "odds": "1 in 1M",
+      "shinyOdds": "1 in 30B"
+    },
+    {
+      "name": "Cute_Lily",
+      "rarity": "SRR",
+      "emoji": "<:cute_lily:1571311234131824740>",
+      "odds": "1 in 10M",
+      "shinyOdds": "1 in 50B"
+    },
+    {
+      "name": "Angry_Angela",
+      "rarity": "SRR",
+      "emoji": "<:angry_angela:1571310235182698598>",
+      "odds": "1 in 50M",
+      "shinyOdds": "1 in 100B"
+    },
+    {
+      "name": "Nyxzin",
+      "rarity": "UTR",
+      "emoji": "<:nyxzin:1571311098114609202>",
+      "odds": "1 in 50B",
+      "shinyOdds": "1 in 50T"
+    },
+    {
+      "name": "Nyrin",
+      "rarity": "UTR",
+      "emoji": "<:nyrin:1571310593544032459>",
+      "odds": "1 in 1B",
+      "shinyOdds": "1 in 100T"
+    }
+  ],
+  "stats": {
+    "C": {
+      "normal": {
+        "hp": 120,
+        "atk": 6,
+        "def": 3,
+        "hpPer": 4,
+        "atkPer": 2,
+        "defPer": 1
+      },
+      "shiny": {
+        "hp": 160,
+        "atk": 15,
+        "def": 7,
+        "hpPer": 10,
+        "atkPer": 5,
+        "defPer": 3
+      }
+    },
+    "U": {
+      "normal": {
+        "hp": 150,
+        "atk": 9,
+        "def": 5,
+        "hpPer": 6,
+        "atkPer": 8,
+        "defPer": 5
+      },
+      "shiny": {
+        "hp": 200,
+        "atk": 14,
+        "def": 9,
+        "hpPer": 12,
+        "atkPer": 9,
+        "defPer": 7
+      }
+    },
+    "R": {
+      "normal": {
+        "hp": 180,
+        "atk": 12,
+        "def": 7,
+        "hpPer": 16,
+        "atkPer": 9,
+        "defPer": 8
+      },
+      "shiny": {
+        "hp": 220,
+        "atk": 15,
+        "def": 9,
+        "hpPer": 21,
+        "atkPer": 13,
+        "defPer": 10
+      }
+    },
+    "SR": {
+      "normal": {
+        "hp": 210,
+        "atk": 21,
+        "def": 13,
+        "hpPer": 13,
+        "atkPer": 11,
+        "defPer": 9
+      },
+      "shiny": {
+        "hp": 520,
+        "atk": 45,
+        "def": 29,
+        "hpPer": 30,
+        "atkPer": 18,
+        "defPer": 15
+      }
+    },
+    "SRR": {
+      "normal": {
+        "hp": 270,
+        "atk": 26,
+        "def": 18,
+        "hpPer": 17,
+        "atkPer": 14,
+        "defPer": 12
+      },
+      "shiny": {
+        "hp": 640,
+        "atk": 61,
+        "def": 37,
+        "hpPer": 54,
+        "atkPer": 22,
+        "defPer": 19
+      }
+    },
+    "UTR": {
+      "normal": {
+        "hp": 350,
+        "atk": 55,
+        "def": 30,
+        "hpPer": 25,
+        "atkPer": 17,
+        "defPer": 15
+      },
+      "shiny": {
+        "hp": 1200,
+        "atk": 115,
+        "def": 75,
+        "hpPer": 83,
+        "atkPer": 23,
+        "defPer": 19
+      }
+    }
   },
-  "currentWeather": {
-    "name": "Normal",
-    "catchRate": 0,
-    "luckBoost": 0,
-    "expiresAt": 1778878800000
-  },
-  "admins": []
+  "dropTable": [
+    {
+      "name": "Normal Drop",
+      "emoji": "\ud83d\ude14",
+      "dice": 1,
+      "weight": 60
+    },
+    {
+      "name": "Rare Drop",
+      "emoji": "\ud83c\udf89",
+      "dice": 3,
+      "weight": 10
+    },
+    {
+      "name": "Epic Drop",
+      "emoji": "\ud83d\udc8e",
+      "dice": 5,
+      "weight": 3
+    },
+    {
+      "name": "Legendary Drop",
+      "emoji": "\ud83c\udf40",
+      "dice": 10,
+      "weight": 1
+    },
+    {
+      "name": "Extreme Drop",
+      "emoji": "\u2620\ufe0f",
+      "dice": 50,
+      "weight": 0.001
+    }
+  ]
 }
