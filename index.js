@@ -359,9 +359,9 @@ client.on('messageCreate', async message => {
         .addFields(
           { name: '🎲 Rolling & Drops', value: '`+roll [qty] [boost]` - Roll Chibis\n`+drop` - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts' },
           { name: '🎁 Rewards & Economy', value: '`+daily` - Claim daily streak rewards\n`+points` - Check points\n`+rank` / `+ranks` - View ranks & leaderboards' },
-          { name: '⚔️ RPG & Battling', value: '`+cstats` - Check detailed Chibi card stats\n`+equipteam [chibi_id] [slot]` - Manage team & gain EXP\n`+battle [@user]` - 3v3 Team Clash' },
+          { name: '⚔️ RPG & Battling', value: '`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash' },
           { name: '🎒 Inventory & Profile', value: '`+inventory`, `+collections`\n`+profile`, `+status` - Bot info & ping\n`+trade [@user]` - Trade chibis' },
-          { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+cclanjoin`, `+cclaninfo`, `+ccreateclan`\n`+meme`, `+trivia`' }
+          { name: '🏛️ Clans & Fun', value: '`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`' }
         )
         .setFooter({ text: `Playing +help • Serving ${client.guilds.cache.size} Servers` });
       return message.reply({ embeds: [embed] });
@@ -419,7 +419,7 @@ client.on('messageCreate', async message => {
       return message.reply(`🎁 **Daily Reward Claimed!**\n🔥 Streak: **${user.streak} Days**\n🎲 Reward: **+${rewardDice}x Dice** (Total: ${user.dice} 🎲)`);
     }
 
-    // +roll (Generates unique chibiId for duplicates)
+    // +roll
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -443,7 +443,7 @@ client.on('messageCreate', async message => {
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
       let totalExpGained = 0;
-      const equippedChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
+      const primaryChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === (user.team[0] || user.equippedChibi));
 
       for (let i = 0; i < qty; i++) {
         const customWeights = { C: 40, U: 25, R: 10, SR: 3, SRR: 0.01, UTR: 0.001 };
@@ -499,7 +499,7 @@ client.on('messageCreate', async message => {
         }
 
         const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
-        totalExpGained += addExpAndLevelUp(user, equippedChibi, baseExpRoll);
+        totalExpGained += addExpAndLevelUp(user, primaryChibi, baseExpRoll);
 
         const currentRollVal = isShiny ? shinyVal : normalVal;
         if (currentRollVal > user.bestRollVal) {
@@ -569,8 +569,9 @@ client.on('messageCreate', async message => {
           const shortId = uniqueId ? uniqueId.slice(-6) : 'unknown';
           const rIcon = rarityIconsMap[c.rarity] || '📦';
           const sIcon = c.isShiny ? SHINY_ICON : '';
-          const isEquipped = (user.equippedChibi === uniqueId) ? ' ⭐ [Equipped]' : '';
-          return `**${i + 1}.** \`[${shortId}]\` ${rIcon} ${sIcon} **${c.name}** (Lv.${c.level})${isEquipped}`;
+          const isEquippedSlot = user.team.indexOf(uniqueId);
+          const equipLabel = isEquippedSlot !== -1 ? ` ⭐ [Slot ${isEquippedSlot + 1}]` : '';
+          return `**${i + 1}.** \`[${shortId}]\` ${rIcon} ${sIcon} **${c.name}** (Lv.${c.level})${equipLabel}`;
         })
         .join('\n');
 
@@ -692,48 +693,44 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +cstats (Detailed Chibi Card Stat Layout inspired by screenshot 2)
+    // +cstats (Displays all 3 Team Slots styled after screenshot 2)
     if (command === 'cstats') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('❌ You have no chibis in your inventory!');
       }
 
-      // If an argument is provided, lookup by short ID or slot index
-      let chibi = null;
-      if (args[0]) {
-        chibi = user.inventory.chibis.find(c => {
-          const uId = c.chibiId || c.id;
-          return uId === args[0] || uId.endsWith(args[0]);
-        });
-      } else if (user.equippedChibi) {
-        chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === user.equippedChibi);
-      } else {
-        chibi = user.inventory.chibis[0]; // Default to first chibi
-      }
+      const teamSlots = user.team || [null, null, null];
+      const teamLines = teamSlots.map((chibiId, index) => {
+        if (!chibiId) {
+          return `**[${index + 1}]** *Empty Slot* (Use \`+equipteam [id] ${index + 1}\`)`;
+        }
+        const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiId);
+        if (!chibi) {
+          return `**[${index + 1}]** *Chibi missing from inventory*`;
+        }
 
-      if (!chibi) return message.reply('❌ Chibi not found! Use `+inventory` to find valid Chibi IDs.');
+        const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
+        const hpVal = statConfig.hp + chibi.level * statConfig.hpPer;
+        const atkVal = statConfig.atk + chibi.level * statConfig.atkPer;
+        const defVal = statConfig.def + chibi.level * statConfig.defPer;
 
-      const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
-      const hpVal = statConfig.hp + chibi.level * statConfig.hpPer;
-      const atkVal = statConfig.atk + chibi.level * statConfig.atkPer;
-      const defVal = statConfig.def + chibi.level * statConfig.defPer;
+        const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
+        const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
+        const maxExp = baseExp + (chibi.level - 1) * perLvl;
+        const shortId = (chibi.chibiId || chibi.id).slice(-6);
 
-      const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
-      const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
-      const maxExp = baseExp + (chibi.level - 1) * perLvl;
-      const shortId = (chibi.chibiId || chibi.id).slice(-6);
+        return (
+          `**[${index + 1}]** \`[${shortId}]\` ${rarityIconsMap[chibi.rarity]} ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}\n` +
+          `Lvl ${chibi.level} [\`${chibi.exp}/${maxExp}\`]\n` +
+          `❤️ HP: \`${hpVal}\` | 🛡️ DEF: \`${defVal}\` | 🗡️ ATK: \`${atkVal}\`\n`
+        );
+      });
 
       const embed = new EmbedBuilder()
-        .setTitle(`📜 ${message.author.username}'s Chibi Card`)
+        .setTitle(`📜 ${message.author.username}'s Team Card`)
         .setColor('#2ecc71')
-        .setDescription(
-          `[${shortId}] ${rarityIconsMap[chibi.rarity]} ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}\n` +
-          `**Lvl ${chibi.level}** [\`${chibi.exp}/${maxExp}\`]\n\n` +
-          `❤️ **HP:** \`${hpVal}\`  |  🛡️ **DEF:** \`${defVal}\`\n` +
-          `🗡️ **ATK:** \`${atkVal}\`  |  ✨ **Rarity:** \`${chibi.rarity}\`\n` +
-          `📅 **Obtained:** \`${chibi.date || 'Unknown'}\``
-        )
-        .setFooter({ text: `Tip: Use +cstats [id] to inspect a specific chibi!` });
+        .setDescription(teamLines.join('\n'))
+        .setFooter({ text: `Tip: Use +equipteam [id] [1-3] to assign chibis to your team slots!` });
 
       return message.reply({ embeds: [embed] });
     }
@@ -780,7 +777,7 @@ client.on('messageCreate', async message => {
       const chibiUniqueId = chibi.chibiId || chibi.id;
       const wasEmpty = !user.team[slot - 1];
       user.team[slot - 1] = chibiUniqueId;
-      user.equippedChibi = chibiUniqueId;
+      if (slot === 1) user.equippedChibi = chibiUniqueId;
 
       let expMsg = '';
       if (wasEmpty) {
@@ -792,7 +789,7 @@ client.on('messageCreate', async message => {
       return message.reply(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`);
     }
 
-    // +battle (Innovative 3v3 Clash UI styled after screenshot 1)
+    // +battle (3v3 Team Arena Clash)
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -818,7 +815,6 @@ client.on('messageCreate', async message => {
           const p1User = user;
           const p2User = db.users[opponent.id];
 
-          // Resolve 3-slot team chibis for both players
           const getTeamChibis = (u) => {
             return (u.team || [null, null, null]).map(id => {
               if (!id) return null;
@@ -829,7 +825,6 @@ client.on('messageCreate', async message => {
           const p1Team = getTeamChibis(p1User);
           const p2Team = getTeamChibis(p2User);
 
-          // Calculate total team combat power
           const getTeamPower = (team) => {
             return team.reduce((acc, c) => acc + calculateChibiCombatPower(c), 50);
           };
@@ -850,8 +845,7 @@ client.on('messageCreate', async message => {
 
           await saveUsers();
 
-          // Render 3v3 Combat UI inspired by Screenshot 1
-          const renderTeamLines = (team, username) => {
+          const renderTeamLines = (team) => {
             return team.map((c, idx) => {
               if (!c) return `**[${idx + 1}]** *Empty Slot*`;
               const rIcon = rarityIconsMap[c.rarity] || '📦';
@@ -867,8 +861,8 @@ client.on('messageCreate', async message => {
             .setColor(isP1Winner ? '#f1c40f' : '#e74c3c')
             .setDescription(`🏆 **Winner:** <@${winner.id}> triumphs in a fierce 3v3 showdown!`)
             .addFields(
-              { name: `🛡️ ${message.author.username}'s Team Lineup`, value: renderTeamLines(p1Team, message.author.username), inline: false },
-              { name: `🛡️ ${opponent.username}'s Team Lineup`, value: renderTeamLines(p2Team, opponent.username), inline: false },
+              { name: `🛡️ ${message.author.username}'s Team Lineup`, value: renderTeamLines(p1Team), inline: false },
+              { name: `🛡️ ${opponent.username}'s Team Lineup`, value: renderTeamLines(p2Team), inline: false },
               { name: '📊 Match Rewards', value: `✨ Victor earned **+200 Points** & **+${totalExpWon} EXP**!` }
             )
             .setFooter({ text: `Clash concluded in 5 tactical turns!` });
@@ -933,14 +927,23 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
+    // +ccreateclan (Requires 100 Dice fee)
     if (command === 'ccreateclan') {
       const clanName = args.join(' ');
-      if (!clanName) return message.reply('❌ Please specify a clan name.');
-      if (db.clans[clanName]) return message.reply('❌ Clan already exists!');
+      if (!clanName) return message.reply('❌ Please specify a clan name. Usage: `+ccreateclan [ClanName]`');
+      if (db.clans[clanName]) return message.reply('❌ A clan with this name already exists!');
+
+      const clanCreationCost = 100;
+      if (user.dice < clanCreationCost) {
+        return message.reply(`❌ You do not have enough dice to create a clan! You need **${clanCreationCost} 🎲 Dice**, but you only have **${user.dice} 🎲**.`);
+      }
+
+      user.dice -= clanCreationCost;
       db.clans[clanName] = { name: clanName, leader: userId, viceLeader: null, members: [userId] };
       user.clan = clanName;
       await saveUsers();
-      return message.reply(`✅ Successfully created and joined clan **${clanName}**!`);
+
+      return message.reply(`✅ Successfully created and joined clan **${clanName}** for **${clanCreationCost} 🎲 Dice**! (Remaining: ${user.dice} 🎲)`);
     }
 
     if (command === 'cclanjoin') {
