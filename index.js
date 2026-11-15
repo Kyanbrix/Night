@@ -557,23 +557,27 @@ client.on('messageCreate', async message => {
       return message.reply(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`);
     }
 
-    // +inventory (Shows unique IDs)
-    if (command === 'inventory' || command === 'collections') {
+    // +inventory (Shows individual instances with unique short IDs, capped safely)
+    if (command === 'inventory') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
       }
 
-      const chibiList = user.inventory.chibis
+      let chibiList = user.inventory.chibis
         .map((c, i) => {
           const uniqueId = c.chibiId || c.id;
-          const shortId = uniqueId.slice(-6);
+          const shortId = uniqueId ? uniqueId.slice(-6) : 'unknown';
           const rIcon = rarityIconsMap[c.rarity] || '📦';
           const sIcon = c.isShiny ? SHINY_ICON : '';
           const isEquipped = (user.equippedChibi === uniqueId) ? ' ⭐ [Equipped]' : '';
           return `**${i + 1}.** \`[${shortId}]\` ${rIcon} ${sIcon} **${c.name}** (Lv.${c.level})${isEquipped}`;
         })
-        .slice(0, 15)
-        .join('\n') || 'No chibis collected yet.';
+        .join('\n');
+
+      // Safety check to prevent Discord 1024-character field limit error
+      if (chibiList.length > 1000) {
+        chibiList = chibiList.substring(0, 997) + '...';
+      }
 
       const embed = new EmbedBuilder()
         .setTitle(`🎒 ${message.author.username}'s Inventory`)
@@ -582,9 +586,75 @@ client.on('messageCreate', async message => {
           { name: '🎲 Dice', value: `${user.dice || 0} 🎲`, inline: true },
           { name: '🧴 Spray', value: `${user.inventory.items?.spray || 0} Uses`, inline: true },
           { name: '🍀 Clover', value: `${user.inventory.items?.clover || 0} Uses`, inline: true },
-          { name: '✨ Chibis (Use ID to equip)', value: chibiList }
-        );
+          { name: '✨ Chibis (Use ID suffix to equip)', value: chibiList }
+        )
+        .setFooter({ text: `Total Chibis Owned: ${user.inventory.chibis.length}` });
+
       return message.reply({ embeds: [embed] });
+    }
+
+    // +collections (Grouped duplicates with ID index numbers + Sort Buttons)
+    if (command === 'collections') {
+      if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
+        return message.reply('📖 Your collection is empty! Use `+roll` to summon chibis.');
+      }
+
+      const getFormattedCollection = (sortBy = 'rarity') => {
+        const grouped = {};
+        user.inventory.chibis.forEach(c => {
+          const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
+          const uniqueId = c.chibiId || c.id;
+          if (!grouped[key]) {
+            grouped[key] = {
+              rarity: c.rarity,
+              emoji: c.emoji || '✨',
+              name: c.name,
+              isShiny: c.isShiny,
+              date: c.date || 'Unknown Date',
+              count: 0,
+              firstId: uniqueId ? uniqueId.slice(-6) : 'unknown'
+            };
+          }
+          grouped[key].count++;
+        });
+
+        let entries = Object.values(grouped);
+        const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
+
+        if (sortBy === 'rarity') {
+          entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
+        } else if (sortBy === 'alpha') {
+          entries.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        const formatted = entries
+          .map((e, idx) => `**${idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
+          .join('\n') || 'Your collection is empty.';
+
+        return formatted.length > 4000 ? formatted.substring(0, 3996) + '...' : formatted;
+      };
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('sort_rarity').setLabel('Order by Rarity').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('sort_alpha').setLabel('Order Alphabetical').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📖 ${message.author.username}'s Chibi Collection`)
+        .setColor('#9b59b6')
+        .setDescription(getFormattedCollection('rarity'))
+        .setFooter({ text: `Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}` });
+
+      const colMsg = await message.reply({ embeds: [embed], components: [row] });
+      const collector = colMsg.createMessageComponentCollector({ time: 60000 });
+
+      collector.on('collect', async i => {
+        if (i.user.id !== userId) return i.reply({ content: 'Not your collection session!', ephemeral: true });
+        const sortType = i.customId === 'sort_alpha' ? 'alpha' : 'rarity';
+        const newEmbed = EmbedBuilder.from(embed).setDescription(getFormattedCollection(sortType));
+        await i.update({ embeds: [newEmbed], components: [row] });
+      });
+      return;
     }
 
     // +shop
