@@ -1040,7 +1040,7 @@ client.on('messageCreate', async message => {
       return message.reply({ embeds: [embed] });
     }
 
-    // +trade (Revamped Interactive 2-Player Trade System)
+    // +trade (Revamped Interactive 2-Player Trade System with Cancel Button)
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
@@ -1075,8 +1075,8 @@ client.on('messageCreate', async message => {
           reqCollector.stop();
 
           // Active Trade State
-          let p1OfferType = null; // 'chibi' or 'dice'
-          let p1OfferData = null; // chibi object or dice amount
+          let p1OfferType = null;
+          let p1OfferData = null;
           let p2OfferType = null;
           let p2OfferData = null;
 
@@ -1103,21 +1103,33 @@ client.on('messageCreate', async message => {
               );
           };
 
-          const actionRow = new ActionRowBuilder().addComponents(
+          const actionRow1 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('p1_offer').setLabel(`${message.author.username}'s Offer`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('p2_offer').setLabel(`${target.username}'s Offer`).setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('confirm_trade').setLabel('Confirm & Complete').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('p2_offer').setLabel(`${target.username}'s Offer`).setStyle(ButtonStyle.Success)
+          );
+
+          const actionRow2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('confirm_trade').setLabel('Confirm & Complete').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('cancel_session').setLabel('Cancel Trade').setStyle(ButtonStyle.Danger)
           );
 
           await i.update({
             content: `🤝 **Trade Session Active!** Both players, submit your offers below:`,
             embeds: [renderTradeUI()],
-            components: [actionRow]
+            components: [actionRow1, actionRow2]
           });
 
           const sessionCollector = reqMsg.createMessageComponentCollector({ time: 300000 });
 
           sessionCollector.on('collect', async si => {
+            if (si.customId === 'cancel_session') {
+              if (si.user.id !== userId && si.user.id !== target.id) {
+                return si.reply({ content: 'You are not part of this trade session!', ephemeral: true });
+              }
+              sessionCollector.stop();
+              return si.update({ content: `❌ Trade session was cancelled by <@${si.user.id}>.`, embeds: [], components: [] });
+            }
+
             if (si.customId === 'p1_offer' || si.customId === 'p2_offer') {
               const activeId = si.customId === 'p1_offer' ? userId : target.id;
               if (si.user.id !== activeId) {
@@ -1140,19 +1152,21 @@ client.on('messageCreate', async message => {
 
               if (typeInteraction.customId === 'choose_dice') {
                 await typeInteraction.update({ content: `🎲 Type the amount of Dice you wish to offer in chat (e.g. \`50\`):`, components: [] });
-                const chatMsg = await typeInteraction.channel.awaitMessageStream ? null : typeInteraction.channel.awaitMessages({
-                  filter: m => m.author.id === activeId,
-                  max: 1,
-                  time: 30000
-                }).catch(() => null);
+                
+                const chatFilter = m => m.author.id === activeId;
+                const collectedMessages = await si.channel.awaitMessages({ filter: chatFilter, max: 1, time: 30000 }).catch(() => null);
 
-                const collected = chatMsg?.first();
-                if (!collected) return;
+                const collected = collectedMessages?.first();
+                if (!collected) {
+                  return si.followUp({ content: '⏳ Dice offer timed out. Please try again.', ephemeral: true });
+                }
+
                 const amt = parseInt(collected.content);
                 const activeUserObj = db.users[activeId];
 
                 if (isNaN(amt) || amt <= 0 || activeUserObj.dice < amt) {
-                  return collected.reply('❌ Invalid amount or insufficient dice!');
+                  await collected.delete().catch(() => {});
+                  return si.followUp({ content: `❌ Invalid amount or insufficient dice! You have ${activeUserObj.dice} 🎲.`, ephemeral: true });
                 }
 
                 if (activeId === userId) {
@@ -1162,6 +1176,7 @@ client.on('messageCreate', async message => {
                   p2OfferType = 'dice';
                   p2OfferData = amt;
                 }
+
                 await collected.delete().catch(() => {});
                 await reqMsg.edit({ embeds: [renderTradeUI()] });
 
@@ -1219,7 +1234,6 @@ client.on('messageCreate', async message => {
                 return si.reply({ content: '❌ Both players must submit an offer before confirming!', ephemeral: true });
               }
 
-              // Execute transfer safely
               const p1Obj = db.users[userId];
               const p2Obj = db.users[target.id];
 
