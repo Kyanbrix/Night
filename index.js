@@ -1371,7 +1371,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN LEADERBOARD (+ccranks / +ccr) - FORMATTED WITH LOGO BETWEEN 1. & CLAN NAME
+    // CLAN LEADERBOARD (+ccranks / +ccr) — LOGO PLACED BETWEEN RANK NUMBER AND CLAN NAME
     if (command === 'ccranks') {
       const clanEntries = Object.entries(db.clans).map(([name, clan]) => {
         const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
@@ -1629,7 +1629,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // PROFILE COMMAND (+profile) — FORMATTED AS 🛡️ CLAN: [Logo] Clan Name
+    // PROFILE COMMAND (+profile) — FORMATTED AS 🛡️ CLAN: [Logo Thumbnail] Clan Name
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1682,8 +1682,7 @@ client.on('messageCreate', async message => {
       if (targetUserData.clan && db.clans[targetUserData.clan]) {
         const cObj = db.clans[targetUserData.clan];
         const cleanName = targetUserData.clan.replace(/\*/g, '');
-        const logo = cObj.logo ? `${cObj.logo} ` : '';
-        clanDisplayStr = `${logo}${cleanName}`.trim();
+        clanDisplayStr = cleanName;
       }
 
       const profileSection = new SectionBuilder()
@@ -1700,8 +1699,8 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `\n🏆 ${targetUserData.points.toLocaleString()} Points\n` +
               `🌍 Rank ${leaderboardPos}\n` +
-              `🛡️ CLAN: `
-            ) + clanDisplayStr
+              `🛡️ CLAN: ${clanDisplayStr}`
+            )
           )
         )
         .setThumbnailAccessory(
@@ -1791,7 +1790,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN CREATE COMMAND (+ccreateclan [ClanName] [Imgur/TinyURL Logo]) — MAX 12 CHARACTERS
+    // CLAN CREATE COMMAND (+ccreateclan [ClanName] [LogoURL]) — MAX 12 CHARACTERS
     if (command === 'ccreateclan') {
       const clanName = args[0]?.replace(/\*/g, '');
       const logoUrl = args[1] || '';
@@ -1875,7 +1874,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN RENAME COMMAND (+clanrename [NewName] [LogoURL]) — FULL MULTI-WORD SUPPORT & MAX 12 CHARACTERS
+    // CLAN RENAME COMMAND (+clanrename [NewName] [LogoURL]) — 12 CHAR LIMIT & MULTI-WORD
     if (command === 'clanrename') {
       if (!user.clan || !db.clans[user.clan]) {
         return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
@@ -1893,7 +1892,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`⏳ You must wait ${remainingMins} more minutes before renaming your clan again!`));
       }
 
-      // Supports multi-word clan names (e.g. "HUNTER BUG") by taking everything except the last token if it's a URL, or joining all args
       const lastArg = args[args.length - 1];
       let newName = '';
       let newLogo = clanObj.logo || '';
@@ -1931,13 +1929,12 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully renamed your clan from **${oldName}** to **${newName}** with updated logo!`));
     }
 
-    // CLAN INFO COMMAND (+cclaninfo) — MULTI-WORD NAME & LOGO FORMATTING FIXED
+    // CLAN INFO COMMAND (+cclaninfo) — USES SECTION THUMBNAIL IMAGE FOR CLAN LOGO
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
       const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
       const cleanClanName = clan.name.replace(/\*/g, '');
-      const clanLogo = clan.logo ? `${clan.logo} ` : '';
 
       const memberLines = await Promise.all(
         clan.members.map(async (mId, idx) => {
@@ -1951,18 +1948,28 @@ client.on('messageCreate', async message => {
 
       const leaderName = await getDisplayName(clan.leader);
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x1abc9c)
+      const section = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# ${clanLogo}CLAN: ${cleanClanName}\n` +
+              `# CLAN: ${cleanClanName}\n\n` +
               `LEADER: ${leaderName}\n` +
               `TOTAL POINTS: ${totalPoints.toLocaleString()}\n\n` +
               `MEMBERS:\n`
             ) + memberLines.join('\n')
           )
         );
+
+      if (clan.logo && (clan.logo.startsWith('http://') || clan.logo.startsWith('https://'))) {
+        section.setThumbnailAccessory(
+          new ThumbnailBuilder().setURL(clan.logo)
+        );
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addSectionComponents(section);
+
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
