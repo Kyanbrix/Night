@@ -416,7 +416,6 @@ client.once('ready', async () => {
   await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
   
-  // Auto-set the first server the bot is in as the main admin server if not already set
   if (!db.config.mainGuildId && client.guilds.cache.size > 0) {
     const firstGuild = client.guilds.cache.first();
     db.config.mainGuildId = firstGuild.id;
@@ -514,7 +513,7 @@ client.on('messageCreate', async message => {
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status', 'fixadmin'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -1711,7 +1710,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // ROBUST 2-PLAYER TRADE SYSTEM (DICE QTY + SIMULTANEOUS CHIBI OFFERINGS)
+    // ROBUST 2-PLAYER TRADE SYSTEM
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) {
@@ -1882,7 +1881,6 @@ client.on('messageCreate', async message => {
                 return ti.followUp({ content: toSmallCaps('❌ One of the players no longer has enough dice for this trade!'), ephemeral: true });
               }
 
-              // Transfer Player 1 -> Player 2
               if (p1Offer.dice > 0) {
                 u1.dice -= p1Offer.dice;
                 u2.dice += p1Offer.dice;
@@ -1895,7 +1893,6 @@ client.on('messageCreate', async message => {
                 }
               }
 
-              // Transfer Player 2 -> Player 1
               if (p2Offer.dice > 0) {
                 u2.dice -= p2Offer.dice;
                 u1.dice += p2Offer.dice;
@@ -1925,22 +1922,34 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // FIXED OWNER & MAIN SERVER PERMISSION CHECKS
     const isOwner = () => {
-      const ownerId = db.config.ownerId || userId;
-      return userId === ownerId;
+      if (!db.config.ownerId) {
+        db.config.ownerId = userId;
+      }
+      return userId === db.config.ownerId || user.permissions === true;
     };
 
-    // STRICT MAIN-SERVER ONLY ADMIN CHECK FOR -ac & ALL ADMIN COMMANDS
     const checkAdminMainServer = (msg) => {
-      if (!isOwner() && !user.permissions) return false;
-      if (!db.config.mainGuildId) {
-        if (msg.guild) db.config.mainGuildId = msg.guild.id;
-      }
-      if (!msg.guild || msg.guild.id !== db.config.mainGuildId) {
-        return false;
-      }
-      return true;
+      if (!msg.guild) return false;
+      if (!db.config.ownerId) db.config.ownerId = userId;
+      if (!db.config.mainGuildId) db.config.mainGuildId = msg.guild.id;
+
+      const isUserOwner = userId === db.config.ownerId || user.permissions === true;
+      const isMainServer = msg.guild.id === db.config.mainGuildId;
+
+      return isUserOwner && isMainServer;
     };
+
+    if (command === 'fixadmin') {
+      db.config.ownerId = userId;
+      if (message.guild) {
+        db.config.mainGuildId = message.guild.id;
+      }
+      user.permissions = true;
+      await saveUsers();
+      return message.reply(toSmallCaps(`🛡️ Admin override successful! You are now set as the Bot Owner & Admin, and this server (${message.guild ? message.guild.name : 'DM'}) is locked as the Main Server.`));
+    }
 
     if (command === 'prefixchange') {
       if (!message.guild) return message.reply(toSmallCaps('❌ This command can only be used inside a server.'));
