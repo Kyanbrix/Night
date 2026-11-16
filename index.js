@@ -950,7 +950,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard with Top 50 cap, season timer, clean unboxed user footer, and no levels)
+    // +ranks (Paginated leaderboard with Top 10 per page, season timer, clean unboxed user footer, and no levels)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -959,7 +959,7 @@ client.on('messageCreate', async message => {
         })
         .sort((a, b) => b.points - a.points);
 
-      const itemsPerPage = 50;
+      const itemsPerPage = 10;
       let currentPage = 0;
       const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
 
