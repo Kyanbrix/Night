@@ -1629,7 +1629,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // PROFILE COMMAND (+profile) — FORMATTED AS 🛡️ CLAN: [Logo Thumbnail] Clan Name
+    // PROFILE COMMAND (+profile) — FORMATTED AS 🛡️ CLAN: Clan Name
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1929,7 +1929,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully renamed your clan from **${oldName}** to **${newName}** with updated logo!`));
     }
 
-    // CLAN INFO COMMAND (+cclaninfo) — USES SECTION THUMBNAIL IMAGE FOR CLAN LOGO
+    // CLAN INFO COMMAND (+cclaninfo) — RENDERS THE LOGO AS A VISUAL IMAGE THUMBNAIL VIA SECTION THUMBNAIL
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -1961,8 +1961,18 @@ client.on('messageCreate', async message => {
         );
 
       if (clan.logo && (clan.logo.startsWith('http://') || clan.logo.startsWith('https://'))) {
+        let directLogoUrl = clan.logo;
+        // If it's an Imgur page link like https://imgur.com/a/MWEVSDB, make sure direct image link or fallback works
+        if (directLogoUrl.includes('imgur.com/') && !directLogoUrl.endsWith('.png') && !directLogoUrl.endsWith('.jpg') && !directLogoUrl.endsWith('.webp')) {
+          // If it's a direct hash link format
+          const parts = directLogoUrl.split('/');
+          const hash = parts[parts.length - 1];
+          if (hash && hash.length === 7) {
+            directLogoUrl = `https://i.imgur.com/${hash}.png`;
+          }
+        }
         section.setThumbnailAccessory(
-          new ThumbnailBuilder().setURL(clan.logo)
+          new ThumbnailBuilder().setURL(directLogoUrl)
         );
       }
 
