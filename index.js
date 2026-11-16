@@ -418,7 +418,7 @@ client.once('ready', async () => {
   
   const updateStatus = () => {
     const serverCount = client.guilds.cache.size;
-    client.user.setActivity(toSmallCaps(`-help | Serving ${serverCount} servers`), { type: 0 });
+    client.user.setActivity(toSmallCaps(`+help | Serving ${serverCount} servers`), { type: 0 });
   };
   updateStatus();
   setInterval(updateStatus, 60000);
@@ -448,7 +448,7 @@ client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   const guildId = message.guild ? message.guild.id : 'DM';
-  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '-';
+  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
 
   if (!message.content.startsWith(currentPrefix)) return;
 
@@ -1680,59 +1680,64 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // ROBUST 2-PLAYER TRADE SYSTEM WITH YOUR EXACT UI FORMAT BOX
+    // ULTRA-FAST 2-PLAYER TRADE SYSTEM (FIXED TIMEOUTS & INTERACTION ACKNOWLEDGEMENTS)
     if (command === 'trade') {
       const target = message.mentions.users.first();
-      if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
+      if (!target || target.bot || target.id === userId) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
+      }
       ensureUser(target.id);
 
       const targetUser = db.users[target.id];
       updateUserRank(user);
       updateUserRank(targetUser);
 
+      const tradeId = `${userId}_${target.id}_${Date.now()}`;
+      
       const acceptRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('accept_trade_req').setLabel(toSmallCaps('Accept Trade')).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('cancel_trade_req').setLabel(toSmallCaps('Decline')).setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`trade_accept_${tradeId}`).setLabel(toSmallCaps('Accept Trade')).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`trade_decline_${tradeId}`).setLabel(toSmallCaps('Decline')).setStyle(ButtonStyle.Danger)
       );
 
       const reqMsg = await message.reply({
-        content: toSmallCaps(`🤝 <@${target.id}>, you have been invited to trade by <@${userId}>! (Accept within 6 seconds)`),
+        content: toSmallCaps(`🤝 <@${target.id}>, you have been invited to trade by <@${userId}>! (Accept within 15 seconds)`),
         components: [acceptRow]
       });
 
-      const reqCollector = reqMsg.createMessageComponentCollector({ time: 6000 });
-      let tradeAccepted = false;
+      const reqCollector = reqMsg.createMessageComponentCollector({ time: 15000 });
 
       reqCollector.on('collect', async i => {
-        if (i.user.id !== target.id) return i.reply({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
+        if (i.user.id !== target.id) {
+          return i.reply({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
+        }
 
-        if (i.customId === 'cancel_trade_req') {
+        if (i.customId === `trade_decline_${tradeId}`) {
           reqCollector.stop();
           return i.update({ content: toSmallCaps(`❌ Trade invitation declined by <@${target.id}>.`), components: [] });
         }
 
-        if (i.customId === 'accept_trade_req') {
-          tradeAccepted = true;
+        if (i.customId === `trade_accept_${tradeId}`) {
           reqCollector.stop();
 
-          let p1OfferType = null;
-          let p1OfferData = null;
-          let p2OfferType = null;
-          let p2OfferData = null;
+          let p1DiceOffer = 0;
+          let p2DiceOffer = 0;
+          let p1ChibiOffer = null;
+          let p2ChibiOffer = null;
 
-          const renderTradeUIBox = () => {
-            const p1Display = p1OfferData 
-              ? (p1OfferType === 'chibi' ? `${rarityIconsMap[p1OfferData.rarity]} ${p1OfferData.emoji} **${p1OfferData.name}** ${p1OfferData.isShiny ? SHINY_ICON : ''} \`[${(p1OfferData.chibiId || p1OfferData.id).slice(-6)}]\`` : `**${p1OfferData}x 🎲 Dice**`)
-              : '*No offer yet*';
+          const renderTradeBox = () => {
+            const p1Display = p1ChibiOffer 
+              ? `${rarityIconsMap[p1ChibiOffer.rarity]} ${p1ChibiOffer.emoji} **${p1ChibiOffer.name}** ${p1ChibiOffer.isShiny ? SHINY_ICON : ''} \`[${(p1ChibiOffer.chibiId || p1ChibiOffer.id).slice(-6)}]\``
+              : (p1DiceOffer > 0 ? `**${p1DiceOffer}x 🎲 Dice**` : '*No offer yet*');
 
-            const p2Display = p2OfferData 
-              ? (p2OfferType === 'chibi' ? `${rarityIconsMap[p2OfferData.rarity]} ${p2OfferData.emoji} **${p2OfferData.name}** ${p2OfferData.isShiny ? SHINY_ICON : ''} \`[${(p2OfferData.chibiId || p2OfferData.id).slice(-6)}]\`` : `**${p2OfferData}x 🎲 Dice**`)
-              : '*No offer yet*';
+            const p2Display = p2ChibiOffer 
+              ? `${rarityIconsMap[p2ChibiOffer.rarity]} ${p2ChibiOffer.emoji} **${p2ChibiOffer.name}** ${p2ChibiOffer.isShiny ? SHINY_ICON : ''} \`[${(p2ChibiOffer.chibiId || p2ChibiOffer.id).slice(-6)}]\``
+              : (p2DiceOffer > 0 ? `**${p2DiceOffer}x 🎲 Dice**` : '*No offer yet*');
 
             return new ContainerBuilder()
               .setAccentColor(0xf1c40f)
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
+                  toSmallCaps(`🤝 **Active Trade Session**\n\n`) +
                   `<@${userId}>\n` +
                   `${p1Display}\n` +
                   `------------------\n` +
@@ -1742,157 +1747,137 @@ client.on('messageCreate', async message => {
               );
           };
 
-          const actionRow1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('p1_offer').setLabel(toSmallCaps(`${message.author.username}'s Offer`)).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('p2_offer').setLabel(toSmallCaps(`${target.username}'s Offer`)).setStyle(ButtonStyle.Success)
+          const controlRow1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`offer_dice_${tradeId}`).setLabel(toSmallCaps('Offer Dice 🎲')).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`offer_chibi_${tradeId}`).setLabel(toSmallCaps('Offer Chibi')).setStyle(ButtonStyle.Success)
           );
 
-          const actionRow2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('confirm_trade').setLabel(toSmallCaps('Confirm & Complete')).setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('cancel_session').setLabel(toSmallCaps('Cancel Trade')).setStyle(ButtonStyle.Danger)
+          const controlRow2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`confirm_trade_${tradeId}`).setLabel(toSmallCaps('Confirm Trade')).setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`cancel_trade_${tradeId}`).setLabel(toSmallCaps('Cancel')).setStyle(ButtonStyle.Danger)
           );
 
           await i.update({
-            content: toSmallCaps(`🤝 Trade Session Active! Both players, submit your offers below:`),
-            components: [renderTradeUIBox(), actionRow1, actionRow2],
+            content: toSmallCaps(`🤝 Trade session active between <@${userId}> and <@${target.id}>! Use buttons below to set your offers:`),
+            components: [renderTradeBox(), controlRow1, controlRow2],
             flags: MessageFlags.IsComponentsV2
           });
 
           const sessionCollector = reqMsg.createMessageComponentCollector({ time: 300000 });
 
           sessionCollector.on('collect', async si => {
-            if (si.customId === 'cancel_session') {
-              if (si.user.id !== userId && si.user.id !== target.id) {
-                return si.reply({ content: toSmallCaps('You are not part of this trade session!'), ephemeral: true });
-              }
+            const isP1 = si.user.id === userId;
+            const isP2 = si.user.id === target.id;
+
+            if (!isP1 && !isP2) {
+              return si.reply({ content: toSmallCaps('You are not part of this trade session!'), ephemeral: true });
+            }
+
+            if (si.customId === `cancel_trade_${tradeId}`) {
               sessionCollector.stop();
               return si.update({ content: toSmallCaps(`❌ Trade session was cancelled by <@${si.user.id}>.`), components: [], flags: MessageFlags.IsComponentsV2 });
             }
 
-            if (si.customId === 'p1_offer' || si.customId === 'p2_offer') {
-              const activeId = si.customId === 'p1_offer' ? userId : target.id;
-              if (si.user.id !== activeId) {
-                return si.reply({ content: toSmallCaps('That is not your offer button!'), ephemeral: true });
+            if (si.customId === `offer_dice_${tradeId}`) {
+              await si.reply({ content: toSmallCaps(`🎲 Type the amount of Dice you wish to offer in this channel right now:`), ephemeral: false });
+              
+              const chatFilter = m => m.author.id === si.user.id;
+              const collectedMsgs = await si.channel.awaitMessages({ filter: chatFilter, max: 1, time: 20000 }).catch(() => null);
+              const msgObj = collectedMsgs?.first();
+
+              if (!msgObj) return;
+              const amt = parseInt(msgObj.content);
+              const activeUserObj = db.users[si.user.id];
+
+              if (isNaN(amt) || amt <= 0 || activeUserObj.dice < amt) {
+                await msgObj.delete().catch(() => {});
+                return si.followUp({ content: toSmallCaps(`❌ Invalid amount or insufficient dice! You have ${activeUserObj.dice} 🎲.`), ephemeral: true });
               }
 
-              const typeRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('choose_chibi').setLabel(toSmallCaps('Trade Chibi')).setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('choose_dice').setLabel(toSmallCaps('Trade Dice 🎲')).setStyle(ButtonStyle.Success)
-              );
+              if (isP1) {
+                p1DiceOffer = amt;
+                p1ChibiOffer = null; // Clear chibi if switching to dice
+              } else {
+                p2DiceOffer = amt;
+                p2ChibiOffer = null;
+              }
 
-              await si.reply({ content: toSmallCaps('What would you like to offer?'), components: [typeRow], ephemeral: true });
+              await msgObj.delete().catch(() => {});
+              return reqMsg.edit({ components: [renderTradeBox(), controlRow1, controlRow2], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+            }
 
-              const typeInteraction = await si.channel.awaitMessageComponent({
-                filter: int => int.user.id === activeId,
-                time: 30000
+            if (si.customId === `offer_chibi_${tradeId}`) {
+              const activeUserObj = db.users[si.user.id];
+              if (!activeUserObj.inventory.chibis || activeUserObj.inventory.chibis.length === 0) {
+                return si.reply({ content: toSmallCaps('❌ You have no chibis to offer!'), ephemeral: true });
+              }
+
+              const options = activeUserObj.inventory.chibis.slice(0, 25).map(c => {
+                const uId = c.chibiId || c.id;
+                return {
+                  label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
+                  description: `ID: ${uId.slice(-6)}`,
+                  value: uId
+                };
+              });
+
+              const menu = new StringSelectMenuBuilder()
+                .setCustomId(`select_chibi_${tradeId}`)
+                .setPlaceholder(toSmallCaps('Select a Chibi to offer'))
+                .addOptions(options);
+
+              const menuRow = new ActionRowBuilder().addComponents(menu);
+              await si.reply({ content: toSmallCaps('Select your chibi offer from the dropdown below:'), components: [menuRow], ephemeral: true });
+
+              const menuInteraction = await si.channel.awaitMessageComponent({
+                filter: int => int.user.id === si.user.id && int.isStringSelectMenu() && int.customId === `select_chibi_${tradeId}`,
+                time: 25000
               }).catch(() => null);
 
-              if (!typeInteraction) return;
+              if (!menuInteraction) return;
 
-              if (typeInteraction.customId === 'choose_dice') {
-                await typeInteraction.update({ content: toSmallCaps(`🎲 Type the amount of Dice you wish to offer in chat (e.g. 50):`), components: [] });
-                
-                const chatFilter = m => m.author.id === activeId;
-                const collectedMessages = await si.channel.awaitMessages({ filter: chatFilter, max: 1, time: 30000 }).catch(() => null);
+              const chosenId = menuInteraction.values[0];
+              const chibiObj = activeUserObj.inventory.chibis.find(c => (c.chibiId || c.id) === chosenId);
 
-                const collected = collectedMessages?.first();
-                if (!collected) {
-                  return typeInteraction.followUp({ content: toSmallCaps('⏳ Dice offer timed out. Please try again.'), ephemeral: true });
-                }
-
-                const amt = parseInt(collected.content);
-                const activeUserObj = db.users[activeId];
-
-                if (isNaN(amt) || amt <= 0 || activeUserObj.dice < amt) {
-                  await collected.delete().catch(() => {});
-                  return typeInteraction.followUp({ content: toSmallCaps(`❌ Invalid amount or insufficient dice! You have ${activeUserObj.dice} 🎲.`), ephemeral: true });
-                }
-
-                if (activeId === userId) {
-                  p1OfferType = 'dice';
-                  p1OfferData = amt;
-                } else {
-                  p2OfferType = 'dice';
-                  p2OfferData = amt;
-                }
-
-                await collected.delete().catch(() => {});
-                await reqMsg.edit({ components: [renderTradeUIBox(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
-
-              } else if (typeInteraction.customId === 'choose_chibi') {
-                const activeUserObj = db.users[activeId];
-                if (!activeUserObj.inventory.chibis || activeUserObj.inventory.chibis.length === 0) {
-                  return typeInteraction.update({ content: toSmallCaps('❌ You have no chibis to trade!'), components: [] });
-                }
-
-                const options = activeUserObj.inventory.chibis.slice(0, 25).map(c => {
-                  const uId = c.chibiId || c.id;
-                  return {
-                    label: `${c.name} (${c.rarity}) Lv.${c.level} ${c.isShiny ? '✨' : ''}`,
-                    description: `ID: ${uId.slice(-6)}`,
-                    value: uId
-                  };
-                });
-
-                const menu = new StringSelectMenuBuilder()
-                  .setCustomId('select_chibi_trade')
-                  .setPlaceholder(toSmallCaps('Select a Chibi to offer'))
-                  .addOptions(options);
-
-                const menuRow = new ActionRowBuilder().addComponents(menu);
-                await typeInteraction.update({ content: toSmallCaps('Select your chibi offer:'), components: [menuRow] });
-
-                const menuInteraction = await typeInteraction.channel.awaitMessageComponent({
-                  filter: int => int.user.id === activeId && int.isStringSelectMenu(),
-                  time: 30000
-                }).catch(() => null);
-
-                if (!menuInteraction) return;
-
-                const chosenId = menuInteraction.values[0];
-                const chibiObj = activeUserObj.inventory.chibis.find(c => (c.chibiId || c.id) === chosenId);
-
-                if (activeId === userId) {
-                  p1OfferType = 'chibi';
-                  p1OfferData = chibiObj;
-                } else {
-                  p2OfferType = 'chibi';
-                  p2OfferData = chibiObj;
-                }
-
-                await menuInteraction.update({ content: toSmallCaps(`✅ Chibi offer registered: **${chibiObj.name}**`), components: [] });
-                await reqMsg.edit({ components: [renderTradeUIBox(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
+              if (isP1) {
+                p1ChibiOffer = chibiObj;
+                p1DiceOffer = 0; // Clear dice if switching to chibi
+              } else {
+                p2ChibiOffer = chibiObj;
+                p2DiceOffer = 0;
               }
 
-            } else if (si.customId === 'confirm_trade') {
-              if (si.user.id !== userId && si.user.id !== target.id) {
-                return si.reply({ content: toSmallCaps('You are not part of this trade session!'), ephemeral: true });
-              }
+              await menuInteraction.update({ content: toSmallCaps(`✅ Chibi offer registered: **${chibiObj.name}**`), components: [] });
+              return reqMsg.edit({ components: [renderTradeBox(), controlRow1, controlRow2], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+            }
 
-              if (!p1OfferData || !p2OfferData) {
-                return si.reply({ content: toSmallCaps('❌ Both players must submit an offer before confirming!'), ephemeral: true });
-              }
-
+            if (si.customId === `confirm_trade_${tradeId}`) {
               const p1Obj = db.users[userId];
               const p2Obj = db.users[target.id];
 
-              if (p1OfferType === 'dice') {
-                if (p1Obj.dice < p1OfferData) return si.reply({ content: toSmallCaps('❌ Player 1 no longer has enough dice!'), ephemeral: true });
-                p1Obj.dice -= p1OfferData;
-                p2Obj.dice += p1OfferData;
-              } else {
-                const idx = p1Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1OfferData.chibiId || p1OfferData.id));
+              if ((p1DiceOffer === 0 && !p1ChibiOffer) || (p2DiceOffer === 0 && !p2ChibiOffer)) {
+                return si.reply({ content: toSmallCaps('❌ Both players must set an offer before confirming!'), ephemeral: true });
+              }
+
+              // Process P1 Offer to P2
+              if (p1DiceOffer > 0) {
+                if (p1Obj.dice < p1DiceOffer) return si.reply({ content: toSmallCaps('❌ Player 1 no longer has enough dice!'), ephemeral: true });
+                p1Obj.dice -= p1DiceOffer;
+                p2Obj.dice += p1DiceOffer;
+              } else if (p1ChibiOffer) {
+                const idx = p1Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1ChibiOffer.chibiId || p1ChibiOffer.id));
                 if (idx === -1) return si.reply({ content: toSmallCaps('❌ Player 1 no longer has the offered chibi!'), ephemeral: true });
                 const [transferred] = p1Obj.inventory.chibis.splice(idx, 1);
                 p2Obj.inventory.chibis.push(transferred);
               }
 
-              if (p2OfferType === 'dice') {
-                if (p2Obj.dice < p2OfferData) return si.reply({ content: toSmallCaps('❌ Player 2 no longer has enough dice!'), ephemeral: true });
-                p2Obj.dice -= p2OfferData;
-                p1Obj.dice += p2OfferData;
-              } else {
-                const idx = p2Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2OfferData.chibiId || p2OfferData.id));
+              // Process P2 Offer to P1
+              if (p2DiceOffer > 0) {
+                if (p2Obj.dice < p2DiceOffer) return si.reply({ content: toSmallCaps('❌ Player 2 no longer has enough dice!'), ephemeral: true });
+                p2Obj.dice -= p2DiceOffer;
+                p1Obj.dice += p2DiceOffer;
+              } else if (p2ChibiOffer) {
+                const idx = p2Obj.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2ChibiOffer.chibiId || p2ChibiOffer.id));
                 if (idx === -1) return si.reply({ content: toSmallCaps('❌ Player 2 no longer has the offered chibi!'), ephemeral: true });
                 const [transferred] = p2Obj.inventory.chibis.splice(idx, 1);
                 p1Obj.inventory.chibis.push(transferred);
@@ -1905,7 +1890,7 @@ client.on('messageCreate', async message => {
 
               return si.update({
                 content: toSmallCaps(`✅ Trade Successfully Completed Between <@${userId}> and <@${target.id}>!`),
-                components: [renderTradeUIBox()],
+                components: [renderTradeBox()],
                 flags: MessageFlags.IsComponentsV2
               });
             }
@@ -1913,9 +1898,9 @@ client.on('messageCreate', async message => {
         }
       });
 
-      reqCollector.on('end', async () => {
-        if (!tradeAccepted) {
-          await reqMsg.edit({ content: toSmallCaps(`⏳ Trade request timed out (6s elapsed) and was automatically cancelled.`), components: [] }).catch(() => {});
+      reqCollector.on('end', collected => {
+        if (collected.size === 0) {
+          reqMsg.edit({ content: toSmallCaps(`⏳ Trade request timed out (15s elapsed) and was automatically cancelled.`), components: [] }).catch(() => {});
         }
       });
       return;
