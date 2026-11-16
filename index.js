@@ -948,7 +948,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard with Top 50 cap, season timer, user rank footer, and no levels)
+    // +ranks (Paginated leaderboard with Top 50 cap, season timer, compact box user footer, and no levels)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -995,8 +995,8 @@ client.on('messageCreate', async message => {
               `End Season: **${seasonTimerStr}**\n\n` +
               `**(Page ${page + 1}/${totalPages})**\n\n` +
               getRanksPage(page) +
-              `\n\n-----------------------------------\n` +
-              `👤 **Your Current Rank:** #${userRankPos} — Rank: ${userRankIcon} | Points: **${userPointsDisplay.toLocaleString()}**`
+              `\n\n\`-----------------------------------\`\n` +
+              `👤 \`Your Rank: #${userRankPos}\` | Rank: ${userRankIcon} | \`Points: ${userPointsDisplay.toLocaleString()}\``
             )
           );
       };
@@ -1187,7 +1187,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile (Reworked with icon-only best roll/rank, separated rank/points fields, and box framing)
+    // +profile (Reworked with icon-only best roll/rank, odds display beside chibi, separated rank/points fields, and box framing without dividers or avatar button)
     if (command === 'profile') {
       updateUserRank(user);
 
@@ -1219,7 +1219,6 @@ client.on('messageCreate', async message => {
       }
 
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
-      const avatarUrl = message.author.displayAvatarURL();
 
       // Calculate global leaderboard position
       const allSortedUsers = Object.entries(db.users)
@@ -1228,23 +1227,21 @@ client.on('messageCreate', async message => {
       const globalIndex = allSortedUsers.findIndex(u => u.uId === userId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
 
-      // Format best roll icon display (only icons)
-      const bestRollDisplay = user.bestChibi ? user.bestChibi : 'None';
+      // Format best roll icon display with odds beside it
+      const bestRollIconPart = user.bestChibi ? user.bestChibi : 'None';
+      const bestRollOddsPart = user.bestRoll && user.bestRoll !== 'None' ? `\`(${user.bestRoll})\`` : '';
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# ${message.author.username}\n` +
-            `|----------------------------------|\n` +
-            `🖼️ [View Avatar](${avatarUrl})\n` +
-            `|----------------------------------|\n` +
+            `# ${message.author.username}\n\n` +
             `📊 \`Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\`\n` +
-            `🎲 ${bestRollDisplay}\n` +
+            `🎲 ${bestRollIconPart} ${bestRollOddsPart}\n` +
             `⚜️ ${user.rank}\n` +
             `🏆 \`${user.points.toLocaleString()} Points\`\n` +
             `🌍 \`Rank ${leaderboardPos}\`\n` +
-            `🔰 \`${user.clan || 'None'}\``
+            `🔰 \`Clan: ${user.clan || 'None'}\``
           )
         );
 
