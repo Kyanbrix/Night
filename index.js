@@ -295,15 +295,6 @@ function addExpAndLevelUp(user, chibi, baseExpAmount) {
   return expAmount;
 }
 
-function calculateChibiCombatPower(chibi) {
-  if (!chibi) return 50;
-  const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
-  const hp = statConfig.hp + chibi.level * statConfig.hpPer;
-  const atk = statConfig.atk + chibi.level * statConfig.atkPer;
-  const def = statConfig.def + chibi.level * statConfig.defPer;
-  return hp + atk * 3 + def * 2;
-}
-
 function parseOddsNumber(oddsString) {
   if (!oddsString) return 1;
   const cleanStr = oddsString.replace(/,/g, '').trim();
@@ -2026,7 +2017,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // REMOVE ADMIN PERMISSIONS COMMAND (-removeadminperms)
     if (command === 'removeadminperms') {
       if (!isOwner()) {
         return message.reply(toSmallCaps('❌ Only the bot owner can remove admin permissions!'));
