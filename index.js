@@ -418,7 +418,7 @@ client.once('ready', async () => {
   
   const updateStatus = () => {
     const serverCount = client.guilds.cache.size;
-    client.user.setActivity(toSmallCaps(`+help | Serving ${serverCount} servers`), { type: 0 });
+    client.user.setActivity(toSmallCaps(`-help | Serving ${serverCount} servers`), { type: 0 });
   };
   updateStatus();
   setInterval(updateStatus, 60000);
@@ -448,7 +448,7 @@ client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   const guildId = message.guild ? message.guild.id : 'DM';
-  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
+  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '-';
 
   if (!message.content.startsWith(currentPrefix)) return;
 
@@ -1680,7 +1680,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // FIXED TRADE SYSTEM WITH INSTANT RESPONSIVE SESSION HANDLER & EXACT FORMATTING
+    // ROBUST 2-PLAYER TRADE SYSTEM WITH YOUR EXACT UI FORMAT BOX
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
@@ -2200,7 +2200,7 @@ client.on('messageCreate', async message => {
       if (command === 'adminsetlevel') {
         const target = message.mentions.users.first();
         const lvl = parseInt(args[1]);
-        if (!target || !lvl || lvl < 1) {
+        if (!target || isNaN(lvl) || lvl < 1) {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlevel [@user] [level]`));
         }
         ensureUser(target.id);
