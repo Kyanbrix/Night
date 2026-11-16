@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -472,7 +471,6 @@ client.once('ready', async () => {
       console.log(`Season timer expired! Automatically started Season ${db.config.seasonNumber} and archived user peak records.`);
     }
 
-    // Clan Season Timer Check & Distribution
     if (db.config.clanSeasonExpires && now >= db.config.clanSeasonExpires) {
       const sortedClans = Object.entries(db.clans).map(([name, clan]) => {
         const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
@@ -1314,8 +1312,8 @@ client.on('messageCreate', async message => {
           let clanInfo = '';
           if (u.clan && db.clans[u.clan]) {
             const cleanClanName = u.clan.replace(/\*/g, '');
-            const clanLogo = db.clans[u.clan].logo || '';
-            clanInfo = ` | ${clanLogo} ${cleanClanName}`.trim();
+            const clanLogo = db.clans[u.clan].logo ? `${db.clans[u.clan].logo} ` : '';
+            clanInfo = ` | ${clanLogo}${cleanClanName}`.trim();
           }
           return toSmallCaps(`**${start + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${u.points.toLocaleString()}**`) + clanInfo;
         }));
@@ -1373,7 +1371,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN LEADERBOARD (+ccranks / +ccr)
+    // CLAN LEADERBOARD (+ccranks / +ccr) - FORMATTED WITH LOGO BETWEEN 1. & CLAN NAME
     if (command === 'ccranks') {
       const clanEntries = Object.entries(db.clans).map(([name, clan]) => {
         const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
@@ -1397,9 +1395,8 @@ client.on('messageCreate', async message => {
       const top10Lines = await Promise.all(top10Clans.map(async (c, idx) => {
         const leaderName = await getDisplayName(c.clan.leader);
         const cleanName = c.name.replace(/\*/g, '');
-        const clanLogo = c.clan.logo || '';
-        const prefixLogo = clanLogo ? `${clanLogo} ` : '';
-        return toSmallCaps(`**${idx + 1}.** ${prefixLogo}${cleanName} | Leader: **${leaderName}** | Points: **${c.totalPoints.toLocaleString()}**`);
+        const clanLogo = c.clan.logo ? `${c.clan.logo} ` : '';
+        return toSmallCaps(`**${idx + 1}.** ${clanLogo}${cleanName} | Leader: **${leaderName}** | Points: **${c.totalPoints.toLocaleString()}**`);
       }));
 
       let userClanLine = toSmallCaps('You are not currently in a clan.');
@@ -1410,9 +1407,8 @@ client.on('messageCreate', async message => {
         const uClanPoints = uClanObj.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
         const leaderName = await getDisplayName(uClanObj.leader);
         const cleanName = user.clan.replace(/\*/g, '');
-        const logo = uClanObj.logo || '';
-        const prefixLogo = logo ? `${logo} ` : '';
-        userClanLine = toSmallCaps(`${uClanRank}. ${prefixLogo}${cleanName} | Leader: **${leaderName}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`);
+        const logo = uClanObj.logo ? `${uClanObj.logo} ` : '';
+        userClanLine = toSmallCaps(`${uClanRank}. ${logo}${cleanName} | Leader: **${leaderName}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`);
       }
 
       const container = new ContainerBuilder()
@@ -1633,6 +1629,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // PROFILE COMMAND (+profile) — FORMATTED AS 🛡️ CLAN: [Logo] Clan Name
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1685,8 +1682,8 @@ client.on('messageCreate', async message => {
       if (targetUserData.clan && db.clans[targetUserData.clan]) {
         const cObj = db.clans[targetUserData.clan];
         const cleanName = targetUserData.clan.replace(/\*/g, '');
-        const logo = cObj.logo || '';
-        clanDisplayStr = logo ? `${logo} ${cleanName}` : cleanName;
+        const logo = cObj.logo ? `${cObj.logo} ` : '';
+        clanDisplayStr = `${logo}${cleanName}`.trim();
       }
 
       const profileSection = new SectionBuilder()
@@ -1703,8 +1700,8 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `\n🏆 ${targetUserData.points.toLocaleString()} Points\n` +
               `🌍 Rank ${leaderboardPos}\n` +
-              `🛡️ Clan: ${clanDisplayStr}`
-            )
+              `🛡️ CLAN: `
+            ) + clanDisplayStr
           )
         )
         .setThumbnailAccessory(
@@ -1794,12 +1791,16 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // CLAN CREATE COMMAND (+ccreateclan [ClanName] [Imgur/TinyURL Logo]) — MAX 12 CHARACTERS
     if (command === 'ccreateclan') {
       const clanName = args[0]?.replace(/\*/g, '');
       const logoUrl = args[1] || '';
 
       if (!clanName) {
         return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}ccreateclan [ClanName] [Imgur/TinyURL Logo Link]`));
+      }
+      if (clanName.length > 12) {
+        return message.reply(toSmallCaps('❌ Clan name cannot exceed 12 characters!'));
       }
       if (db.clans[clanName]) return message.reply(toSmallCaps('❌ A clan with this name already exists!'));
 
@@ -1827,7 +1828,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully joined clan ${clanName}!`));
     }
 
-    // CLAN LEAVE COMMAND (+clanleave with confirmation button)
     if (command === 'clanleave') {
       if (!user.clan || !db.clans[user.clan]) {
         return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
@@ -1875,7 +1875,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN RENAME COMMAND (+clanrename with Imgur/TinyURL link & 1 hour cooldown)
+    // CLAN RENAME COMMAND (+clanrename [NewName] [LogoURL]) — FULL MULTI-WORD SUPPORT & MAX 12 CHARACTERS
     if (command === 'clanrename') {
       if (!user.clan || !db.clans[user.clan]) {
         return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
@@ -1887,17 +1887,29 @@ client.on('messageCreate', async message => {
       }
 
       const now = Date.now();
-      const cooldownTime = 60 * 60 * 1000; // 1 hour
+      const cooldownTime = 60 * 60 * 1000;
       if (clanObj.lastRenamed && now - clanObj.lastRenamed < cooldownTime) {
         const remainingMins = Math.ceil((cooldownTime - (now - clanObj.lastRenamed)) / 60000);
         return message.reply(toSmallCaps(`⏳ You must wait ${remainingMins} more minutes before renaming your clan again!`));
       }
 
-      const newName = args[0]?.replace(/\*/g, '');
-      const newLogo = args[1] || clanObj.logo || '';
+      // Supports multi-word clan names (e.g. "HUNTER BUG") by taking everything except the last token if it's a URL, or joining all args
+      const lastArg = args[args.length - 1];
+      let newName = '';
+      let newLogo = clanObj.logo || '';
+
+      if (lastArg && (lastArg.startsWith('http://') || lastArg.startsWith('https://'))) {
+        newLogo = lastArg;
+        newName = args.slice(0, args.length - 1).join(' ').replace(/\*/g, '');
+      } else {
+        newName = args.join(' ').replace(/\*/g, '');
+      }
 
       if (!newName) {
-        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}clanrename [NewClanName] [NewImgur_Logo]`));
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}clanrename [NewClanName] [Imgur/TinyURL Logo]`));
+      }
+      if (newName.length > 12) {
+        return message.reply(toSmallCaps('❌ Clan name cannot exceed 12 characters!'));
       }
       if (db.clans[newName] && newName !== user.clan) {
         return message.reply(toSmallCaps('❌ A clan with this name already exists!'));
@@ -1919,6 +1931,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully renamed your clan from **${oldName}** to **${newName}** with updated logo!`));
     }
 
+    // CLAN INFO COMMAND (+cclaninfo) — MULTI-WORD NAME & LOGO FORMATTING FIXED
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -1943,17 +1956,16 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# ${clanLogo}Clan Information: ${cleanClanName}\n` +
-              `Leader: ${leaderName}\n` +
-              `Total Points: ${totalPoints.toLocaleString()}\n\n` +
-              `Members:\n`
+              `# ${clanLogo}CLAN: ${cleanClanName}\n` +
+              `LEADER: ${leaderName}\n` +
+              `TOTAL POINTS: ${totalPoints.toLocaleString()}\n\n` +
+              `MEMBERS:\n`
             ) + memberLines.join('\n')
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // TRADE HISTORY COMMAND (+th / +tradehistory)
     if (command === 'tradehistory') {
       if (!db.tradeHistories[userId] || db.tradeHistories[userId].length === 0) {
         return message.reply(toSmallCaps('📜 You have no recorded trade history yet.'));
@@ -1976,7 +1988,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // ROBUST 2-PLAYER TRADE SYSTEM WITH HISTORY LOGGING
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) {
