@@ -45,6 +45,7 @@ const GameStateSchema = new mongoose.Schema({
   guildPrefixes: { type: Object, default: {} },
   channelRestrictions: { type: Object, default: {} },
   bannedUsers: { type: Object, default: {} },
+  tradeHistories: { type: Object, default: {} },
   config: {
     type: Object,
     default: {
@@ -56,7 +57,13 @@ const GameStateSchema = new mongoose.Schema({
       xpEventExpires: 0,
       seasonNumber: 1,
       seasonStartedAt: Date.now(),
-      seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+      seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
+      clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
+      clanRewards: {
+        1: { qty: 5, rarity: 'UTR', chibiName: 'Godly Chibi', chibiEmoji: '🌟' },
+        2: { qty: 3, rarity: 'SRR', chibiName: 'Epic Chibi', chibiEmoji: '🔥' },
+        3: { qty: 2, rarity: 'SR', chibiName: 'Rare Chibi', chibiEmoji: '⚡' }
+      }
     }
   }
 });
@@ -69,6 +76,7 @@ let db = {
   guildPrefixes: {},
   channelRestrictions: {},
   bannedUsers: {},
+  tradeHistories: {},
   config: {
     ownerId: '',
     mainGuildId: '',
@@ -78,7 +86,13 @@ let db = {
     xpEventExpires: 0,
     seasonNumber: 1,
     seasonStartedAt: Date.now(),
-    seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000)
+    seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
+    clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
+    clanRewards: {
+      1: { qty: 5, rarity: 'UTR', chibiName: 'Godly Chibi', chibiEmoji: '🌟' },
+      2: { qty: 3, rarity: 'SRR', chibiName: 'Epic Chibi', chibiEmoji: '🔥' },
+      3: { qty: 2, rarity: 'SR', chibiName: 'Rare Chibi', chibiEmoji: '⚡' }
+    }
   }
 };
 
@@ -104,13 +118,14 @@ async function initDatabase() {
 
     let state = await GameState.findById('main_state');
     if (!state) {
-      state = await GameState.create({ _id: 'main_state', users: {}, clans: {}, guildPrefixes: {}, channelRestrictions: {}, bannedUsers: {}, config: db.config });
+      state = await GameState.create({ _id: 'main_state', users: {}, clans: {}, guildPrefixes: {}, channelRestrictions: {}, bannedUsers: {}, tradeHistories: {}, config: db.config });
     }
     db.users = state.users || {};
     db.clans = state.clans || {};
     db.guildPrefixes = state.guildPrefixes || {};
     db.channelRestrictions = state.channelRestrictions || {};
     db.bannedUsers = state.bannedUsers || {};
+    db.tradeHistories = state.tradeHistories || {};
     db.config = { ...db.config, ...(state.config || {}) };
   } catch (err) {
     console.error('Database connection error:', err);
@@ -129,12 +144,14 @@ async function saveUsers() {
     state.guildPrefixes = db.guildPrefixes;
     state.channelRestrictions = db.channelRestrictions;
     state.bannedUsers = db.bannedUsers;
+    state.tradeHistories = db.tradeHistories;
     state.config = db.config;
     state.markModified('users');
     state.markModified('clans');
     state.markModified('guildPrefixes');
     state.markModified('channelRestrictions');
     state.markModified('bannedUsers');
+    state.markModified('tradeHistories');
     state.markModified('config');
     await state.save();
   } catch (err) {
@@ -453,6 +470,47 @@ client.once('ready', async () => {
       await saveUsers();
       console.log(`Season timer expired! Automatically started Season ${db.config.seasonNumber} and archived user peak records.`);
     }
+
+    // Clan Season Timer Check & Distribution
+    if (db.config.clanSeasonExpires && now >= db.config.clanSeasonExpires) {
+      const sortedClans = Object.entries(db.clans).map(([name, clan]) => {
+        const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
+        return { name, clan, totalPoints };
+      }).sort((a, b) => b.totalPoints - a.totalPoints);
+
+      const rewards = db.config.clanRewards || {};
+      for (let idx = 0; idx < sortedClans.length; idx++) {
+        const rank = idx + 1;
+        const clanEntry = sortedClans[idx];
+        const rewardCfg = rewards[rank];
+
+        for (const mId of clanEntry.clan.members) {
+          ensureUser(mId);
+          const mUser = db.users[mId];
+          if (rewardCfg) {
+            const generatedId = new mongoose.Types.ObjectId().toString();
+            mUser.inventory.chibis.push({
+              id: generatedId,
+              chibiId: generatedId,
+              name: rewardCfg.chibiName,
+              rarity: rewardCfg.rarity,
+              emoji: rewardCfg.chibiEmoji,
+              isShiny: false,
+              level: 1,
+              exp: 0,
+              date: new Date().toLocaleDateString()
+            });
+          } else {
+            // Consolation reward for clans outside top 3
+            mUser.dice += 100;
+          }
+        }
+      }
+
+      db.config.clanSeasonExpires = now + (7 * 24 * 60 * 60 * 1000);
+      await saveUsers();
+      console.log(`Clan season expired! Rewards distributed automatically.`);
+    }
   }, 60000);
 });
 
@@ -506,14 +564,20 @@ client.on('messageCreate', async message => {
     ac: 'admincommands',
     cnn: 'customnn',
     ss: 'seasons',
-    hss: 'higheststats'
+    hss: 'higheststats',
+    ownercl: 'ownercl',
+    owneradminpermsrem: 'owneradminpermsrem',
+    th: 'tradehistory',
+    tradehistory: 'tradehistory',
+    ccr: 'ccranks',
+    ccranks: 'ccranks'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status', 'fixadmin'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -651,9 +715,11 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}daily\` — Claim daily streak rewards (x5 🎲)\n` +
         `\`${currentPrefix}points\` — Check points & rank badge\n` +
         `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
+        `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
         `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
         `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
-        `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n\n` +
+        `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
+        `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
         toSmallCaps('⚔️ **RPG & Battling**\n') +
         `\`${currentPrefix}cstats\` — Inspect team card\n` +
         `\`${currentPrefix}equipteam [id] [slot]\` — Manage team (1-3)\n` +
@@ -663,9 +729,9 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}collections\` (${currentPrefix}col) — Chibi binder\n` +
         `\`${currentPrefix}profile\` (${currentPrefix}p) [@user] — User profile\n` +
         `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] — 2-Player Trade\n\n` +
-        toSmallCaps('🏛️ **Clans & Server**\n') +
+        toSmallCaps('🏛️ **Clans & Server**\n`') +
         `\`${currentPrefix}clanlist\` — View clans\n` +
-        `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\`\n` +
+        `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\` / \`${currentPrefix}clanleave\` / \`${currentPrefix}clanrename\`\n` +
         `\`${currentPrefix}prefixchange\` / \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\``;
 
       const container = new ContainerBuilder()
@@ -716,58 +782,49 @@ client.on('messageCreate', async message => {
       user.dice -= bet;
       await saveUsers();
 
-      const symbols = ['❤️', '🚀', '☠️', '💎', '🍀'];
-      const getRandomSymbol = () => symbols[Math.floor(Math.random() * symbols.length)];
+      // Gather rewarded chibi icons from collections or inventory if available, otherwise fallback
+      let availableChibiEmojis = ['📦', '✨', '⭐', '🌟', '💎', '🔥', '💖'];
+      if (user.inventory && user.inventory.chibis && user.inventory.chibis.length > 0) {
+        availableChibiEmojis = Array.from(new Set(user.inventory.chibis.map(c => c.emoji || '📦')));
+      }
+
+      const getRandomChibiSymbol = () => availableChibiEmojis[Math.floor(Math.random() * availableChibiEmojis.length)];
 
       const slotMsg = await message.reply({
-        content: toSmallCaps(`🎰 Spinning the Slot Machine for ${bet} 🎲...\n| 🔄 | 🔄 | 🔄 |`),
+        content: toSmallCaps(`🎰 Spinning Chibi Slot Machine for ${bet} 🎲...\n| 🔄 | 🔄 | 🔄 |`),
       });
 
       for (let step = 0; step < 3; step++) {
         await new Promise(resolve => setTimeout(resolve, 600));
-        const s1 = getRandomSymbol();
-        const s2 = getRandomSymbol();
-        const s3 = getRandomSymbol();
+        const s1 = getRandomChibiSymbol();
+        const s2 = getRandomChibiSymbol();
+        const s3 = getRandomChibiSymbol();
         await slotMsg.edit({
           content: toSmallCaps(`🎰 Spinning...\n| ${s1} | ${s2} | ${s3} |`),
         }).catch(() => {});
       }
 
       await new Promise(resolve => setTimeout(resolve, 800));
-      const final1 = getRandomSymbol();
-      const final2 = getRandomSymbol();
-      const final3 = getRandomSymbol();
+      const final1 = getRandomChibiSymbol();
+      const final2 = getRandomChibiSymbol();
+      const final3 = getRandomChibiSymbol();
 
       let payoutMultiplier = 0;
       let pointsWon = 0;
       let resultText = '';
 
       if (final1 === final2 && final2 === final3) {
-        pointsWon = Math.floor(Math.random() * 9) + 5;
-        if (final1 === '💎') {
-          payoutMultiplier = 15;
-          resultText = toSmallCaps(`💎 JACKPOT! TRIPLE DIAMONDS! (+15x Dice, +${pointsWon} Points!) 💎`);
-        } else if (final1 === '🚀') {
-          payoutMultiplier = 10;
-          resultText = toSmallCaps(`🚀 SUPER WIN! TRIPLE ROCKETS! (+10x Dice, +${pointsWon} Points!) 🚀`);
-        } else if (final1 === '❤️') {
-          payoutMultiplier = 8;
-          resultText = toSmallCaps(`❤️ GREAT WIN! TRIPLE HEARTS! (+8x Dice, +${pointsWon} Points!) ❤️`);
-        } else if (final1 === '🍀') {
-          payoutMultiplier = 5;
-          resultText = toSmallCaps(`🍀 LUCKY WIN! TRIPLE CLOVERS! (+5x Dice, +${pointsWon} Points!) 🍀`);
-        } else {
-          payoutMultiplier = 3;
-          resultText = toSmallCaps(`☠️ TRIPLE SKULLS WIN! (+3x Dice, +${pointsWon} Points!) ☠️`);
-        }
+        payoutMultiplier = 10;
+        pointsWon = 25;
+        resultText = toSmallCaps(`🎉 CHIBI JACKPOT! TRIPLE MATCH (${final1})! (+10x Dice, +${pointsWon} Points!) 🎉`);
       } else if (final1 === final2 || final2 === final3 || final1 === final3) {
-        payoutMultiplier = 1.5;
-        pointsWon = 15;
-        resultText = toSmallCaps(`✨ Partial Match! (+1.5x Dice, +${pointsWon} Points!) ✨`);
+        payoutMultiplier = 2;
+        pointsWon = 10;
+        resultText = toSmallCaps(`✨ Partial Chibi Match! (+2x Dice, +${pointsWon} Points!) ✨`);
       } else {
         payoutMultiplier = 0;
         pointsWon = 0;
-        resultText = toSmallCaps('❌ No match! Better luck next time!');
+        resultText = toSmallCaps('❌ No matching chibis! Better luck next time!');
       }
 
       const winnings = Math.round(bet * payoutMultiplier);
@@ -781,7 +838,7 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# 🎰 Slot Machine Results\n\n` +
+              `# 🎰 Chibi Slot Machine Results\n\n` +
               `| ${final1} | ${final2} | ${final3} |\n\n` +
               `${resultText}\n` +
               `💰 Dice Payout: +${winnings} 🎲 | 🏆 Points Gained: +${pointsWon} Pts\n` +
@@ -853,32 +910,45 @@ client.on('messageCreate', async message => {
       const primaryChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === (user.team[0] || user.equippedChibi));
 
       for (let i = 0; i < qty; i++) {
-        const customWeights = { C: 40, U: 25, R: 10, SR: 3, SRR: 0.01, UTR: 0.001 };
+        // Updated Rarities with Exact Match Chances & Boost Integration
+        const baseRarityChances = {
+          C: { normal: 20, shiny: 1 },
+          U: { normal: 12, shiny: 0.10 },
+          R: { normal: 7, shiny: 0.5 },
+          SR: { normal: 1, shiny: 0.1 },
+          SRR: { normal: 0.10, shiny: 0.0010 },
+          UTR: { normal: 0.001, shiny: 0.0001 }
+        };
+
         const adjustedRarities = gameData.rarities.map(r => {
-          let w = customWeights[r.key] !== undefined ? customWeights[r.key] : r.weight;
-          if (r.key !== 'C') w *= activeLuckMultiplier;
-          return { ...r, adjustedWeight: w };
+          const cfg = baseRarityChances[r.key] || { normal: r.weight, shiny: 0.1 };
+          let normW = cfg.normal;
+          let shinyW = cfg.shiny;
+          if (r.key !== 'C') {
+            normW *= activeLuckMultiplier;
+            shinyW *= activeLuckMultiplier;
+          }
+          return { ...r, normW, shinyW };
         });
 
-        const totalWeight = adjustedRarities.reduce((sum, r) => sum + r.adjustedWeight, 0);
+        const totalWeight = adjustedRarities.reduce((sum, r) => sum + r.normW, 0);
         let randW = Math.random() * totalWeight;
         let chosenRarityObj = adjustedRarities[0];
 
         for (const r of adjustedRarities) {
-          if (randW < r.adjustedWeight) {
+          if (randW < r.normW) {
             chosenRarityObj = r;
             break;
           }
-          randW -= r.adjustedWeight;
+          randW -= r.normW;
         }
 
         const availableChibis = gameData.chibis.filter(c => c.rarity === chosenRarityObj.key);
         const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
 
         const normalVal = parseOddsNumber(chibiTemplate.odds);
-        let shinyVal = 100000;
-        shinyVal = Math.max(1, Math.round(shinyVal / activeLuckMultiplier));
-        const isShiny = Math.random() * shinyVal < 1;
+        const targetShinyChance = (baseRarityChances[chosenRarityObj.key]?.shiny || 0.1) * (activeLuckMultiplier > 1 ? activeLuckMultiplier : 1);
+        const isShiny = Math.random() * 100 < targetShinyChance;
 
         const pushChibi = () => {
           const generatedId = new mongoose.Types.ObjectId().toString();
@@ -1242,7 +1312,13 @@ client.on('messageCreate', async message => {
 
         const lines = await Promise.all(pageUsers.map(async (u, idx) => {
           const username = await getDisplayName(u.uId);
-          return toSmallCaps(`**${start + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${u.points.toLocaleString()}**`);
+          let clanInfo = '';
+          if (u.clan && db.clans[u.clan]) {
+            const cleanClanName = u.clan.replace(/\*/g, '');
+            const clanLogo = db.clans[u.clan].logo || '🔰';
+            clanInfo = ` | ${clanLogo} ${cleanClanName}`;
+          }
+          return toSmallCaps(`**${start + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${u.points.toLocaleString()}**`) + clanInfo;
         }));
 
         return lines.join('\n') || toSmallCaps('No players on the leaderboard yet.');
@@ -1296,6 +1372,64 @@ client.on('messageCreate', async message => {
         }).catch(() => {});
       });
       return;
+    }
+
+    // CLAN LEADERBOARD (+ccranks / +ccr)
+    if (command === 'ccranks') {
+      const clanEntries = Object.entries(db.clans).map(([name, clan]) => {
+        const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
+        return { name, clan, totalPoints };
+      }).sort((a, b) => b.totalPoints - a.totalPoints);
+
+      const timeRemainingMs = Math.max(0, (db.config.clanSeasonExpires || Date.now()) - Date.now());
+      const clanTimerStr = formatTimeRemaining(timeRemainingMs);
+
+      const rewards = db.config.clanRewards || {};
+      const formatReward = (rNum) => {
+        const rw = rewards[rNum];
+        if (!rw) return '100x 🎲 Dice (Consolation)';
+        const rIcon = rarityIconsMap[rw.rarity] || '📦';
+        return `${rw.qty}x ${rIcon} ${rw.chibiEmoji} **${rw.chibiName}**`;
+      };
+
+      const top10Clans = clanEntries.slice(0, 10);
+      const top10Lines = await Promise.all(top10Clans.map(async (c, idx) => {
+        const leaderName = await getDisplayName(c.clan.leader);
+        const cleanName = c.name.replace(/\*/g, '');
+        return toSmallCaps(`**${idx + 1}.** ${cleanName} | Leader: **${leaderName}** | Points: **${c.totalPoints.toLocaleString()}**`);
+      }));
+
+      // Find user's clan info
+      let userClanLine = toSmallCaps('You are not currently in a clan.');
+      if (user.clan && db.clans[user.clan]) {
+        const uClanObj = db.clans[user.clan];
+        const uClanRankIdx = clanEntries.findIndex(c => c.name === user.clan);
+        const uClanRank = uClanRankIdx !== -1 ? `#${uClanRankIdx + 1}` : 'Unranked';
+        const uClanPoints = uClanObj.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
+        const leaderName = await getDisplayName(uClanObj.leader);
+        const cleanName = user.clan.replace(/\*/g, '');
+        const logo = uClanObj.logo || '🔰';
+        userClanLine = toSmallCaps(`${uClanRank}. ${logo} ${cleanName} | Leader: **${leaderName}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`);
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🏛️ Top 10 Global Clan Leaderboard\n` +
+              `Ends: ${clanTimerStr}\n\n` +
+              `**Clan Rewards:**\n` +
+              `1st: ${formatReward(1)}\n` +
+              `2nd: ${formatReward(2)}\n` +
+              `3rd: ${formatReward(3)}\n\n` +
+              `-----------------------------------\n\n`
+            ) + (top10Lines.join('\n') || toSmallCaps('No clans registered yet.')) +
+            toSmallCaps(`\n\n-----------------------------------\n**Your Clan Status:**\n`) + userClanLine
+          )
+        );
+
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     if (command === 'equipteam') {
@@ -1544,6 +1678,14 @@ client.on('messageCreate', async message => {
       const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
       const displayName = targetUserData.customNickname || targetMember.username;
 
+      let clanDisplayStr = 'None';
+      if (targetUserData.clan && db.clans[targetUserData.clan]) {
+        const cObj = db.clans[targetUserData.clan];
+        const cleanName = targetUserData.clan.replace(/\*/g, '');
+        const logo = cObj.logo || '🔰';
+        clanDisplayStr = `${logo} ${cleanName}`;
+      }
+
       const profileSection = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
@@ -1558,7 +1700,7 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `\n🏆 ${targetUserData.points.toLocaleString()} Points\n` +
               `🌍 Rank ${leaderboardPos}\n` +
-              `🔰 Clan: ${targetUserData.clan || 'None'}`
+              `🛡️ Clan: ${clanDisplayStr}`
             )
           )
         )
@@ -1588,7 +1730,7 @@ client.on('messageCreate', async message => {
           const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
           const memberCount = clan.members.length;
 
-          return { name, leaderName, totalPoints, memberCount };
+          return { name, leaderName, totalPoints, memberCount, logo: clan.logo || '🔰' };
         }));
 
         if (sortBy === 'points') {
@@ -1603,7 +1745,7 @@ client.on('messageCreate', async message => {
         const sortedEntries = await getSortedClanEntries();
         const clanListText = sortedEntries.map((c, idx) => {
           const cleanName = c.name.replace(/\*/g, '');
-          return toSmallCaps(`${idx + 1}. ${cleanName} | Leader: ${c.leaderName} | Points: 🏆 ${c.totalPoints.toLocaleString()} | Members: 👥 ${c.memberCount}`);
+          return toSmallCaps(`${idx + 1}. ${c.logo} ${cleanName} | Leader: ${c.leaderName} | Points: 🏆 ${c.totalPoints.toLocaleString()} | Members: 👥 ${c.memberCount}`);
         }).join('\n');
 
         return new ContainerBuilder()
@@ -1649,8 +1791,12 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'ccreateclan') {
-      const clanName = args.join(' ').replace(/\*/g, '');
-      if (!clanName) return message.reply(toSmallCaps(`❌ Please specify a clan name. Usage: ${currentPrefix}ccreateclan [ClanName]`));
+      const clanName = args[0]?.replace(/\*/g, '');
+      const logoUrl = args[1];
+
+      if (!clanName || !logoUrl) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}ccreateclan [ClanName] [TinyURL Logo Link]`));
+      }
       if (db.clans[clanName]) return message.reply(toSmallCaps('❌ A clan with this name already exists!'));
 
       const clanCreationCost = 100;
@@ -1659,12 +1805,12 @@ client.on('messageCreate', async message => {
       }
 
       user.dice -= clanCreationCost;
-      db.clans[clanName] = { name: clanName, leader: userId, viceLeader: null, members: [userId] };
+      db.clans[clanName] = { name: clanName, leader: userId, viceLeader: null, members: [userId], logo: logoUrl };
       user.clan = clanName;
       updateUserRank(user);
       await saveUsers();
 
-      return message.reply(toSmallCaps(`✅ Successfully created and joined clan ${clanName} for **${clanCreationCost} 🎲 Dice**! (Remaining: ${user.dice} 🎲)`));
+      return message.reply(toSmallCaps(`✅ Successfully created and joined clan ${clanName} with logo! (Cost: ${clanCreationCost} 🎲 Dice)`));
     }
 
     if (command === 'cclanjoin') {
@@ -1677,11 +1823,103 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully joined clan ${clanName}!`));
     }
 
+    // CLAN LEAVE COMMAND (+clanleave with confirmation button)
+    if (command === 'clanleave') {
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
+      }
+
+      const clanName = user.clan;
+      const clanObj = db.clans[clanName];
+
+      if (clanObj.leader === userId && clanObj.members.length > 1) {
+        return message.reply(toSmallCaps('❌ As the clan leader, you must transfer leadership or disband the clan before leaving!'));
+      }
+
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('confirm_leave').setLabel(toSmallCaps('Confirm Leave')).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('cancel_leave').setLabel(toSmallCaps('Cancel')).setStyle(ButtonStyle.Secondary)
+      );
+
+      const leaveMsg = await message.reply({
+        content: toSmallCaps(`⚠️ Are you sure you want to leave your clan **${clanName}**?`),
+        components: [confirmRow]
+      });
+
+      const leaveCollector = leaveMsg.createMessageComponentCollector({ time: 15000 });
+      leaveCollector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your confirmation!'), ephemeral: true });
+
+        if (i.customId === 'confirm_leave') {
+          leaveCollector.stop();
+          const targetClan = db.clans[clanName];
+          if (targetClan) {
+            targetClan.members = targetClan.members.filter(id => id !== userId);
+            if (targetClan.members.length === 0) {
+              delete db.clans[clanName];
+            }
+          }
+          user.clan = null;
+          await saveUsers();
+          return leaveMsg.edit({ content: toSmallCaps(`✅ Successfully left the clan **${clanName}**.`), components: [] }).catch(() => {});
+        } else {
+          leaveCollector.stop();
+          return leaveMsg.edit({ content: toSmallCaps(`❌ Clan leave request cancelled.`), components: [] }).catch(() => {});
+        }
+      });
+      return;
+    }
+
+    // CLAN RENAME COMMAND (+clanrename with 1 hour cooldown)
+    if (command === 'clanrename') {
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
+      }
+
+      const clanObj = db.clans[user.clan];
+      if (clanObj.leader !== userId) {
+        return message.reply(toSmallCaps('❌ Only the clan leader can rename the clan!'));
+      }
+
+      const now = Date.now();
+      const cooldownTime = 60 * 60 * 1000; // 1 hour
+      if (clanObj.lastRenamed && now - clanObj.lastRenamed < cooldownTime) {
+        const remainingMins = Math.ceil((cooldownTime - (now - clanObj.lastRenamed)) / 60000);
+        return message.reply(toSmallCaps(`⏳ You must wait ${remainingMins} more minutes before renaming your clan again!`));
+      }
+
+      const newName = args[0]?.replace(/\*/g, '');
+      const newLogo = args[1];
+
+      if (!newName || !newLogo) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}clanrename [NewClanName] [NewTinyURL_Logo]`));
+      }
+      if (db.clans[newName]) {
+        return message.reply(toSmallCaps('❌ A clan with this name already exists!'));
+      }
+
+      const oldName = user.clan;
+      db.clans[newName] = { ...clanObj, name: newName, logo: newLogo, lastRenamed: now };
+      delete db.clans[oldName];
+
+      // Update members clan reference
+      for (const mId of db.clans[newName].members) {
+        if (db.users[mId]) {
+          db.users[mId].clan = newName;
+        }
+      }
+
+      await saveUsers();
+      return message.reply(toSmallCaps(`✅ Successfully renamed your clan from **${oldName}** to **${newName}** with updated logo!`));
+    }
+
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
       const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
       const cleanClanName = clan.name.replace(/\*/g, '');
+      const clanLogo = clan.logo || '🔰';
 
       const memberLines = await Promise.all(
         clan.members.map(async (mId, idx) => {
@@ -1700,7 +1938,7 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# 🔰 Clan Information: ${cleanClanName}\n` +
+              `# ${clanLogo} Clan Information: ${cleanClanName}\n` +
               `Leader: ${leaderName}\n` +
               `Total Points: ${totalPoints.toLocaleString()}\n\n` +
               `Members:\n`
@@ -1710,7 +1948,30 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // ROBUST 2-PLAYER TRADE SYSTEM
+    // TRADE HISTORY COMMAND (+th / +tradehistory)
+    if (command === 'tradehistory') {
+      if (!db.tradeHistories[userId] || db.tradeHistories[userId].length === 0) {
+        return message.reply(toSmallCaps('📜 You have no recorded trade history yet.'));
+      }
+
+      const logs = db.tradeHistories[userId].slice(-10).reverse(); // Last 10 trades
+      const historyLines = await Promise.all(logs.map(async (entry, index) => {
+        const partnerName = await getDisplayName(entry.partnerId);
+        const dateStr = new Date(entry.timestamp).toLocaleString();
+        return toSmallCaps(`**${index + 1}.** Partner: **${partnerName}**\n   Date: ${dateStr}`);
+      }));
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(`# 📜 Your Recent Trade History\n\n`) + historyLines.join('\n\n')
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ROBUST 2-PLAYER TRADE SYSTEM WITH HISTORY LOGGING
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) {
@@ -1905,6 +2166,13 @@ client.on('messageCreate', async message => {
                 }
               }
 
+              // Record Trade History for both players
+              if (!db.tradeHistories[userId]) db.tradeHistories[userId] = [];
+              if (!db.tradeHistories[target.id]) db.tradeHistories[target.id] = [];
+              const tradeTimestamp = Date.now();
+              db.tradeHistories[userId].push({ partnerId: target.id, timestamp: tradeTimestamp });
+              db.tradeHistories[target.id].push({ partnerId: userId, timestamp: tradeTimestamp });
+
               updateUserRank(u1);
               updateUserRank(u2);
               await saveUsers();
@@ -1949,6 +2217,94 @@ client.on('messageCreate', async message => {
       user.permissions = true;
       await saveUsers();
       return message.reply(toSmallCaps(`🛡️ Admin override successful! You are now set as the Bot Owner & Admin, and this server (${message.guild ? message.guild.name : 'DM'}) is locked as the Main Server.`));
+    }
+
+    // NEW OWNER COMMAND LIST (+ownercl)
+    if (command === 'ownercl') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can view the owner command list!'));
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 👑 Owner Command List\n\n` +
+              `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
+              `• ${currentPrefix}owneradminpermsrem — Remove all admin permissions from users\n` +
+              `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server\n` +
+              `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
+              `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
+              `• ${currentPrefix}admingivepermission [@user] — Grant admin rights\n` +
+              `• ${currentPrefix}removeadminperms [@user] — Remove specific admin rights\n` +
+              `• ${currentPrefix}adminsetclanrewards [1|2|3] [qty] [rarity] [chibia_name] [emoji] — Set clan rewards`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // EXCLUSIVE OWNER SECRET PANEL COMMAND
+    if (command === 'ownersecretpanel') {
+      if (!isOwner()) {
+        return; // Silent ignore or rejection so non-owners don't even know it exists
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🕵️‍♂️ Secret Owner Control Panel\n\n` +
+              `Welcome, Supreme Master. Here are your hidden master controls:\n` +
+              `• Total Registered Users: ${Object.keys(db.users).length}\n` +
+              `• Total Active Clans: ${Object.keys(db.clans).length}\n` +
+              `• Connected Guilds: ${client.guilds.cache.size}\n\n` +
+              `Use your designated admin/owner commands safely.`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, ephemeral: true });
+    }
+
+    // ADMIN COMMAND TO SET CLAN REWARDS (Owner only)
+    if (command === 'adminsetclanrewards') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can configure clan rewards!'));
+      }
+      const rankPos = parseInt(args[0]);
+      const qty = parseInt(args[1]);
+      const rarity = args[2]?.toUpperCase();
+      const chibiName = args[3];
+      const emoji = args[4];
+
+      if (![1, 2, 3].includes(rankPos) || isNaN(qty) || !rarity || !chibiName || !emoji) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetclanrewards [1|2|3] [qty] [rarity] [Name] [Emoji]\nExample: ${currentPrefix}adminsetclanrewards 1 5 UTR GodlyChibi 🌟`));
+      }
+
+      if (!db.config.clanRewards) db.config.clanRewards = {};
+      db.config.clanRewards[rankPos] = { qty, rarity, chibiName, chibiEmoji: emoji };
+      await saveUsers();
+
+      return message.reply(toSmallCaps(`✅ Successfully updated Rank ${rankPos} clan reward to ${qty}x ${rarity} (${chibiName} ${emoji})!`));
+    }
+
+    // REMOVE ALL ADMIN PERMISSIONS COMMAND (+owneradminpermsrem)
+    if (command === 'owneradminpermsrem') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can execute this command!'));
+      }
+
+      let count = 0;
+      for (const uId of Object.keys(db.users)) {
+        if (db.users[uId].permissions === true && uId !== db.config.ownerId) {
+          db.users[uId].permissions = false;
+          count++;
+        }
+      }
+      await saveUsers();
+      return message.reply(toSmallCaps(`🛡️ Successfully removed admin permissions from all ${count} authorized users.`));
     }
 
     if (command === 'prefixchange') {
