@@ -475,6 +475,30 @@ client.on('messageCreate', async message => {
 
     // +help
     if (command === 'help') {
+      const helpText =
+        '**🎲 Rolling, Drops & Games**\n' +
+        `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) - Roll Chibis\n` +
+        `\`${currentPrefix}drop\` (${currentPrefix}d) - Claim free dice every 10s\n` +
+        `\`${currentPrefix}slot [bet]\` - Play the Emoji Slot Machine 🎰\n` +
+        `\`${currentPrefix}shop\` - Buy Spray & Clover boosts\n\n` +
+        '**🎁 Rewards & Economy**\n' +
+        `\`${currentPrefix}daily\` - Claim daily streak rewards (Scales up to x5 🎲)\n` +
+        `\`${currentPrefix}points\` - Check points & rank icon badge\n` +
+        `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` - View rank icons & leaderboards\n\n` +
+        '**⚔️ RPG & Battling**\n' +
+        `\`${currentPrefix}cstats\` - Inspect your full 3-Slot Team card\n` +
+        `\`${currentPrefix}equipteam [chibi_id] [slot]\` - Manage team (1-3)\n` +
+        `\`${currentPrefix}battle [@user]\` - 3v3 Arena Clash with tiered points\n\n` +
+        '**🎒 Inventory & Profile**\n' +
+        `\`${currentPrefix}inventory\` (${currentPrefix}inv), \`${currentPrefix}collections\` (${currentPrefix}col)\n` +
+        `\`${currentPrefix}profile\` (${currentPrefix}p), \`${currentPrefix}status\` - Bot info & ping\n` +
+        `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] - Interactive 2-Player Trade\n\n` +
+        '**🏛️ Clans & Server Setup**\n' +
+        `\`${currentPrefix}clanlist\`, \`${currentPrefix}ccreateclan (Cost: 100 🎲)\`, \`${currentPrefix}cclanjoin\`, \`${currentPrefix}cclaninfo\`\n` +
+        `\`${currentPrefix}prefixchange [new_prefix]\` (Admin)\n` +
+        `\`${currentPrefix}enablec\` / \`${currentPrefix}disablec\` (Admin Channel Toggle)\n` +
+        `\`${currentPrefix}admincommands\` (${currentPrefix}ac) - View Admin List`;
+
       const container = new ContainerBuilder()
         .setAccentColor(0xff77aa)
         .addTextDisplayComponents(
@@ -482,29 +506,7 @@ client.on('messageCreate', async message => {
         )
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**🎲 Rolling, Drops & Games**\n\`${currentPrefix}roll [qty] [boost]\` (` + `${currentPrefix}r) - Roll Chibis\n` +
-            `\`${currentPrefix}drop\` (` + `${currentPrefix}d) - Claim free dice every 10s\n` +
-            `\`${currentPrefix}slot [bet]\` - Play the Emoji Slot Machine 🎰\n` +
-            `\`${currentPrefix}shop\` - Buy Spray & Clover boosts\n\n` +
-            `**🎁 Rewards & Economy**\n` +
-            `\`${currentPrefix}daily\` - Claim daily streak rewards (Scales up to x5 🎲)\n` +
-            `\`${currentPrefix}points\` - Check points & rank icon badge\n` +
-            `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` - View rank icons & leaderboards\n\n` +
-            `**⚔️ RPG & Battling**\n` +
-            `\`${currentPrefix}cstats\` - Inspect your full 3-Slot Team card\n` +
-            `\`${currentPrefix}equipteam [chibi_id] [slot]\` - Manage team (1-3)\n` +
-            `\`${currentPrefix}battle [@user]\` - 3v3 Arena Clash with tiered points\n\n` +
-            `**🎒 Inventory & Profile**\n` +
-            `\`${currentPrefix}inventory\` (` + `${currentPrefix}inv`), \`${currentPrefix}collections\` (` + `${currentPrefix}col`)\n` +
-            `\`${currentPrefix}profile\` (` + `${currentPrefix}p`), \`${currentPrefix}status\` - Bot info & ping\n` +
-            `\`${currentPrefix}trade\` (` + `${currentPrefix}t`) [@user] - Interactive 2-Player Trade\n\n` +
-            `**🏛️ Clans & Server Setup**\n` +
-            `\`${currentPrefix}clanlist\`, \`${currentPrefix}ccreateclan (Cost: 100 🎲)\`, \`${currentPrefix}cclanjoin\`, \`${currentPrefix}cclaninfo\`\n` +
-            `\`${currentPrefix}prefixchange [new_prefix]\` (Admin)\n` +
-            `\`${currentPrefix}enablec\` / \`${currentPrefix}disablec\` (Admin Channel Toggle)\n` +
-            `\`${currentPrefix}admincommands\` (` + `${currentPrefix}ac`) - View Admin List`
-          )
+          new TextDisplayBuilder().setContent(helpText)
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
