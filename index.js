@@ -8,6 +8,8 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
   MessageFlags
 } = require('discord.js');
 const fs = require('fs');
@@ -948,7 +950,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard with Top 50 cap, season timer, compact box user footer, and no levels)
+    // +ranks (Paginated leaderboard with Top 50 cap, season timer, clean unboxed user footer, and no levels)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -995,8 +997,8 @@ client.on('messageCreate', async message => {
               `End Season: **${seasonTimerStr}**\n\n` +
               `**(Page ${page + 1}/${totalPages})**\n\n` +
               getRanksPage(page) +
-              `\n\n\`-----------------------------------\`\n` +
-              `👤 \`Your Rank: #${userRankPos}\` | Rank: ${userRankIcon} | \`Points: ${userPointsDisplay.toLocaleString()}\``
+              `\n\n-----------------------------------\n` +
+              `👤 Your Rank: #${userRankPos} | Rank: ${userRankIcon} | Points: ${userPointsDisplay.toLocaleString()}`
             )
           );
       };
@@ -1187,7 +1189,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile (Reworked with icon-only best roll/rank, odds display beside chibi, separated rank/points fields, and box framing without dividers or avatar button)
+    // +profile (Discord profile picture rendered in top-right via SectionBuilder + ThumbnailBuilder)
     if (command === 'profile') {
       updateUserRank(user);
 
@@ -1219,6 +1221,7 @@ client.on('messageCreate', async message => {
       }
 
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
+      const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 256 });
 
       // Calculate global leaderboard position
       const allSortedUsers = Object.entries(db.users)
@@ -1231,8 +1234,7 @@ client.on('messageCreate', async message => {
       const bestRollIconPart = user.bestChibi ? user.bestChibi : 'None';
       const bestRollOddsPart = user.bestRoll && user.bestRoll !== 'None' ? `\`(${user.bestRoll})\`` : '';
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
+      const profileSection = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# ${message.author.username}\n\n` +
@@ -1243,7 +1245,14 @@ client.on('messageCreate', async message => {
             `🌍 \`Rank ${leaderboardPos}\`\n` +
             `🔰 \`Clan: ${user.clan || 'None'}\``
           )
+        )
+        .setThumbnailAccessory(
+          new ThumbnailBuilder().setURL(avatarUrl)
         );
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addSectionComponents(profileSection);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
