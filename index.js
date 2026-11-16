@@ -144,7 +144,7 @@ const SHINY_ICON = '<:shiny:1571311476239630517>';
 const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
 
-// Small Caps Font Converter helper that safely preserves custom Discord emojis (<:name:id>)
+// Small Caps Font Converter helper that safely preserves custom Discord emojis
 function toSmallCaps(str) {
   if (!str) return '';
   const map = {
@@ -156,11 +156,10 @@ function toSmallCaps(str) {
     U: 'ᴜ', V: 'ᴠ', W: 'ᴡ', X: 'x', Y: 'ʏ', Z: 'ᴢ'
   };
 
-  // Split string by custom discord emojis so they remain untouched
   const parts = str.split(/(<a?:\w+:\d+>)/g);
   return parts.map(part => {
     if (part.startsWith('<') && part.endsWith('>')) {
-      return part; // Leave custom emoji strings completely unmodified
+      return part;
     }
     return part.split('').map(char => map[char] || char).join('');
   }).join('');
@@ -432,7 +431,6 @@ client.once('ready', async () => {
   updateStatus();
   setInterval(updateStatus, 60000);
 
-  // Background interval check for automatic season expiration & point/rank resets
   setInterval(async () => {
     const now = Date.now();
     if (db.config.seasonExpires && now >= db.config.seasonExpires) {
@@ -466,7 +464,6 @@ client.on('messageCreate', async message => {
   let command = args.shift().toLowerCase();
   const userId = message.author.id;
 
-  // Check if user is banned from using bot commands
   if (db.bannedUsers && db.bannedUsers[userId]) {
     const banInfo = db.bannedUsers[userId];
     if (banInfo.expires === 'permanent' || Date.now() < banInfo.expires) {
@@ -498,14 +495,12 @@ client.on('messageCreate', async message => {
     command = shortcuts[command];
   }
 
-  // Channel restriction check (+enablec / +disablec configuration)
   const restrictedChannels = db.channelRestrictions[guildId] || [];
   const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
 
-  // 6-Second Rate Limiting Check (Strict 6 seconds)
   const cooldownAmount = 6000;
   const nowTime = Date.now();
   if (!cooldowns.has(userId)) {
@@ -554,7 +549,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
     }
 
-    // +customnn / +cnn (Max 12 characters, requires data / +start)
     if (command === 'customnn') {
       const newNickname = args.join(' ');
       if (!newNickname) {
@@ -569,7 +563,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully updated your custom nickname to ${newNickname}!`));
     }
 
-    // Helper to get display name
     const getDisplayName = async (uId) => {
       const uData = db.users[uId];
       if (uData && uData.customNickname) return uData.customNickname;
@@ -580,7 +573,6 @@ client.on('messageCreate', async message => {
       return 'Unknown User';
     };
 
-    // +seasons / +ss (Shows Active Season info and precise Season List with exact Begin Dates & Times)
     if (command === 'seasons') {
       const currentSeasonNum = db.config.seasonNumber || 1;
       const currentSeasonData = SEASON_LIST[currentSeasonNum] || { name: `Season ${currentSeasonNum}`, start: 'Active' };
@@ -607,7 +599,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +higheststats / +hss (Shows highest rank icon & points reached last season)
     if (command === 'higheststats') {
       updatePeakRank(user);
       const peakRank = user.highestSeasonRank || '<:unranked:1571314276071907519>';
@@ -620,8 +611,10 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 🏆 ${displayName}'s Highest Stats (Last Season)\n\n` +
-              `Highest Rank Icon: ${peakRank}\n` +
-              `Highest Points Reached: ${peakPoints.toLocaleString()} Points\n\n` +
+              `Highest Rank Icon: `
+            ) + `${peakRank}` +
+            toSmallCaps(
+              `\nHighest Points Reached: ${peakPoints.toLocaleString()} Points\n\n` +
               `*Stats snapshotted from previous competitive season.*`
             )
           )
@@ -629,39 +622,39 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +help
+    // CLEAN & POLISHED HELP CENTER
     if (command === 'help') {
       const helpText =
-        toSmallCaps('🎲 Rolling, Drops & Games\n') +
-        `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) - Roll Chibis\n` +
-        `\`${currentPrefix}drop\` (${currentPrefix}d) - Claim free dice every 10s\n` +
-        `\`${currentPrefix}slot [bet]\` - Play the Emoji Slot Machine 🎰\n` +
-        `\`${currentPrefix}shop\` - Buy Spray & Clover boosts\n\n` +
-        toSmallCaps('🎁 Rewards & Economy\n') +
-        `\`${currentPrefix}daily\` - Claim daily streak rewards (Scales up to x5 🎲)\n` +
-        `\`${currentPrefix}points\` - Check points & rank icon badge\n` +
-        `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` - View rank icons & leaderboards\n` +
-        `\`${currentPrefix}customnn\` (${currentPrefix}cnn) [nickname] - Set custom nickname (Max 12 chars)\n` +
-        `\`${currentPrefix}seasons\` (${currentPrefix}ss) - View season schedules & start times\n` +
-        `\`${currentPrefix}higheststats\` (${currentPrefix}hss) - View peak past season rank icon & points\n\n` +
-        toSmallCaps('⚔️ RPG & Battling\n') +
-        `\`${currentPrefix}cstats\` - Inspect your full 3-Slot Team card\n` +
-        `\`${currentPrefix}equipteam [chibi_id] [slot]\` - Manage team (1-3)\n` +
-        `\`${currentPrefix}battle [@user]\` - 3v3 Arena Clash with tiered points\n\n` +
-        toSmallCaps('🎒 Inventory & Profile\n') +
-        `\`${currentPrefix}inventory\` (${currentPrefix}inv), \`${currentPrefix}collections\` (${currentPrefix}col)\n` +
-        `\`${currentPrefix}profile\` (${currentPrefix}p), \`${currentPrefix}status\` - Bot info & ping\n` +
-        `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] - Interactive 2-Player Trade\n\n` +
-        toSmallCaps('🏛️ Clans & Server Setup\n') +
-        `\`${currentPrefix}clanlist\`, \`${currentPrefix}ccreateclan (Cost: 100 🎲)\`, \`${currentPrefix}cclanjoin\`, \`${currentPrefix}cclaninfo\`\n` +
-        `\`${currentPrefix}prefixchange [new_prefix]\` (Admin)\n` +
-        `\`${currentPrefix}enablec\` / \`${currentPrefix}disablec\` (Admin Channel Toggle)\n` +
-        `\`${currentPrefix}admincommands\` (${currentPrefix}ac) - View Admin List`;
+        toSmallCaps('🎲 **Rolling, Drops & Games**\n') +
+        `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) — Roll Chibis\n` +
+        `\`${currentPrefix}drop\` (${currentPrefix}d) — Claim free dice every 10s\n` +
+        `\`${currentPrefix}slot [bet]\` — Play Emoji Slot Machine 🎰\n` +
+        `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n\n` +
+        toSmallCaps('🎁 **Rewards & Economy**\n') +
+        `\`${currentPrefix}daily\` — Claim daily streak rewards (x5 🎲)\n` +
+        `\`${currentPrefix}points\` — Check points & rank badge\n` +
+        `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
+        `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
+        `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
+        `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n\n` +
+        toSmallCaps('⚔️ **RPG & Battling**\n') +
+        `\`${currentPrefix}cstats\` — Inspect team card\n` +
+        `\`${currentPrefix}equipteam [id] [slot]\` — Manage team (1-3)\n` +
+        `\`${currentPrefix}battle [@user]\` — 3v3 Arena Clash\n\n` +
+        toSmallCaps('🎒 **Inventory & Profile**\n') +
+        `\`${currentPrefix}inventory\` (${currentPrefix}inv) — Items bag\n` +
+        `\`${currentPrefix}collections\` (${currentPrefix}col) — Chibi binder\n` +
+        `\`${currentPrefix}profile\` (${currentPrefix}p) [@user] — User profile\n` +
+        `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] — 2-Player Trade\n\n` +
+        toSmallCaps('🏛️ **Clans & Server**\n`') +
+        `\`${currentPrefix}clanlist\` — View clans\n` +
+        `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\`\n` +
+        `\`${currentPrefix}prefixchange\` / \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\``;
 
       const container = new ContainerBuilder()
         .setAccentColor(0xff77aa)
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(toSmallCaps('# 🌸 Chibi RPG RNG - Help Center\nExplore the categories below to navigate your adventure:'))
+          new TextDisplayBuilder().setContent(toSmallCaps('# 🌸 Chibi RPG RNG — Help Center\nExplore the categories below:'))
         )
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
@@ -670,7 +663,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +status
     if (command === 'status') {
       const ping = client.ws.ping;
       const uptimeSec = Math.floor(client.uptime / 1000);
@@ -695,7 +687,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +slot
     if (command === 'slot') {
       const bet = parseInt(args[0]);
       if (isNaN(bet) || bet <= 0) {
@@ -785,7 +776,6 @@ client.on('messageCreate', async message => {
       return slotMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
 
-    // +daily
     if (command === 'daily') {
       const twentyFourHours = 24 * 60 * 60 * 1000;
       const fortyEightHours = 48 * 60 * 60 * 1000;
@@ -816,7 +806,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`🎁 Daily Reward Claimed!\n🔥 Streak: ${user.streak} Days\n🎲 Reward: +${rewardDice}x Dice (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`));
     }
 
-    // +roll
+    // ROLL COMMAND WITH WORKING SPRAY & CLOVER BOOST CONSUMPTION
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -826,11 +816,15 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`❌ You don't have enough dice! You need ${qty} 🎲, but you have ${user.dice} 🎲.`));
       }
 
+      if (!user.inventory.items) {
+        user.inventory.items = { spray: 0, clover: 0 };
+      }
+
       if (boost === 'spray') {
-        if (user.inventory.items.spray <= 0) return message.reply(toSmallCaps(`❌ No Spray uses left! Buy more in ${currentPrefix}shop.`));
+        if ((user.inventory.items.spray || 0) <= 0) return message.reply(toSmallCaps(`❌ No Spray uses left! Buy more in ${currentPrefix}shop.`));
         user.inventory.items.spray--;
       } else if (boost === 'clover') {
-        if (user.inventory.items.clover <= 0) return message.reply(toSmallCaps(`❌ No Clover uses left! Buy more in ${currentPrefix}shop.`));
+        if ((user.inventory.items.clover || 0) <= 0) return message.reply(toSmallCaps(`❌ No Clover uses left! Buy more in ${currentPrefix}shop.`));
         user.inventory.items.clover--;
       }
 
@@ -936,7 +930,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +drop
     if (command === 'drop') {
       const cooldownMs = gameData.settings.dropCooldownSeconds * 1000;
       if (currentMs - user.lastDrop < cooldownMs) {
@@ -963,89 +956,33 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`));
     }
 
-    // +inventory
+    // INVENTORY COMMAND: ITEMS ONLY (NO CHIBIS)
     if (command === 'inventory') {
-      if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
-        return message.reply(toSmallCaps(`🎒 Your chibi inventory is empty! Use ${currentPrefix}roll to summon chibis.`));
+      if (!user.inventory.items) {
+        user.inventory.items = { spray: 0, clover: 0 };
       }
+      const sprays = user.inventory.items.spray || 0;
+      const clovers = user.inventory.items.clover || 0;
+      const displayName = user.customNickname || message.author.username;
 
-      const grouped = {};
-      user.inventory.chibis.forEach(c => {
-        const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
-        const uniqueId = c.chibiId || c.id;
-        if (!grouped[key]) {
-          grouped[key] = {
-            rarity: c.rarity,
-            emoji: c.emoji || '✨',
-            name: c.name,
-            isShiny: c.isShiny,
-            count: 0,
-            firstId: uniqueId ? uniqueId.slice(-6) : 'unknown'
-          };
-        }
-        grouped[key].count++;
-      });
-
-      const entries = Object.values(grouped);
-      const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
-      entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
-
-      const itemsPerPage = 10;
-      let currentPage = 0;
-      const totalPages = Math.ceil(entries.length / itemsPerPage);
-
-      const getInventoryPage = (page) => {
-        const start = page * itemsPerPage;
-        const pageItems = entries.slice(start, start + itemsPerPage);
-        return pageItems
-          .map((e, idx) => `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
-          .join('\n') || toSmallCaps('Inventory page empty.');
-      };
-
-      const getInventoryRow = (page) => {
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('inv_prev').setLabel(toSmallCaps('◀ Previous')).setStyle(ButtonStyle.Primary).setDisabled(page === 0),
-          new ButtonBuilder().setCustomId('inv_next').setLabel(toSmallCaps('Next ▶')).setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
-        );
-      };
-
-      const renderInvContainer = (page) => {
-        const displayName = user.customNickname || message.author.username;
-        return new ContainerBuilder()
-          .setAccentColor(0x3498db)
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              toSmallCaps(
-                `# 🎒 ${displayName}'s Inventory (Page ${page + 1}/${totalPages})\n\n` +
-                `🎲 Dice: ${user.dice || 0} | 🧴 Spray: ${user.inventory.items?.spray || 0} | 🍀 Clover: ${user.inventory.items?.clover || 0}\n\n` +
-                `✨ Chibis:\n`
-              ) + getInventoryPage(page) +
-              toSmallCaps(`\n\n*Total Chibis Owned: ${user.inventory.chibis.length}*`)
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🎒 ${displayName}'s Inventory\n\n` +
+              `🎲 Dice: ${user.dice || 0}\n` +
+              `🧴 Spray Boosts: ${sprays} Uses\n` +
+              `🍀 Clover Boosts: ${clovers} Uses\n\n` +
+              `*Note: Chibis are stored in your collections (${currentPrefix}collections).*`
             )
-          );
-      };
+          )
+        );
 
-      const invMsg = await message.reply({
-        components: [renderInvContainer(currentPage), getInventoryRow(currentPage)],
-        flags: MessageFlags.IsComponentsV2
-      });
-
-      const invCollector = invMsg.createMessageComponentCollector({ time: 120000 });
-      invCollector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your inventory session!'), ephemeral: true });
-
-        if (i.customId === 'inv_prev' && currentPage > 0) currentPage--;
-        if (i.customId === 'inv_next' && currentPage < totalPages - 1) currentPage++;
-
-        await i.update({
-          components: [renderInvContainer(currentPage), getInventoryRow(currentPage)],
-          flags: MessageFlags.IsComponentsV2
-        });
-      });
-      return;
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +collections
+    // COLLECTIONS COMMAND: CHIBIS BINDER
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll to summon chibis.`));
@@ -1155,7 +1092,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +shop
+    // FIXED SHOP COMMAND WITH INTERACTION ACKNOWLEDGMENTS
     if (command === 'shop') {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
@@ -1174,29 +1111,37 @@ client.on('messageCreate', async message => {
         );
       const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
 
-      const collector = shopMsg.createMessageComponentCollector({ time: 30000 });
+      const collector = shopMsg.createMessageComponentCollector({ time: 60000 });
       collector.on('collect', async i => {
         if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
+        
+        if (!user.inventory.items) {
+          user.inventory.items = { spray: 0, clover: 0 };
+        }
+
         if (i.customId === 'buy_spray') {
-          if (user.dice < 5) return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+          if (user.dice < 5) {
+            return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+          }
           user.dice -= 5;
           user.inventory.items.spray += 30;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), components: [], flags: MessageFlags.IsComponentsV2 });
+          return i.reply({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), ephemeral: true });
         } else if (i.customId === 'buy_clover') {
-          if (user.dice < 15) return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+          if (user.dice < 15) {
+            return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+          }
           user.dice -= 15;
           user.inventory.items.clover += 50;
           updateUserRank(user);
           await saveUsers();
-          await i.update({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), components: [], flags: MessageFlags.IsComponentsV2 });
+          return i.reply({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), ephemeral: true });
         }
       });
       return;
     }
 
-    // +cstats
     if (command === 'cstats') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply(toSmallCaps('❌ You have no chibis in your inventory!'));
@@ -1246,16 +1191,15 @@ client.on('messageCreate', async message => {
     if (command === 'rank') {
       updateUserRank(user);
       await saveUsers();
-      return message.reply(toSmallCaps(`🏆 Your current rank icon: ${user.rank}`));
+      return message.reply(toSmallCaps(`🏆 Your current rank icon: `) + `${user.rank}`);
     }
     
     if (command === 'points') {
       updateUserRank(user);
       await saveUsers();
-      return message.reply(toSmallCaps(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`));
+      return message.reply(toSmallCaps(`💰 Your current points balance is: **${user.points}** (Rank: `) + `${user.rank}` + `)`);
     }
 
-    // +ranks
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -1338,7 +1282,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +equipteam
     if (command === 'equipteam') {
       const chibiIdArg = args[0];
       const slot = parseInt(args[1]);
@@ -1351,7 +1294,7 @@ client.on('messageCreate', async message => {
         return uId === chibiIdArg || uId.endsWith(chibiIdArg);
       });
 
-      if (!chibi) return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}inventory for correct IDs.`));
+      if (!chibi) return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}collections for correct IDs.`));
 
       const chibiUniqueId = chibi.chibiId || chibi.id;
       const wasEmpty = !user.team[slot - 1];
@@ -1369,7 +1312,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully equipped `) + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
     }
 
-    // +battle
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -1487,7 +1429,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +trivia
     if (command === 'trivia') {
       const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
       await message.reply(toSmallCaps(`🧩 Trivia Challenge:\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`));
@@ -1513,16 +1454,20 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile
+    // FIXED PROFILE COMMAND: SUPPORTS MENTIONS AND VIEWING OTHER USERS
     if (command === 'profile') {
-      updateUserRank(user);
+      const targetUserMention = message.mentions.users.first();
+      const targetUserId = targetUserMention ? targetUserMention.id : userId;
+      ensureUser(targetUserId);
+      const targetUserData = db.users[targetUserId];
+      updateUserRank(targetUserData);
 
-      if (user.inventory && user.inventory.chibis && user.inventory.chibis.length > 0) {
+      if (targetUserData.inventory && targetUserData.inventory.chibis && targetUserData.inventory.chibis.length > 0) {
         let highestChibi = null;
         let highestTier = 0;
         let highestVal = 0;
 
-        for (const c of user.inventory.chibis) {
+        for (const c of targetUserData.inventory.chibis) {
           const tier = RARITY_HIERARCHY[c.rarity] || 1;
           const template = gameData.chibis.find(t => t.name === c.name && t.rarity === c.rarity);
           const oddsStr = template ? (c.isShiny ? template.shinyOdds : template.odds) : '1 in 1';
@@ -1535,43 +1480,44 @@ client.on('messageCreate', async message => {
           }
         }
 
-        if (highestChibi && (highestTier > (user.bestRollTier || 0) || (highestTier === (user.bestRollTier || 0) && highestVal > (user.bestRollVal || 0)))) {
-          user.bestRollTier = highestTier;
-          user.bestRollVal = highestVal;
-          user.bestRoll = highestChibi.oddsStr;
-          user.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
+        if (highestChibi && (highestTier > (targetUserData.bestRollTier || 0) || (highestTier === (targetUserData.bestRollTier || 0) && highestVal > (targetUserData.bestRollVal || 0)))) {
+          targetUserData.bestRollTier = highestTier;
+          targetUserData.bestRollVal = highestVal;
+          targetUserData.bestRoll = highestChibi.oddsStr;
+          targetUserData.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
           await saveUsers();
         }
       }
 
-      const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
-      const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 256 });
+      const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
+      const targetMember = targetUserMention || message.author;
+      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
         .sort((a, b) => b.points - a.points);
-      const globalIndex = allSortedUsers.findIndex(u => u.uId === userId);
+      const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
 
-      const bestRollIconPart = user.bestChibi ? user.bestChibi : toSmallCaps('None');
-      const bestRollOddsPart = user.bestRoll && user.bestRoll !== 'None' ? `\`(${user.bestRoll})\`` : '';
-      const displayName = user.customNickname || message.author.username;
+      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : toSmallCaps('None');
+      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
+      const displayName = targetUserData.customNickname || targetMember.username;
 
       const profileSection = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# ${displayName}\n\n` +
-              `📊 Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\n`
+              `📊 Level ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n`
             ) +
             `🎲 ${bestRollIconPart} ${bestRollOddsPart}\n` +
             toSmallCaps(
               `⚜️ `
-            ) + `${user.rank}` +
+            ) + `${targetUserData.rank}` +
             toSmallCaps(
-              `\n🏆 ${user.points.toLocaleString()} Points\n` +
+              `\n🏆 ${targetUserData.points.toLocaleString()} Points\n` +
               `🌍 Rank ${leaderboardPos}\n` +
-              `🔰 Clan: ${user.clan || 'None'}`
+              `🔰 Clan: ${targetUserData.clan || 'None'}`
             )
           )
         )
@@ -1586,7 +1532,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +clanlist
     if (command === 'clanlist') {
       const clanNames = Object.keys(db.clans);
       if (clanNames.length === 0) {
@@ -1661,7 +1606,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +ccreateclan
     if (command === 'ccreateclan') {
       const clanName = args.join(' ').replace(/\*/g, '');
       if (!clanName) return message.reply(toSmallCaps(`❌ Please specify a clan name. Usage: ${currentPrefix}ccreateclan [ClanName]`));
@@ -1691,7 +1635,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully joined clan ${clanName}!`));
     }
 
-    // +cclaninfo
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -1725,7 +1668,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +trade
+    // FULLY FIXED TRADE COMMAND WITH EXTENDED TIMEOUTS & INTERACTION ACKNOWLEDGMENTS
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
@@ -1745,7 +1688,7 @@ client.on('messageCreate', async message => {
         components: [acceptRow]
       });
 
-      const reqCollector = reqMsg.createMessageComponentCollector({ time: 60000 });
+      const reqCollector = reqMsg.createMessageComponentCollector({ time: 120000 });
 
       reqCollector.on('collect', async i => {
         if (i.user.id !== target.id) return i.reply({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
@@ -1847,7 +1790,7 @@ client.on('messageCreate', async message => {
 
                 const collected = collectedMessages?.first();
                 if (!collected) {
-                  return si.followUp({ content: toSmallCaps('⏳ Dice offer timed out. Please try again.'), ephemeral: true });
+                  return typeInteraction.followUp({ content: toSmallCaps('⏳ Dice offer timed out. Please try again.'), ephemeral: true });
                 }
 
                 const amt = parseInt(collected.content);
@@ -1855,7 +1798,7 @@ client.on('messageCreate', async message => {
 
                 if (isNaN(amt) || amt <= 0 || activeUserObj.dice < amt) {
                   await collected.delete().catch(() => {});
-                  return si.followUp({ content: toSmallCaps(`❌ Invalid amount or insufficient dice! You have ${activeUserObj.dice} 🎲.`), ephemeral: true });
+                  return typeInteraction.followUp({ content: toSmallCaps(`❌ Invalid amount or insufficient dice! You have ${activeUserObj.dice} 🎲.`), ephemeral: true });
                 }
 
                 if (activeId === userId) {
@@ -1965,7 +1908,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // Strict Permission Helpers (Strict difference between Owner and Admins)
     const isOwner = () => {
       const ownerId = db.config.ownerId || userId;
       return userId === ownerId;
@@ -1978,7 +1920,6 @@ client.on('messageCreate', async message => {
       return false;
     };
 
-    // +prefixchange / +pc
     if (command === 'prefixchange') {
       if (!message.guild) return message.reply(toSmallCaps('❌ This command can only be used inside a server.'));
       if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -1996,7 +1937,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully updated server prefix to \`${newPrefix}\`! Use ${newPrefix}help for commands.`));
     }
 
-    // +enablec / +ec
     if (command === 'enablec') {
       if (!message.guild) return message.reply(toSmallCaps('❌ This command can only be used inside a server.'));
       if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -2012,7 +1952,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Chibi bot commands are now enabled in <#${message.channel.id}>.`));
     }
 
-    // +disablec / +dc
     if (command === 'disablec') {
       if (!message.guild) return message.reply(toSmallCaps('❌ This command can only be used inside a server.'));
       if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -2027,7 +1966,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ Chibi bot commands are now disabled in <#${message.channel.id}>.`));
     }
 
-    // +admincommands / +ac
     if (command === 'admincommands') {
       if (!isAdminOrOwner()) {
         return message.reply(toSmallCaps('❌ You do not have permission to view or use admin commands!'));
@@ -2060,13 +1998,11 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // Admin Commands Execution Block
     if (command.startsWith('admin')) {
       if (!isAdminOrOwner()) {
         return message.reply(toSmallCaps('❌ You do not have permission to use admin commands!'));
       }
 
-      // +adminsetlbseason (Set the LB season of the leaderboard)
       if (command === 'adminsetlbseason') {
         const seasonNum = parseInt(args[0]);
         if (isNaN(seasonNum) || seasonNum < 1) {
@@ -2077,7 +2013,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`🛡️ Leaderboard season successfully set to Season ${seasonNum}!`));
       }
 
-      // +adminresetrank (Fixes bug: targets only ranks & points without resetting leaderboard season)
       if (command === 'adminresetrank') {
         for (const uId of Object.keys(db.users)) {
           db.users[uId].points = 0;
@@ -2087,7 +2022,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('🛡️ Successfully reset all user ranks and points! Leaderboard season remains active.'));
       }
 
-      // +adminsetnn (Owner only, only if user has data in Chibi RNG)
       if (command === 'adminsetnn') {
         if (!isOwner()) {
           return message.reply(toSmallCaps('❌ Only the bot owner can use this command! Admins cannot use owner permissions.'));
@@ -2109,7 +2043,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`🛡️ Owner successfully set custom nickname for <@${target.id}> to ${newNN}!`));
       }
 
-      // +adminban (Ban user duration or permanent)
       if (command === 'adminban') {
         const target = message.mentions.users.first();
         const durationArg = args[1]?.toLowerCase();
@@ -2129,7 +2062,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`🛡️ Successfully banned <@${target.id}> from bot commands (${durationArg}).`));
       }
 
-      // +adminclearlb (Clear all names in leaderboard along with ranks & points - Owner only & risky)
       if (command === 'adminclearlb') {
         if (!isOwner()) {
           return message.reply(toSmallCaps('❌ Only the bot owner can clear the leaderboard! Admins cannot access owner commands.'));
@@ -2186,6 +2118,10 @@ client.on('messageCreate', async message => {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]`));
         }
         ensureUser(target.id);
+
+        if (!db.users[target.id].inventory.items) {
+          db.users[target.id].inventory.items = { spray: 0, clover: 0 };
+        }
 
         if (itemType === 'dice') db.users[target.id].dice += quantity;
         else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
@@ -2249,7 +2185,6 @@ client.on('messageCreate', async message => {
   }
 });
 
-// Initialize Database connection then start bot
 initDatabase().then(() => {
   client.login(process.env.DISCORD_TOKEN);
 });
