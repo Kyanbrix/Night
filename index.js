@@ -1309,7 +1309,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully equipped `) + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
     }
 
-    // BATTLE COMMAND WITH 5-SECOND CHALLENGE ACCEPTANCE TIMER & DYNAMIC ATK/DEF/HP TRACKING
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -1690,7 +1689,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // FULLY REWORKED TRADE COMMAND WITH 6S ACCEPTANCE TIMER & EXACT FORMATTING UI BOX
+    // FULLY WORKING TRADE COMMAND WITH 6-SECOND TIMER & EXACT UI FORMAT
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
@@ -1732,12 +1731,12 @@ client.on('messageCreate', async message => {
 
           const renderTradeUIBox = () => {
             const p1Display = p1OfferData 
-              ? (p1OfferType === 'chibi' ? `${rarityIconsMap[p1OfferData.rarity]} ${p1OfferData.emoji} **${p1OfferData.name}** ${p1OfferData.isShiny ? SHINY_ICON : ''} \`[${(p1OfferData.chibiId || p1OfferData.id).slice(-6)}]\`` : toSmallCaps(`**${p1OfferData}x 🎲 Dice**`))
-              : toSmallCaps('*No offer yet*');
+              ? (p1OfferType === 'chibi' ? `${rarityIconsMap[p1OfferData.rarity]} ${p1OfferData.emoji} **${p1OfferData.name}** ${p1OfferData.isShiny ? SHINY_ICON : ''} \`[${(p1OfferData.chibiId || p1OfferData.id).slice(-6)}]\`` : `**${p1OfferData}x 🎲 Dice**`)
+              : '*No offer yet*';
 
             const p2Display = p2OfferData 
-              ? (p2OfferType === 'chibi' ? `${rarityIconsMap[p2OfferData.rarity]} ${p2OfferData.emoji} **${p2OfferData.name}** ${p2OfferData.isShiny ? SHINY_ICON : ''} \`[${(p2OfferData.chibiId || p2OfferData.id).slice(-6)}]\`` : toSmallCaps(`**${p2OfferData}x 🎲 Dice**`))
-              : toSmallCaps('*No offer yet*');
+              ? (p2OfferType === 'chibi' ? `${rarityIconsMap[p2OfferData.rarity]} ${p2OfferData.emoji} **${p2OfferData.name}** ${p2OfferData.isShiny ? SHINY_ICON : ''} \`[${(p2OfferData.chibiId || p2OfferData.id).slice(-6)}]\`` : `**${p2OfferData}x 🎲 Dice**`)
+              : '*No offer yet*';
 
             return new ContainerBuilder()
               .setAccentColor(0xf1c40f)
@@ -1936,7 +1935,7 @@ client.on('messageCreate', async message => {
       return userId === ownerId;
     };
 
-    // STRICT MAIN-SERVER ONLY ADMIN CHECK
+    // STRICT MAIN-SERVER ONLY ADMIN CHECK FOR -ac & ALL ADMIN COMMANDS
     const checkAdminMainServer = (msg) => {
       if (!isOwner() && !user.permissions) return false;
       if (!db.config.mainGuildId) {
@@ -1946,13 +1945,6 @@ client.on('messageCreate', async message => {
         return false;
       }
       return true;
-    };
-
-    const isAdminOrOwner = () => {
-      const ownerId = db.config.ownerId || userId;
-      if (userId === ownerId || user.permissions) return true;
-      if (message.guild && message.member && message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
-      return false;
     };
 
     if (command === 'prefixchange') {
@@ -2025,12 +2017,26 @@ client.on('messageCreate', async message => {
               `• ${currentPrefix}adminsetpoints [@user] [points] - Set points\n` +
               `• ${currentPrefix}adminsetlevel [@user] [level] - Set level\n` +
               `• ${currentPrefix}admingivepermission [@user] - Grant admin rights (Owner only)\n` +
+              `• ${currentPrefix}removeadminperms [@user] - Remove admin rights (Owner only)\n` +
               `• ${currentPrefix}prefixchange [prefix] - Customize server prefix\n` +
               `• ${currentPrefix}enablec / ${currentPrefix}disablec - Control bot channel access`
             )
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // REMOVE ADMIN PERMISSIONS COMMAND (-removeadminperms)
+    if (command === 'removeadminperms') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can remove admin permissions!'));
+      }
+      const target = message.mentions.users.first();
+      if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}removeadminperms [@user]`));
+      ensureUser(target.id);
+      db.users[target.id].permissions = false;
+      await saveUsers();
+      return message.reply(toSmallCaps(`🛡️ Admin permissions successfully removed from <@${target.id}>.`));
     }
 
     if (command.startsWith('admin')) {
