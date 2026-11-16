@@ -416,6 +416,19 @@ client.once('ready', async () => {
   await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
   
+  // Auto-set the first server the bot is in as the main admin server if not already set
+  if (!db.config.mainGuildId && client.guilds.cache.size > 0) {
+    const firstGuild = client.guilds.cache.first();
+    db.config.mainGuildId = firstGuild.id;
+    let state = await GameState.findById('main_state');
+    if (state) {
+      state.config = db.config;
+      state.markModified('config');
+      await state.save();
+    }
+    console.log(`📌 Auto-assigned Main Server: ${firstGuild.name} (${firstGuild.id})`);
+  }
+
   const updateStatus = () => {
     const serverCount = client.guilds.cache.size;
     client.user.setActivity(toSmallCaps(`+help | Serving ${serverCount} servers`), { type: 0 });
@@ -442,6 +455,19 @@ client.once('ready', async () => {
       console.log(`Season timer expired! Automatically started Season ${db.config.seasonNumber} and archived user peak records.`);
     }
   }, 60000);
+});
+
+client.on('guildCreate', async guild => {
+  if (!db.config.mainGuildId) {
+    db.config.mainGuildId = guild.id;
+    let state = await GameState.findById('main_state');
+    if (state) {
+      state.config = db.config;
+      state.markModified('config');
+      await state.save();
+    }
+    console.log(`📌 Main/First Server registered: ${guild.name} (${guild.id})`);
+  }
 });
 
 client.on('messageCreate', async message => {
@@ -1685,7 +1711,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // INSTANT-ACK 2-PLAYER TRADE SYSTEM (GUARANTEED NO TIMEOUTS)
+    // ROBUST 2-PLAYER TRADE SYSTEM (DICE QTY + SIMULTANEOUS CHIBI OFFERINGS)
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) {
@@ -1720,7 +1746,6 @@ client.on('messageCreate', async message => {
         if (i.customId === 'trade_accept') {
           collector.stop();
 
-          // State tracking for both players (can hold dice AND chibi simultaneously)
           const p1Offer = { dice: 0, chibi: null };
           const p2Offer = { dice: 0, chibi: null };
 
