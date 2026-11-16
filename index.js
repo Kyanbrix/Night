@@ -590,7 +590,8 @@ client.on('messageCreate', async message => {
     th: 'tradehistory',
     tradehistory: 'tradehistory',
     ccr: 'ccranks',
-    ccranks: 'ccranks'
+    ccranks: 'ccranks',
+    rar: 'rarities'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
@@ -649,6 +650,38 @@ client.on('messageCreate', async message => {
 
     if (!user.started && command !== 'help' && command !== 'status') {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
+    }
+
+    // RARITIES COMMAND (+rarities / +rar)
+    if (command === 'rarities') {
+      const raritiesInfo =
+        `${rarityIconsMap['C'] || '📦'} **Common (C)**\n` +
+        `• Normal Drop Rate: 20% (~1 in 2)\n` +
+        `• Shiny Drop Rate: 1%\n\n` +
+        `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n` +
+        `• Normal Drop Rate: 12%\n` +
+        `• Shiny Drop Rate: 0.10%\n\n` +
+        `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n` +
+        `• Normal Drop Rate: 7%\n` +
+        `• Shiny Drop Rate: 0.5%\n\n` +
+        `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n` +
+        `• Normal Drop Rate: 1%\n` +
+        `• Shiny Drop Rate: 0.1%\n\n` +
+        `${rarityIconsMap['SRR'] || '📦'} **Super Rare Rare (SRR)**\n` +
+        `• Normal Drop Rate: 0.10%\n` +
+        `• Shiny Drop Rate: 0.0010%\n\n` +
+        `${rarityIconsMap['UTR'] || '📦'} **Ultra Rare (UTR)**\n` +
+        `• Normal Drop Rate: 0.001% (~1 in 40,101)\n` +
+        `• Shiny Drop Rate: 0.0001%`;
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps('# 📊 Chibi Rarities & Drop Rates\n\n') + raritiesInfo
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     if (command === 'customnn') {
@@ -730,7 +763,8 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) — Roll Chibis\n` +
         `\`${currentPrefix}drop\` (${currentPrefix}d) — Claim free dice every 10s\n` +
         `\`${currentPrefix}slot [bet]\` — Play Chibi Slot Machine 🎰\n` +
-        `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n\n` +
+        `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n` +
+        `\`${currentPrefix}rarities\` (${currentPrefix}rar) — View Chibi drop rates\n\n` +
         toSmallCaps('🎁 **Rewards & Economy**\n') +
         `\`${currentPrefix}daily\` — Claim daily streak rewards (x5 🎲)\n` +
         `\`${currentPrefix}points\` — Check points & rank badge\n` +
