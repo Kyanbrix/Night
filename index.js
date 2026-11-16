@@ -48,7 +48,7 @@ const GameStateSchema = new mongoose.Schema({
       globalXpMultiplier: 1.0,
       xpEventExpires: 0,
       seasonNumber: 1,
-      seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000) // Default 30 days
+      seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000)
     }
   }
 });
@@ -363,7 +363,7 @@ client.once('ready', async () => {
     const now = Date.now();
     if (db.config.seasonExpires && now >= db.config.seasonExpires) {
       db.config.seasonNumber = (db.config.seasonNumber || 1) + 1;
-      db.config.seasonExpires = now + (30 * 24 * 60 * 60 * 1000); // Reset for another 30 days
+      db.config.seasonExpires = now + (30 * 24 * 60 * 60 * 1000);
 
       for (const uId of Object.keys(db.users)) {
         db.users[uId].points = 0;
@@ -948,7 +948,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard with Season title, timer, and no levels)
+    // +ranks (Paginated leaderboard with Top 50 cap, season timer, user rank footer, and no levels)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -957,13 +957,19 @@ client.on('messageCreate', async message => {
         })
         .sort((a, b) => b.points - a.points);
 
-      const itemsPerPage = 10;
+      const itemsPerPage = 50;
       let currentPage = 0;
       const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
 
       const timeRemainingMs = Math.max(0, (db.config.seasonExpires || Date.now()) - Date.now());
       const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
       const seasonNum = db.config.seasonNumber || 1;
+
+      // Find user rank position globally
+      const userGlobalIndex = allSortedUsers.findIndex(u => u.uId === userId);
+      const userRankPos = userGlobalIndex !== -1 ? userGlobalIndex + 1 : 'Unranked';
+      const userPointsDisplay = user.points || 0;
+      const userRankIcon = user.rank || '<:unranked:1571314276071907519>';
 
       const getRanksPage = (page) => {
         const start = page * itemsPerPage;
@@ -988,7 +994,9 @@ client.on('messageCreate', async message => {
               `# 🏆 Chibi Global Leaderboard Season ${seasonNum}\n` +
               `End Season: **${seasonTimerStr}**\n\n` +
               `**(Page ${page + 1}/${totalPages})**\n\n` +
-              getRanksPage(page)
+              getRanksPage(page) +
+              `\n\n-----------------------------------\n` +
+              `👤 **Your Current Rank:** #${userRankPos} — Rank: ${userRankIcon} | Points: **${userPointsDisplay.toLocaleString()}**`
             )
           );
       };
@@ -1179,7 +1187,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // +profile (Auto-syncs collection highest rarity & restores User Avatar Thumbnail)
+    // +profile (Reworked with icon-only best roll/rank, separated rank/points fields, and box framing)
     if (command === 'profile') {
       updateUserRank(user);
 
@@ -1205,7 +1213,7 @@ client.on('messageCreate', async message => {
           user.bestRollTier = highestTier;
           user.bestRollVal = highestVal;
           user.bestRoll = highestChibi.oddsStr;
-          user.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.name} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
+          user.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
           await saveUsers();
         }
       }
@@ -1213,16 +1221,30 @@ client.on('messageCreate', async message => {
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
       const avatarUrl = message.author.displayAvatarURL();
 
+      // Calculate global leaderboard position
+      const allSortedUsers = Object.entries(db.users)
+        .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
+        .sort((a, b) => b.points - a.points);
+      const globalIndex = allSortedUsers.findIndex(u => u.uId === userId);
+      const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
+
+      // Format best roll icon display (only icons)
+      const bestRollDisplay = user.bestChibi ? user.bestChibi : 'None';
+
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# 📊 ${message.author.username}'s RPG Profile\n\n` +
-            `🖼️ [View Avatar](${avatarUrl})\n\n` +
-            `📊 **Level & EXP:** Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\n` +
-            `🎲 **Best Roll:** ${user.bestRoll} ${user.bestChibi ? user.bestChibi : 'None'}\n` +
-            `🏆 **Rank & Points:** Rank: ${user.rank} | Points: ${user.points}\n` +
-            `🔰 **Clan:** ${user.clan || 'None'}`
+            `# ${message.author.username}\n` +
+            `|----------------------------------|\n` +
+            `🖼️ [View Avatar](${avatarUrl})\n` +
+            `|----------------------------------|\n` +
+            `📊 \`Level ${user.userLevel} (${user.userExp}/${userMaxExp} EXP)\`\n` +
+            `🎲 ${bestRollDisplay}\n` +
+            `⚜️ ${user.rank}\n` +
+            `🏆 \`${user.points.toLocaleString()} Points\`\n` +
+            `🌍 \`Rank ${leaderboardPos}\`\n` +
+            `🔰 \`${user.clan || 'None'}\``
           )
         );
 
@@ -1622,7 +1644,6 @@ client.on('messageCreate', async message => {
         return message.reply(`🛡️ Admin permissions granted to <@${target.id}>.`);
       }
 
-      // +adminsetlevel
       if (command === 'adminsetlevel') {
         const target = message.mentions.users.first();
         const lvl = parseInt(args[1]);
@@ -1636,10 +1657,9 @@ client.on('messageCreate', async message => {
         return message.reply(`🛡️ Admin set user level for <@${target.id}> to **Level ${lvl}**.`);
       }
 
-      // +adminresetranks
       if (command === 'adminresetranks') {
         db.config.seasonNumber = (db.config.seasonNumber || 1) + 1;
-        db.config.seasonExpires = Date.now() + (30 * 24 * 60 * 60 * 1000); // Reset timer to 30 days
+        db.config.seasonExpires = Date.now() + (30 * 24 * 60 * 60 * 1000);
 
         for (const uId of Object.keys(db.users)) {
           db.users[uId].points = 0;
@@ -1649,7 +1669,6 @@ client.on('messageCreate', async message => {
         return message.reply(`🛡️ **Season Reset Successful!** All player points and ranks have been reset. Welcome to **Season ${db.config.seasonNumber}**! ⚔️`);
       }
 
-      // +adminsetlbtime
       if (command === 'adminsetlbtime') {
         const durationStr = args[0];
         const durationMs = parseDurationToMs(durationStr);
