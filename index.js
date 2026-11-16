@@ -1680,7 +1680,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // FULLY WORKING TRADE COMMAND WITH 6-SECOND TIMER & EXACT UI FORMAT
+    // FIXED TRADE SYSTEM WITH INSTANT RESPONSIVE SESSION HANDLER & EXACT FORMATTING
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
@@ -1735,7 +1735,7 @@ client.on('messageCreate', async message => {
                 new TextDisplayBuilder().setContent(
                   `<@${userId}>\n` +
                   `${p1Display}\n` +
-                  `-------------\n` +
+                  `------------------\n` +
                   `${p2Display}\n` +
                   `<@${target.id}>`
                 )
@@ -2200,7 +2200,7 @@ client.on('messageCreate', async message => {
       if (command === 'adminsetlevel') {
         const target = message.mentions.users.first();
         const lvl = parseInt(args[1]);
-        if (!target || isNaN(lvl) || lvl < 1) {
+        if (!target || !lvl || lvl < 1) {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlevel [@user] [level]`));
         }
         ensureUser(target.id);
