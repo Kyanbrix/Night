@@ -1722,29 +1722,22 @@ client.on('messageCreate', async message => {
 
           let p1Dice = 0;
           let p2Dice = 0;
-          let p1Chibi = null;
-          let p2Chibi = null;
 
-          const getDisplay = () => {
-            const p1Txt = p1Chibi ? `${rarityIconsMap[p1Chibi.rarity]} ${p1Chibi.emoji} **${p1Chibi.name}**` : (p1Dice > 0 ? `**${p1Dice} 🎲**` : '*Empty*');
-            const p2Txt = p2Chibi ? `${rarityIconsMap[p2Chibi.rarity]} ${p2Chibi.emoji} **${p2Chibi.name}**` : (p2Dice > 0 ? `**${p2Dice} 🎲**` : '*Empty*');
-            return new ContainerBuilder()
-              .setAccentColor(0xf1c40f)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  toSmallCaps(`🤝 **Trade Active**\n\n<@${userId}> Offers:\n${p1Txt}\n\n------------------\n\n<@${target.id}> Offers:\n${p2Txt}`)
-                )
-              );
+          const getEmbed = () => {
+            const p1Txt = p1Dice > 0 ? `**${p1Dice} 🎲**` : '*Empty*';
+            const p2Txt = p2Dice > 0 ? `**${p2Dice} 🎲**` : '*Empty*';
+            
+            return {
+              color: 0xf1c40f,
+              title: toSmallCaps('🤝 Active Trade Session'),
+              description: toSmallCaps(
+                `<@${userId}> Offers:\n${p1Txt}\n\n` +
+                `------------------\n\n` +
+                `<@${target.id}> Offers:\n${p2Txt}`
+              )
+            };
           };
 
-          const rows = [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('trade_cancel').setLabel(toSmallCaps('Cancel')).setStyle(ButtonStyle.Danger),
-              new ActionRowBuilder().components[0] // placeholder safety
-            )
-          ];
-
-          // Simplified single-click toggle offerings to avoid chat await bugs
           const tradeRows = [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId('trade_offer_dice').setLabel(toSmallCaps('Toggle +10 Dice 🎲')).setStyle(ButtonStyle.Primary),
@@ -1754,9 +1747,9 @@ client.on('messageCreate', async message => {
           ];
 
           await reqMsg.edit({
-            content: toSmallCaps(`🤝 Trade session open! Click to offer 10 dice or confirm:`),
-            components: [getDisplay(), ...tradeRows],
-            flags: MessageFlags.IsComponentsV2
+            content: '',
+            embeds: [getEmbed()],
+            components: tradeRows
           }).catch(() => {});
 
           const tradeCollector = reqMsg.createMessageComponentCollector({ time: 60000 });
@@ -1773,7 +1766,7 @@ client.on('messageCreate', async message => {
 
             if (ti.customId === 'trade_cancel') {
               tradeCollector.stop();
-              return reqMsg.edit({ content: toSmallCaps(`❌ Trade cancelled by <@${ti.user.id}>.`), components: [] }).catch(() => {});
+              return reqMsg.edit({ content: toSmallCaps(`❌ Trade cancelled by <@${ti.user.id}>.`), embeds: [], components: [] }).catch(() => {});
             }
 
             if (ti.customId === 'trade_offer_dice') {
@@ -1786,7 +1779,7 @@ client.on('messageCreate', async message => {
               } else {
                 p2Dice = p2Dice === 0 ? 10 : 0;
               }
-              return reqMsg.edit({ components: [getDisplay(), ...tradeRows], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+              return reqMsg.edit({ embeds: [getEmbed()], components: tradeRows }).catch(() => {});
             }
 
             if (ti.customId === 'trade_confirm') {
@@ -1805,7 +1798,7 @@ client.on('messageCreate', async message => {
               await saveUsers();
               tradeCollector.stop();
 
-              return reqMsg.edit({ content: toSmallCaps(`✅ Trade completed successfully between <@${userId}> and <@${target.id}>!`), components: [getDisplay()], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+              return reqMsg.edit({ content: toSmallCaps(`✅ Trade completed successfully between <@${userId}> and <@${target.id}>!`), embeds: [getEmbed()], components: [] }).catch(() => {});
             }
           });
         }
