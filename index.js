@@ -10,7 +10,8 @@ const {
   SeparatorBuilder,
   SectionBuilder,
   ThumbnailBuilder,
-  MessageFlags
+  MessageFlags,
+  PermissionsBitField
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -41,6 +42,8 @@ const GameStateSchema = new mongoose.Schema({
   _id: { type: String, default: 'main_state' },
   users: { type: Object, default: {} },
   clans: { type: Object, default: {} },
+  guildPrefixes: { type: Object, default: {} },
+  channelRestrictions: { type: Object, default: {} },
   config: {
     type: Object,
     default: {
@@ -60,6 +63,8 @@ const GameState = mongoose.model('GameState', GameStateSchema);
 let db = {
   users: {},
   clans: {},
+  guildPrefixes: {},
+  channelRestrictions: {},
   config: {
     ownerId: '',
     globalLuckMultiplier: 1.0,
@@ -82,10 +87,12 @@ async function initDatabase() {
 
     let state = await GameState.findById('main_state');
     if (!state) {
-      state = await GameState.create({ _id: 'main_state', users: {}, clans: {}, config: db.config });
+      state = await GameState.create({ _id: 'main_state', users: {}, clans: {}, guildPrefixes: {}, channelRestrictions: {}, config: db.config });
     }
     db.users = state.users || {};
     db.clans = state.clans || {};
+    db.guildPrefixes = state.guildPrefixes || {};
+    db.channelRestrictions = state.channelRestrictions || {};
     db.config = { ...db.config, ...(state.config || {}) };
   } catch (err) {
     console.error('Database connection error:', err);
@@ -101,9 +108,13 @@ async function saveUsers() {
     }
     state.users = db.users;
     state.clans = db.clans;
+    state.guildPrefixes = db.guildPrefixes;
+    state.channelRestrictions = db.channelRestrictions;
     state.config = db.config;
     state.markModified('users');
     state.markModified('clans');
+    state.markModified('guildPrefixes');
+    state.markModified('channelRestrictions');
     state.markModified('config');
     await state.save();
   } catch (err) {
@@ -247,106 +258,106 @@ function parseOddsNumber(oddsString) {
 }
 
 const TRIVIA_BANK = [
-  { q: 'What is the powerhouse of the cell? Answer starts with M___', a: 'mitochondria' },
-  { q: 'What programming language is this bot written in? J______', a: 'javascript' },
-  { q: 'Which planet is known as the Red Planet? M___', a: 'mars' },
-  { q: 'What is the chemical symbol for gold? A_', a: 'au' },
-  { q: 'Who painted the Mona Lisa? L______', a: 'da vinci' },
-  { q: 'What is the capital city of Japan? T____', a: 'tokyo' },
-  { q: 'How many continents are there on Earth? S____', a: 'seven' },
-  { q: 'What gas do plants absorb from the atmosphere? C______ d______', a: 'carbon dioxide' },
-  { q: 'What is the largest mammal in the world? B____ w____', a: 'blue whale' },
-  { q: 'In what year did the Titanic sink? 1___', a: '1912' },
-  { q: 'What is the hardest natural substance on Earth? D______', a: 'diamond' },
-  { q: 'Which element has the atomic number 1? H_______', a: 'hydrogen' },
-  { q: 'What is the freezing point of water in Celsius? _ degrees', a: '0' },
-  { q: 'What is the largest planet in our solar system? J______', a: 'jupiter' },
-  { q: 'What currency is used in Japan? Y___', a: 'yen' },
-  { q: 'Who wrote "Romeo and Juliet"? W______ S________', a: 'william shakespeare' },
-  { q: 'What is the fastest land animal? C______', a: 'cheetah' },
-  { q: 'Which ocean is the largest? P______ O____', a: 'pacific ocean' },
-  { q: 'What is the capital of France? P____', a: 'paris' },
-  { q: 'How many bones are in the adult human body? ___', a: '206' },
-  { q: 'What is the main ingredient in guacamole? A_______', a: 'avocado' },
-  { q: 'Which country is home to the kangaroo? A________', a: 'australia' },
-  { q: 'What does CPU stand for? C______ p______ u___', a: 'central processing unit' },
-  { q: 'What is the speed of light approximately in km/s? ~______', a: '300000' },
-  { q: 'Who discovered penicillin? A______ F______', a: 'alexander fleming' },
-  { q: 'What is the national sport of Canada? L______', a: 'lacrosse' },
-  { q: 'What is the capital of Italy? R___', a: 'rome' },
-  { q: 'Which instrument has 88 keys? P____', a: 'piano' },
-  { q: 'What is the smallest prime number? _', a: '2' },
-  { q: 'What company developed Minecraft? M_____', a: 'mojang' },
-  { q: 'What is the tallest mountain in the world? M____ E______', a: 'mount everest' },
-  { q: 'Which superhero is known as the Dark Knight? B_____-____', a: 'batman' },
-  { q: 'What is the main language spoken in Brazil? P__________', a: 'portuguese' },
-  { q: 'What is the boiling point of water in Fahrenheit? ___ degrees', a: '212' },
-  { q: 'What is the rarest blood type? __ negative', a: 'ab negative' },
-  { q: 'Who painted "The Starry Night"? V___ G___', a: 'van gogh' },
-  { q: 'What is the currency of the United Kingdom? P____', a: 'pound' },
-  { q: 'Which gas makes up the majority of Earths atmosphere? N_______', a: 'nitrogen' },
-  { q: 'What is the capital of Egypt? C___', a: 'cairo' },
-  { q: 'How many players are on a standard soccer team on the field? __', a: '11' },
-  { q: 'What is the chemical symbol for iron? F_', a: 'fe' },
-  { q: 'Which planet is closest to the sun? M_______', a: 'mercury' },
-  { q: 'What is the longest river in the world? N___ R____', a: 'nile river' },
-  { q: 'Who wrote the Harry Potter series? J_ K_ R______', a: 'j. k. rowling' },
-  { q: 'What is the capital of Australia? C________', a: 'canberra' },
-  { q: 'What is the square root of 144? __', a: '12' },
-  { q: 'Which country invented tea? C____', a: 'china' },
-  { q: 'What is the capital of Spain? M______', a: 'madrid' },
-  { q: 'What do bees collect and use to make honey? N______', a: 'nectar' },
-  { q: 'What is the smallest country in the world? V_____ C___', a: 'vatican city' },
-  { q: 'What year did World War II end? 1___', a: '1945' },
-  { q: 'Which element is diamond made of? C_____', a: 'carbon' },
-  { q: 'What is the capital of Germany? B______', a: 'berlin' },
-  { q: 'What is the chemical formula for water? H__O', a: 'h2o' },
-  { q: 'Who was the first person to walk on the moon? N___ A______', a: 'neil armstrong' },
-  { q: 'What is the capital of South Korea? S____', a: 'seoul' },
-  { q: 'Which continent is the Sahara Desert located in? A_____', a: 'africa' },
-  { q: 'What is the national flower of Japan? C________', a: 'cherry blossom' },
-  { q: 'What is the capital of Canada? O______', a: 'ottawa' },
-  { q: 'How many colors are in a rainbow? _', a: 'seven' },
-  { q: 'What is the capital of India? N__ D____', a: 'new delhi' },
-  { q: 'Which metal is liquid at room temperature? M______', a: 'mercury' },
-  { q: 'What is the capital of Russia? M______', a: 'moscow' },
-  { q: 'Who invented the telephone? A_____ G_____ B____', a: 'alexander graham bell' },
-  { q: 'What is the capital of Mexico? M______ C___', a: 'mexico city' },
-  { q: 'Which animal is known as the Ship of the Desert? C____', a: 'camel' },
-  { q: 'What is the capital of Argentina? B_____ A_____', a: 'buenos aires' },
-  { q: 'What is the largest state in the US by area? A_____', a: 'alaska' },
-  { q: 'What is the capital of Greece? A____', a: 'athens' },
-  { q: 'Which bird is universally recognized as a symbol of peace? D___', a: 'dove' },
-  { q: 'What is the capital of Thailand? B______', a: 'bangkok' },
-  { q: 'How many legs does a spider have? _', a: 'eight' },
-  { q: 'What is the capital of China? B______', a: 'beijing' },
-  { q: 'Which gas is most abundant in the sun? H_______', a: 'hydrogen' },
-  { q: 'What is the capital of Brazil? B________', a: 'brasilia' },
-  { q: 'What is the name of our galaxy? M____ W___', a: 'milky way' },
-  { q: 'What is the capital of Ireland? D______', a: 'dublin' },
-  { q: 'Who painted the Sistine Chapel ceiling? M_________', a: 'michelangelo' },
-  { q: 'What is the capital of Turkey? A____', a: 'ankara' },
-  { q: 'What is the primary color of a school bus? Y_____', a: 'yellow' },
-  { q: 'What is the capital of Sweden? S________', a: 'stockholm' },
-  { q: 'Which mammal can fly? B__', a: 'bat' },
-  { q: 'What is the capital of Norway? O___', a: 'oslo' },
-  { q: 'What is the tallest building in the world? B____ K______', a: 'burj khalifa' },
-  { q: 'What is the capital of Portugal? L_____', a: 'lisbon' },
-  { q: 'Which ocean is off the coast of California? P______', a: 'pacific' },
-  { q: 'What is the capital of Switzerland? B___', a: 'bern' },
-  { q: 'What is the main ingredient in bread? F____', a: 'flour' },
-  { q: 'What is the capital of New Zealand? W_________', a: 'wellington' },
-  { q: 'Which planet has the most moons? S______', a: 'saturn' },
-  { q: 'What is the capital of Poland? W______', a: 'warsaw' },
-  { q: 'How many days are in a leap year? ___', a: '366' },
-  { q: 'What is the capital of Denmark? C__________', a: 'copenhagen' },
-  { q: 'What is the chemical symbol for silver? A_', a: 'ag' },
-  { q: 'What is the capital of Finland? H_______', a: 'helsinki' },
-  { q: 'Which animal is known for changing its colors? C__________', a: 'chameleon' },
-  { q: 'What is the capital of Austria? V______', a: 'vienna' },
-  { q: 'What is the largest desert in the world? A__________ D_____', a: 'antarctic desert' },
-  { q: 'What is the capital of Belgium? B_______', a: 'brussels' },
-  { q: 'Who wrote "The Odyssey"? H____', a: 'homer' }
+  { q: 'What is the powerhouse of the cell? Answer starts with M___', a: ['mitochondria'] },
+  { q: 'What programming language is this bot written in? J______', a: ['javascript', 'js'] },
+  { q: 'Which planet is known as the Red Planet? M___', a: ['mars'] },
+  { q: 'What is the chemical symbol for gold? A_', a: ['au'] },
+  { q: 'Who painted the Mona Lisa? L______', a: ['da vinci', 'leonardo da vinci'] },
+  { q: 'What is the capital city of Japan? T____', a: ['tokyo'] },
+  { q: 'How many continents are there on Earth? S____ / Number', a: ['seven', '7'] },
+  { q: 'What gas do plants absorb from the atmosphere? C______ d______', a: ['carbon dioxide'] },
+  { q: 'What is the largest mammal in the world? B____ w____', a: ['blue whale'] },
+  { q: 'In what year did the Titanic sink? 1___', a: ['1912'] },
+  { q: 'What is the hardest natural substance on Earth? D______', a: ['diamond'] },
+  { q: 'Which element has the atomic number 1? H_______', a: ['hydrogen'] },
+  { q: 'What is the freezing point of water in Celsius? _ degrees', a: ['0', 'zero'] },
+  { q: 'What is the largest planet in our solar system? J______', a: ['jupiter'] },
+  { q: 'What currency is used in Japan? Y___', a: ['yen'] },
+  { q: 'Who wrote "Romeo and Juliet"? W______ S________', a: ['william shakespeare', 'shakespeare'] },
+  { q: 'What is the fastest land animal? C______', a: ['cheetah'] },
+  { q: 'Which ocean is the largest? P______ O____', a: ['pacific ocean', 'pacific'] },
+  { q: 'What is the capital of France? P____', a: ['paris'] },
+  { q: 'How many bones are in the adult human body? ___', a: ['206'] },
+  { q: 'What is the main ingredient in guacamole? A_______', a: ['avocado'] },
+  { q: 'Which country is home to the kangaroo? A________', a: ['australia'] },
+  { q: 'What does CPU stand for? C______ p______ u___', a: ['central processing unit'] },
+  { q: 'What is the speed of light approximately in km/s? ~______', a: ['300000', '300,000'] },
+  { q: 'Who discovered penicillin? A______ F______', a: ['alexander fleming'] },
+  { q: 'What is the national sport of Canada? L______', a: ['lacrosse', 'ice hockey'] },
+  { q: 'What is the capital of Italy? R___', a: ['rome'] },
+  { q: 'Which instrument has 88 keys? P____', a: ['piano'] },
+  { q: 'What is the smallest prime number? _', a: ['2', 'two'] },
+  { q: 'What company developed Minecraft? M_____', a: ['mojang'] },
+  { q: 'What is the tallest mountain in the world? M____ E______', a: ['mount everest', 'everest'] },
+  { q: 'Which superhero is known as the Dark Knight? B_____-____', a: ['batman'] },
+  { q: 'What is the main language spoken in Brazil? P__________', a: ['portuguese'] },
+  { q: 'What is the boiling point of water in Fahrenheit? ___ degrees', a: ['212'] },
+  { q: 'What is the rarest blood type? __ negative', a: ['ab negative', 'ab-'] },
+  { q: 'Who painted "The Starry Night"? V___ G___', a: ['van gogh', 'vincent van gogh'] },
+  { q: 'What is the currency of the United Kingdom? P____', a: ['pound', 'british pound', 'gbp'] },
+  { q: 'Which gas makes up the majority of Earths atmosphere? N_______', a: ['nitrogen'] },
+  { q: 'What is the capital of Egypt? C___', a: ['cairo'] },
+  { q: 'How many players are on a standard soccer team on the field? __', a: ['11', 'eleven'] },
+  { q: 'What is the chemical symbol for iron? F_', a: ['fe'] },
+  { q: 'Which planet is closest to the sun? M_______', a: ['mercury'] },
+  { q: 'What is the longest river in the world? N___ R____', a: ['nile river', 'nile'] },
+  { q: 'Who wrote the Harry Potter series? J_ K_ R______', a: ['j. k. rowling', 'jk rowling', 'j k rowling'] },
+  { q: 'What is the capital of Australia? C________', a: ['canberra'] },
+  { q: 'What is the square root of 144? __', a: ['12', 'twelve'] },
+  { q: 'Which country invented tea? C____', a: ['china'] },
+  { q: 'What is the capital of Spain? M______', a: ['madrid'] },
+  { q: 'What do bees collect and use to make honey? N______', a: ['nectar'] },
+  { q: 'What is the smallest country in the world? V_____ C___', a: ['vatican city', 'vatican'] },
+  { q: 'What year did World War II end? 1___', a: ['1945'] },
+  { q: 'Which element is diamond made of? C_____', a: ['carbon'] },
+  { q: 'What is the capital of Germany? B______', a: ['berlin'] },
+  { q: 'What is the chemical formula for water? H__O', a: ['h2o'] },
+  { q: 'Who was the first person to walk on the moon? N___ A______', a: ['neil armstrong'] },
+  { q: 'What is the capital of South Korea? S____', a: ['seoul'] },
+  { q: 'Which continent is the Sahara Desert located in? A_____', a: ['africa'] },
+  { q: 'What is the national flower of Japan? C________', a: ['cherry blossom', 'cherry blossoms'] },
+  { q: 'What is the capital of Canada? O______', a: ['ottawa'] },
+  { q: 'How many colors are in a rainbow? _', a: ['7', 'seven'] },
+  { q: 'What is the capital of India? N__ D____', a: ['new delhi'] },
+  { q: 'Which metal is liquid at room temperature? M______', a: ['mercury'] },
+  { q: 'What is the capital of Russia? M______', a: ['moscow'] },
+  { q: 'Who invented the telephone? A_____ G_____ B____', a: ['alexander graham bell'] },
+  { q: 'What is the capital of Mexico? M______ C___', a: ['mexico city'] },
+  { q: 'Which animal is known as the Ship of the Desert? C____', a: ['camel'] },
+  { q: 'What is the capital of Argentina? B_____ A_____', a: ['buenos aires'] },
+  { q: 'What is the largest state in the US by area? A_____', a: ['alaska'] },
+  { q: 'What is the capital of Greece? A____', a: ['athens'] },
+  { q: 'Which bird is universally recognized as a symbol of peace? D___', a: ['dove'] },
+  { q: 'What is the capital of Thailand? B______', a: ['bangkok'] },
+  { q: 'How many legs does a spider have? _', a: ['8', 'eight'] },
+  { q: 'What is the capital of China? B______', a: ['beijing'] },
+  { q: 'Which gas is most abundant in the sun? H_______', a: ['hydrogen'] },
+  { q: 'What is the capital of Brazil? B________', a: ['brasilia'] },
+  { q: 'What is the name of our galaxy? M____ W___', a: ['milky way'] },
+  { q: 'What is the capital of Ireland? D______', a: ['dublin'] },
+  { q: 'Who painted the Sistine Chapel ceiling? M_________', a: ['michelangelo'] },
+  { q: 'What is the capital of Turkey? A____', a: ['ankara'] },
+  { q: 'What is the primary color of a school bus? Y_____', a: ['yellow'] },
+  { q: 'What is the capital of Sweden? S________', a: ['stockholm'] },
+  { q: 'Which mammal can fly? B__', a: ['bat'] },
+  { q: 'What is the capital of Norway? O___', a: ['oslo'] },
+  { q: 'What is the tallest building in the world? B____ K______', a: ['burj khalifa'] },
+  { q: 'What is the capital of Portugal? L_____', a: ['lisbon'] },
+  { q: 'Which ocean is off the coast of California? P______', a: ['pacific', 'pacific ocean'] },
+  { q: 'What is the capital of Switzerland? B___', a: ['bern'] },
+  { q: 'What is the main ingredient in bread? F____', a: ['flour'] },
+  { q: 'What is the capital of New Zealand? W_________', a: ['wellington'] },
+  { q: 'Which planet has the most moons? S______', a: ['saturn'] },
+  { q: 'What is the capital of Poland? W______', a: ['warsaw'] },
+  { q: 'How many days are in a leap year? ___', a: ['366'] },
+  { q: 'What is the capital of Denmark? C__________', a: ['copenhagen'] },
+  { q: 'What is the chemical symbol for silver? A_', a: ['ag'] },
+  { q: 'What is the capital of Finland? H_______', a: ['helsinki'] },
+  { q: 'Which animal is known for changing its colors? C__________', a: ['chameleon'] },
+  { q: 'What is the capital of Austria? V______', a: ['vienna'] },
+  { q: 'What is the largest desert in the world? A__________ D_____', a: ['antarctic desert'] },
+  { q: 'What is the capital of Belgium? B_______', a: ['brussels'] },
+  { q: 'Who wrote "The Odyssey"? H____', a: ['homer'] }
 ];
 
 client.once('ready', async () => {
@@ -378,9 +389,14 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async message => {
-  if (message.author.bot || !message.content.startsWith('+')) return;
+  if (message.author.bot) return;
 
-  const args = message.content.slice(1).trim().split(/ +/);
+  const guildId = message.guild ? message.guild.id : 'DM';
+  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
+
+  if (!message.content.startsWith(currentPrefix)) return;
+
+  const args = message.content.slice(currentPrefix.length).trim().split(/ +/);
   let command = args.shift().toLowerCase();
   const userId = message.author.id;
 
@@ -391,10 +407,22 @@ client.on('messageCreate', async message => {
     inv: 'inventory',
     col: 'collections',
     d: 'drop',
-    t: 'trade'
+    t: 'trade',
+    slot: 'slot',
+    pc: 'prefixchange',
+    ec: 'enablec',
+    dc: 'disablec',
+    ac: 'admincommands'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
+  }
+
+  // Channel restriction check (+enablec / +disablec configuration)
+  const restrictedChannels = db.channelRestrictions[guildId] || [];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status'];
+  if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
+    return; // Commands are disabled in this channel
   }
 
   // 5-Second Rate Limiting Check
@@ -408,7 +436,7 @@ client.on('messageCreate', async message => {
     const expirationTime = timestamps.get(command) + cooldownAmount;
     if (nowTime < expirationTime) {
       const timeLeft = (expirationTime - nowTime) / 1000;
-      return message.reply(`⏳ Please wait **${timeLeft.toFixed(1)} more seconds** before using \`+${command}\` again.`);
+      return message.reply(`⏳ Please wait **${timeLeft.toFixed(1)} more seconds** before using \`${currentPrefix}${command}\` again.`);
     }
   }
   timestamps.set(command, nowTime);
@@ -442,7 +470,7 @@ client.on('messageCreate', async message => {
     }
 
     if (!user.started && command !== 'help' && command !== 'status') {
-      return message.reply('❌ You must type `+start` before using any bot commands!');
+      return message.reply(`❌ You must type \`${currentPrefix}start\` before using any bot commands!`);
     }
 
     // +help
@@ -455,11 +483,27 @@ client.on('messageCreate', async message => {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            '**🎲 Rolling & Drops**\n`+roll [qty] [boost]` (`+r`) - Roll Chibis\n`+drop` (`+d`) - Claim free dice every 10s\n`+shop` - Buy Spray & Clover boosts\n\n' +
-            '**🎁 Rewards & Economy**\n`+daily` - Claim daily streak rewards (Scales up to x5 🎲)\n`+points` - Check points & rank icon badge\n`+rank` / `+ranks` - View rank icons & leaderboards\n\n' +
-            '**⚔️ RPG & Battling**\n`+cstats` - Inspect your full 3-Slot Team card\n`+equipteam [chibi_id] [slot]` - Manage team (1-3)\n`+battle [@user]` - 3v3 Arena Clash with tiered points\n\n' +
-            '**🎒 Inventory & Profile**\n`+inventory` (`+inv`), `+collections` (`+col`)\n`+profile` (`+p`), `+status` - Bot info & ping\n`+trade` (`+t`) [@user] - Interactive 2-Player Trade\n\n' +
-            '**🏛️ Clans & Fun**\n`+clanlist`, `+ccreateclan (Cost: 100 🎲)`, `+cclanjoin`, `+cclaninfo`\n`+meme`, `+trivia`'
+            `**🎲 Rolling, Drops & Games**\n\`${currentPrefix}roll [qty] [boost]\` (` + `${currentPrefix}r) - Roll Chibis\n` +
+            `\`${currentPrefix}drop\` (` + `${currentPrefix}d) - Claim free dice every 10s\n` +
+            `\`${currentPrefix}slot [bet]\` - Play the Emoji Slot Machine 🎰\n` +
+            `\`${currentPrefix}shop\` - Buy Spray & Clover boosts\n\n` +
+            `**🎁 Rewards & Economy**\n` +
+            `\`${currentPrefix}daily\` - Claim daily streak rewards (Scales up to x5 🎲)\n` +
+            `\`${currentPrefix}points\` - Check points & rank icon badge\n` +
+            `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` - View rank icons & leaderboards\n\n` +
+            `**⚔️ RPG & Battling**\n` +
+            `\`${currentPrefix}cstats\` - Inspect your full 3-Slot Team card\n` +
+            `\`${currentPrefix}equipteam [chibi_id] [slot]\` - Manage team (1-3)\n` +
+            `\`${currentPrefix}battle [@user]\` - 3v3 Arena Clash with tiered points\n\n` +
+            `**🎒 Inventory & Profile**\n` +
+            `\`${currentPrefix}inventory\` (` + `${currentPrefix}inv`), \`${currentPrefix}collections\` (` + `${currentPrefix}col`)\n` +
+            `\`${currentPrefix}profile\` (` + `${currentPrefix}p`), \`${currentPrefix}status\` - Bot info & ping\n` +
+            `\`${currentPrefix}trade\` (` + `${currentPrefix}t`) [@user] - Interactive 2-Player Trade\n\n` +
+            `**🏛️ Clans & Server Setup**\n` +
+            `\`${currentPrefix}clanlist\`, \`${currentPrefix}ccreateclan (Cost: 100 🎲)\`, \`${currentPrefix}cclanjoin\`, \`${currentPrefix}cclaninfo\`\n` +
+            `\`${currentPrefix}prefixchange [new_prefix]\` (Admin)\n` +
+            `\`${currentPrefix}enablec\` / \`${currentPrefix}disablec\` (Admin Channel Toggle)\n` +
+            `\`${currentPrefix}admincommands\` (` + `${currentPrefix}ac`) - View Admin List`
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -486,6 +530,96 @@ client.on('messageCreate', async message => {
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // +slot (Animated Slot Machine with Updated Rewards: 3 matches = 5-13 pts, 2 matches = 15 pts)
+    if (command === 'slot') {
+      const bet = parseInt(args[0]);
+      if (isNaN(bet) || bet <= 0) {
+        return message.reply(`❌ Usage: \`${currentPrefix}slot [bet_amount]\` (e.g. \`${currentPrefix}slot 5\`)`);
+      }
+      if (user.dice < bet) {
+        return message.reply(`❌ You don't have enough dice! You have ${user.dice} 🎲, but your bet is ${bet} 🎲.`);
+      }
+
+      user.dice -= bet;
+      await saveUsers();
+
+      const symbols = ['❤️', '🚀', '☠️', '💎', '🍀'];
+      const getRandomSymbol = () => symbols[Math.floor(Math.random() * symbols.length)];
+
+      const slotMsg = await message.reply({
+        content: `🎰 **Spinning the Slot Machine for ${bet} 🎲...**\n| 🔄 | 🔄 | 🔄 |`,
+      });
+
+      for (let step = 0; step < 3; step++) {
+        await new Promise(resolve => setTimeout(resolve, 600));
+        const s1 = getRandomSymbol();
+        const s2 = getRandomSymbol();
+        const s3 = getRandomSymbol();
+        await slotMsg.edit({
+          content: `🎰 **Spinning...**\n| ${s1} | ${s2} | ${s3} |`,
+        }).catch(() => {});
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const final1 = getRandomSymbol();
+      const final2 = getRandomSymbol();
+      const final3 = getRandomSymbol();
+
+      let payoutMultiplier = 0;
+      let pointsWon = 0;
+      let resultText = '';
+
+      if (final1 === final2 && final2 === final3) {
+        // 3 matches: 5-13 points reward + multipliers
+        pointsWon = Math.floor(Math.random() * 9) + 5;
+        if (final1 === '💎') {
+          payoutMultiplier = 15;
+          resultText = `💎 **JACKPOT! TRIPLE DIAMONDS! (+15x Dice, +${pointsWon} Points!)** 💎`;
+        } else if (final1 === '🚀') {
+          payoutMultiplier = 10;
+          resultText = `🚀 **SUPER WIN! TRIPLE ROCKETS! (+10x Dice, +${pointsWon} Points!)** 🚀`;
+        } else if (final1 === '❤️') {
+          payoutMultiplier = 8;
+          resultText = `❤️ **GREAT WIN! TRIPLE HEARTS! (+8x Dice, +${pointsWon} Points!)** ❤️`;
+        } else if (final1 === '🍀') {
+          payoutMultiplier = 5;
+          resultText = `🍀 **LUCKY WIN! TRIPLE CLOVERS! (+5x Dice, +${pointsWon} Points!)** 🍀`;
+        } else {
+          payoutMultiplier = 3;
+          resultText = `☠️ **TRIPLE SKULLS WIN! (+3x Dice, +${pointsWon} Points!)** ☠️`;
+        }
+      } else if (final1 === final2 || final2 === final3 || final1 === final3) {
+        // 2 matches: Fixed 15 points + 1.5x dice payout
+        payoutMultiplier = 1.5;
+        pointsWon = 15;
+        resultText = `✨ **Partial Match! (+1.5x Dice, +${pointsWon} Points!)** ✨`;
+      } else {
+        payoutMultiplier = 0;
+        pointsWon = 0;
+        resultText = '❌ **No match! Better luck next time!**';
+      }
+
+      const winnings = Math.round(bet * payoutMultiplier);
+      user.dice += winnings;
+      user.points += pointsWon;
+      updateUserRank(user);
+      await saveUsers();
+
+      const container = new ContainerBuilder()
+        .setAccentColor(payoutMultiplier > 0 ? 0xf1c40f : 0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🎰 Slot Machine Results\n\n` +
+            `| ${final1} | ${final2} | ${final3} |\n\n` +
+            `${resultText}\n` +
+            `💰 Dice Payout: **+${winnings} 🎲** | 🏆 Points Gained: **+${pointsWon} Pts**\n` +
+            `🎲 Total Dice: ${user.dice} | 🏆 Total Points: ${user.points}`
+          )
+        );
+
+      return slotMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
 
     // +daily
@@ -530,10 +664,10 @@ client.on('messageCreate', async message => {
       }
 
       if (boost === 'spray') {
-        if (user.inventory.items.spray <= 0) return message.reply('❌ No Spray uses left! Buy more in `+shop`.');
+        if (user.inventory.items.spray <= 0) return message.reply(`❌ No Spray uses left! Buy more in \`${currentPrefix}shop\`.`);
         user.inventory.items.spray--;
       } else if (boost === 'clover') {
-        if (user.inventory.items.clover <= 0) return message.reply('❌ No Clover uses left! Buy more in `+shop`.');
+        if (user.inventory.items.clover <= 0) return message.reply(`❌ No Clover uses left! Buy more in \`${currentPrefix}shop\`.`);
         user.inventory.items.clover--;
       }
 
@@ -669,7 +803,7 @@ client.on('messageCreate', async message => {
     // +inventory (Paginated with Next & Previous buttons)
     if (command === 'inventory') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
-        return message.reply('🎒 Your chibi inventory is empty! Use `+roll` to summon chibis.');
+        return message.reply(`🎒 Your chibi inventory is empty! Use \`${currentPrefix}roll\` to summon chibis.`);
       }
 
       const grouped = {};
@@ -748,7 +882,7 @@ client.on('messageCreate', async message => {
     // +collections (Paginated with Next & Previous buttons + Sort Toggle)
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
-        return message.reply('📖 Your collection is empty! Use `+roll` to summon chibis.');
+        return message.reply(`📖 Your collection is empty! Use \`${currentPrefix}roll\` to summon chibis.`);
       }
 
       let sortBy = 'rarity';
@@ -901,7 +1035,7 @@ client.on('messageCreate', async message => {
       const teamSlots = user.team || [null, null, null];
       const teamLines = teamSlots.map((chibiId, index) => {
         if (!chibiId) {
-          return `**[${index + 1}]** *Empty Slot* (Use \`+equipteam [id] ${index + 1}\`)`;
+          return `**[${index + 1}]** *Empty Slot* (Use \`${currentPrefix}equipteam [id] ${index + 1}\`)`;
         }
         const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiId);
         if (!chibi) {
@@ -931,7 +1065,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             `# 📜 ${message.author.username}'s Team Card\n\n` +
             teamLines.join('\n') +
-            '\n\n*Tip: Use +equipteam [id] [1-3] to assign chibis to your team slots!*'
+            `\n\n*Tip: Use ${currentPrefix}equipteam [id] [1-3] to assign chibis to your team slots!*`
           )
         );
 
@@ -950,7 +1084,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard with Top 10 per page, season timer, clean unboxed user footer, and no levels)
+    // +ranks (Paginated leaderboard with Top 10 per page, async fetched usernames, and unlinked plain text names)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -967,18 +1101,25 @@ client.on('messageCreate', async message => {
       const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
       const seasonNum = db.config.seasonNumber || 1;
 
-      // Find user rank position globally
       const userGlobalIndex = allSortedUsers.findIndex(u => u.uId === userId);
       const userRankPos = userGlobalIndex !== -1 ? userGlobalIndex + 1 : 'Unranked';
       const userPointsDisplay = user.points || 0;
       const userRankIcon = user.rank || '<:unranked:1571314276071907519>';
 
-      const getRanksPage = (page) => {
+      const buildRanksPageContent = async (page) => {
         const start = page * itemsPerPage;
         const pageUsers = allSortedUsers.slice(start, start + itemsPerPage);
-        return pageUsers
-          .map((u, idx) => `**${start + idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}**`)
-          .join('\n') || 'No players on the leaderboard yet.';
+
+        const lines = await Promise.all(pageUsers.map(async (u, idx) => {
+          let username = 'Unknown User';
+          try {
+            const fetchedUser = await client.users.fetch(u.uId);
+            if (fetchedUser) username = fetchedUser.username;
+          } catch {}
+          return `**${start + idx + 1}.** **${username}** — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}**`;
+        }));
+
+        return lines.join('\n') || 'No players on the leaderboard yet.';
       };
 
       const getRanksRow = (page) => {
@@ -988,7 +1129,8 @@ client.on('messageCreate', async message => {
         );
       };
 
-      const renderRanksContainer = (page) => {
+      const renderRanksContainer = async (page) => {
+        const pageBody = await buildRanksPageContent(page);
         return new ContainerBuilder()
           .setAccentColor(0xf1c40f)
           .addTextDisplayComponents(
@@ -996,15 +1138,16 @@ client.on('messageCreate', async message => {
               `# 🏆 Chibi Global Leaderboard Season ${seasonNum}\n` +
               `End Season: **${seasonTimerStr}**\n\n` +
               `**(Page ${page + 1}/${totalPages})**\n\n` +
-              getRanksPage(page) +
+              pageBody +
               `\n\n-----------------------------------\n` +
               `👤 Your Rank: #${userRankPos} | Rank: ${userRankIcon} | Points: ${userPointsDisplay.toLocaleString()}`
             )
           );
       };
 
+      const initialContainer = await renderRanksContainer(currentPage);
       const ranksMsg = await message.reply({
-        components: [renderRanksContainer(currentPage), getRanksRow(currentPage)],
+        components: [initialContainer, getRanksRow(currentPage)],
         flags: MessageFlags.IsComponentsV2
       });
 
@@ -1015,8 +1158,9 @@ client.on('messageCreate', async message => {
         if (i.customId === 'rank_prev' && currentPage > 0) currentPage--;
         if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
 
+        const updatedContainer = await renderRanksContainer(currentPage);
         await i.update({
-          components: [renderRanksContainer(currentPage), getRanksRow(currentPage)],
+          components: [updatedContainer, getRanksRow(currentPage)],
           flags: MessageFlags.IsComponentsV2
         });
       });
@@ -1028,7 +1172,7 @@ client.on('messageCreate', async message => {
       const chibiIdArg = args[0];
       const slot = parseInt(args[1]);
       if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
-        return message.reply('❌ Usage: `+equipteam [chibi_id or short id] [slot 1-3]`\nExample: `+equipteam a1b2c3 1`');
+        return message.reply(`❌ Usage: \`${currentPrefix}equipteam [chibi_id or short id] [slot 1-3]\`\nExample: \`${currentPrefix}equipteam a1b2c3 1\``);
       }
 
       const chibi = user.inventory.chibis.find(c => {
@@ -1036,7 +1180,7 @@ client.on('messageCreate', async message => {
         return uId === chibiIdArg || uId.endsWith(chibiIdArg);
       });
 
-      if (!chibi) return message.reply('❌ Chibi ID not found in your inventory! Check `+inventory` for correct IDs.');
+      if (!chibi) return message.reply(`❌ Chibi ID not found in your inventory! Check \`${currentPrefix}inventory\` for correct IDs.`);
 
       const chibiUniqueId = chibi.chibiId || chibi.id;
       const wasEmpty = !user.team[slot - 1];
@@ -1058,7 +1202,7 @@ client.on('messageCreate', async message => {
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
-        return message.reply('❌ Usage: `+battle [@user]` (You cannot battle yourself or a bot)');
+        return message.reply(`❌ Usage: \`${currentPrefix}battle [@user]\` (You cannot battle yourself or a bot)`);
       }
       ensureUser(opponent.id);
 
@@ -1167,7 +1311,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +trivia
+    // +trivia (Reworked rewards: 17-20 randomized points + 450 EXP buff & number-matching support)
     if (command === 'trivia') {
       const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
       await message.reply(`🧩 **Trivia Challenge:**\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`);
@@ -1176,20 +1320,24 @@ client.on('messageCreate', async message => {
       const collector = message.channel.createMessageCollector({ filter, time: 15000, max: 1 });
 
       collector.on('collect', async m => {
-        if (m.content.toLowerCase().includes(selected.a)) {
-          user.points += 50;
-          const awardedExp = addExpAndLevelUp(user, null, 100);
+        const userAnswer = m.content.toLowerCase().trim();
+        const isCorrect = selected.a.some(ans => userAnswer.includes(ans));
+
+        if (isCorrect) {
+          const awardedPoints = Math.floor(Math.random() * 4) + 17; // Randomized 17 to 20 points
+          user.points += awardedPoints;
+          const awardedExp = addExpAndLevelUp(user, null, 450); // Buffed to 450 EXP base
           updateUserRank(user);
           await saveUsers();
-          m.reply(`🎉 Correct! You earned **+50 Points** and **+${awardedExp} EXP**!`);
+          m.reply(`🎉 Correct! You earned **+${awardedPoints} Points** and **+${awardedExp} EXP**!`);
         } else {
-          m.reply(`❌ Incorrect! The correct answer was **${selected.a}**.`);
+          m.reply(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`);
         }
       });
       return;
     }
 
-    // +profile (Discord profile picture rendered in top-right via SectionBuilder + ThumbnailBuilder)
+    // +profile
     if (command === 'profile') {
       updateUserRank(user);
 
@@ -1223,14 +1371,12 @@ client.on('messageCreate', async message => {
       const userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
       const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 256 });
 
-      // Calculate global leaderboard position
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
         .sort((a, b) => b.points - a.points);
       const globalIndex = allSortedUsers.findIndex(u => u.uId === userId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
 
-      // Format best roll icon display with odds beside it
       const bestRollIconPart = user.bestChibi ? user.bestChibi : 'None';
       const bestRollOddsPart = user.bestRoll && user.bestRoll !== 'None' ? `\`(${user.bestRoll})\`` : '';
 
@@ -1257,21 +1403,88 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
+    // +clanlist (Revamped Format + Sort by Points or Member Count Buttons)
     if (command === 'clanlist') {
       const clanNames = Object.keys(db.clans);
-      const clanListText =
-        clanNames.map(c => `• **${c}** (Leader: <@${db.clans[c].leader}>, Members: ${db.clans[c].members.length})`).join('\n') ||
-        'No clans available.';
-      const container = new ContainerBuilder()
-        .setAccentColor(0x34495e)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏛️ Available Clans\n\n${clanListText}`));
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      if (clanNames.length === 0) {
+        return message.reply('🏛️ There are currently no clans available.');
+      }
+
+      let sortBy = 'points';
+
+      const getSortedClanEntries = async () => {
+        const entries = await Promise.all(clanNames.map(async name => {
+          const clan = db.clans[name];
+          let leaderName = 'Unknown Leader';
+          try {
+            const fetchedLeader = await client.users.fetch(clan.leader);
+            if (fetchedLeader) leaderName = fetchedLeader.username;
+          } catch {}
+
+          const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
+          const memberCount = clan.members.length;
+
+          return { name, leaderName, totalPoints, memberCount };
+        }));
+
+        if (sortBy === 'points') {
+          entries.sort((a, b) => b.totalPoints - a.totalPoints);
+        } else {
+          entries.sort((a, b) => b.memberCount - a.memberCount);
+        }
+        return entries;
+      };
+
+      const renderClanContainer = async () => {
+        const sortedEntries = await getSortedClanEntries();
+        const clanListText = sortedEntries.map((c, idx) => 
+          `**${idx + 1}.** **${c.name}** | Leader: **${c.leaderName}** | Points: 🏆 **${c.totalPoints.toLocaleString()}** | Members: 👥 **${c.memberCount}**`
+        ).join('\n');
+
+        return new ContainerBuilder()
+          .setAccentColor(0x34495e)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 🏛️ Available Clans\n\n` +
+              `Sorted by: **${sortBy === 'points' ? 'Total Points' : 'Member Count'}**\n\n` +
+              clanListText
+            )
+          );
+      };
+
+      const getClanRows = () => {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('sort_points').setLabel('Sort by Points 🏆').setStyle(sortBy === 'points' ? ButtonStyle.Success : ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId('sort_members').setLabel('Sort by Members 👥').setStyle(sortBy === 'members' ? ButtonStyle.Success : ButtonStyle.Secondary)
+        );
+      };
+
+      const initialContainer = await renderClanContainer();
+      const clanMsg = await message.reply({
+        components: [initialContainer, getClanRows()],
+        flags: MessageFlags.IsComponentsV2
+      });
+
+      const clanCollector = clanMsg.createMessageComponentCollector({ time: 120000 });
+      clanCollector.on('collect', async i => {
+        if (i.user.id !== userId) return i.reply({ content: 'Not your clan list session!', ephemeral: true });
+
+        if (i.customId === 'sort_points') sortBy = 'points';
+        if (i.customId === 'sort_members') sortBy = 'members';
+
+        const updatedContainer = await renderClanContainer();
+        await i.update({
+          components: [updatedContainer, getClanRows()],
+          flags: MessageFlags.IsComponentsV2
+        });
+      });
+      return;
     }
 
     // +ccreateclan (Requires 100 Dice fee)
     if (command === 'ccreateclan') {
       const clanName = args.join(' ');
-      if (!clanName) return message.reply('❌ Please specify a clan name. Usage: `+ccreateclan [ClanName]`');
+      if (!clanName) return message.reply(`❌ Please specify a clan name. Usage: \`${currentPrefix}ccreateclan [ClanName]\``);
       if (db.clans[clanName]) return message.reply('❌ A clan with this name already exists!');
 
       const clanCreationCost = 100;
@@ -1307,18 +1520,29 @@ client.on('messageCreate', async message => {
         clan.members.map(async (mId, idx) => {
           const mUser = db.users[mId];
           if (mUser) updateUserRank(mUser);
+          let mUsername = 'Unknown User';
+          try {
+            const fetched = await client.users.fetch(mId);
+            if (fetched) mUsername = fetched.username;
+          } catch {}
           const role = mId === clan.leader ? 'Leader' : mId === clan.viceLeader ? 'Vice-Leader' : 'Member';
-          return `${idx + 1}. <@${mId}> ${role} ${mUser?.rank || '<:unranked:1571314276071907519>'} ${mUser?.points || 0} ${mUser?.bestRoll || 'None'}`;
+          return `${idx + 1}. **${mUsername}** [${role}] ${mUser?.rank || '<:unranked:1571314276071907519>'} | Points: ${mUser?.points || 0}`;
         })
       );
+
+      let leaderName = 'Unknown Leader';
+      try {
+        const fetchedLeader = await client.users.fetch(clan.leader);
+        if (fetchedLeader) leaderName = fetchedLeader.username;
+      } catch {}
 
       const container = new ContainerBuilder()
         .setAccentColor(0x1abc9c)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# 🔰 Clan Information: ${clan.name}\n` +
-            `**Leader:** <@${clan.leader}>\n` +
-            `**Total Points:** ${totalPoints}\n\n` +
+            `**Leader:** ${leaderName}\n` +
+            `**Total Points:** ${totalPoints.toLocaleString()}\n\n` +
             `**Members:**\n${memberLines.join('\n')}`
           )
         );
@@ -1328,7 +1552,7 @@ client.on('messageCreate', async message => {
     // +trade
     if (command === 'trade') {
       const target = message.mentions.users.first();
-      if (!target || target.bot || target.id === userId) return message.reply('❌ Usage: `+trade [@user]`');
+      if (!target || target.bot || target.id === userId) return message.reply(`❌ Usage: \`${currentPrefix}trade [@user]\``);
       ensureUser(target.id);
 
       const targetUser = db.users[target.id];
@@ -1561,10 +1785,94 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // Admin Commands
-    if (command.startsWith('admin')) {
+    // Server Admin Helper for Checking Permissions
+    const isAdminOrOwner = () => {
       const ownerId = db.config.ownerId || userId;
-      if (userId !== ownerId && !user.permissions) {
+      if (userId === ownerId || user.permissions) return true;
+      if (message.guild && message.member && message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+      return false;
+    };
+
+    // +prefixchange / +pc
+    if (command === 'prefixchange') {
+      if (!message.guild) return message.reply('❌ This command can only be used inside a server.');
+      if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return message.reply('❌ You must have **Administrator** permissions to change the bot prefix for this server.');
+      }
+
+      const newPrefix = args[0];
+      if (!newPrefix || newPrefix.length > 5) {
+        return message.reply(`❌ Please provide a valid prefix (max 5 characters). Usage: \`${currentPrefix}prefixchange [new_prefix]\``);
+      }
+
+      db.guildPrefixes[guildId] = newPrefix;
+      await saveUsers();
+
+      return message.reply(`✅ Successfully updated server prefix to \`${newPrefix}\`! Use \`${newPrefix}help\` for commands.`);
+    }
+
+    // +enablec / +ec (Enable bot in current channel)
+    if (command === 'enablec') {
+      if (!message.guild) return message.reply('❌ This command can only be used inside a server.');
+      if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return message.reply('❌ You must have **Administrator** permissions to manage channel restrictions.');
+      }
+
+      if (!db.channelRestrictions[guildId]) db.channelRestrictions[guildId] = [];
+      const index = db.channelRestrictions[guildId].indexOf(message.channel.id);
+      if (index !== -1) {
+        db.channelRestrictions[guildId].splice(index, 1);
+        await saveUsers();
+      }
+      return message.reply(`✅ Chibi bot commands are now **enabled** in <#${message.channel.id}>.`);
+    }
+
+    // +disablec / +dc (Disable bot in current channel)
+    if (command === 'disablec') {
+      if (!message.guild) return message.reply('❌ This command can only be used inside a server.');
+      if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return message.reply('❌ You must have **Administrator** permissions to manage channel restrictions.');
+      }
+
+      if (!db.channelRestrictions[guildId]) db.channelRestrictions[guildId] = [];
+      if (!db.channelRestrictions[guildId].includes(message.channel.id)) {
+        db.channelRestrictions[guildId].push(message.channel.id);
+        await saveUsers();
+      }
+      return message.reply(`❌ Chibi bot commands are now **disabled** in <#${message.channel.id}>.`);
+    }
+
+    // +admincommands / +ac (Show Admin Commands List)
+    if (command === 'admincommands') {
+      if (!isAdminOrOwner()) {
+        return message.reply('❌ You do not have permission to view or use admin commands!');
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🛡️ Bot Admin Commands List\n\n` +
+            `*Restricted to Bot Owner, Authorized Admins, and Server Administrators.*\n\n` +
+            `• \`${currentPrefix}adminluckevent [mult] [duration]\` - Set global luck multiplier (e.g. \`2.0 30m\`)\n` +
+            `• \`${currentPrefix}adminsetxp [mult] [duration]\` - Set global XP multiplier (e.g. \`1.5 1h\`)\n` +
+            `• \`${currentPrefix}admingiveitem [@user] [dice|spray|clover] [qty]\` - Grant items\n` +
+            `• \`${currentPrefix}adminsetrank [@user] [rank title]\` - Force assign custom rank title\n` +
+            `• \`${currentPrefix}adminsetpoints [@user] [points]\` - Set player points\n` +
+            `• \`${currentPrefix}adminsetlevel [@user] [level]\` - Set player level\n` +
+            `• \`${currentPrefix}admingivepermission [@user]\` - Grant bot owner/admin rights\n` +
+            `• \`${currentPrefix}adminresetranks\` - Manually trigger global season reset\n` +
+            `• \`${currentPrefix}adminsetlbtime [duration]\` - Set season expiration timer (e.g. \`30d\`)\n` +
+            `• \`${currentPrefix}prefixchange [prefix]\` - Customize server prefix (Server Admin)\n` +
+            `• \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\` - Control bot channel access (Server Admin)`
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // Admin Commands Execution Block
+    if (command.startsWith('admin')) {
+      if (!isAdminOrOwner()) {
         return message.reply('❌ You do not have permission to use admin commands!');
       }
 
@@ -1574,7 +1882,7 @@ client.on('messageCreate', async message => {
         const durationMs = parseDurationToMs(durationStr);
 
         if (isNaN(mult) || !durationMs) {
-          return message.reply('❌ Usage: `+adminluckevent [multiplier] [duration]` (e.g. `+adminluckevent 2.0 30m`)');
+          return message.reply(`❌ Usage: \`${currentPrefix}adminluckevent [multiplier] [duration]\` (e.g. \`${currentPrefix}adminluckevent 2.0 30m\`)`);
         }
 
         db.config.globalLuckMultiplier = mult;
@@ -1590,7 +1898,7 @@ client.on('messageCreate', async message => {
         const durationMs = parseDurationToMs(durationStr);
 
         if (isNaN(mult) || !durationMs) {
-          return message.reply('❌ Usage: `+adminsetxp [multiplier] [duration]` (e.g. `+adminsetxp 1.5 1h`)');
+          return message.reply(`❌ Usage: \`${currentPrefix}adminsetxp [multiplier] [duration]\` (e.g. \`${currentPrefix}adminsetxp 1.5 1h\`)`);
         }
 
         db.config.globalXpMultiplier = mult;
@@ -1606,7 +1914,7 @@ client.on('messageCreate', async message => {
         const quantity = parseInt(args[2]);
 
         if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
-          return message.reply('❌ Usage: `+admingiveitem [@user] [dice|spray|clover] [quantity]`');
+          return message.reply(`❌ Usage: \`${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]\``);
         }
         ensureUser(target.id);
 
@@ -1623,7 +1931,7 @@ client.on('messageCreate', async message => {
       if (command === 'adminsetrank') {
         const target = message.mentions.users.first();
         const newRank = args.slice(1).join(' ');
-        if (!target || !newRank) return message.reply('❌ Usage: `+adminsetrank [@user] [rank title]`');
+        if (!target || !newRank) return message.reply(`❌ Usage: \`${currentPrefix}adminsetrank [@user] [rank title]\``);
         ensureUser(target.id);
         db.users[target.id].rank = newRank;
         await saveUsers();
@@ -1633,7 +1941,7 @@ client.on('messageCreate', async message => {
       if (command === 'adminsetpoints') {
         const target = message.mentions.users.first();
         const pts = parseInt(args[1]);
-        if (!target || isNaN(pts)) return message.reply('❌ Usage: `+adminsetpoints [@user] [points]`');
+        if (!target || isNaN(pts)) return message.reply(`❌ Usage: \`${currentPrefix}adminsetpoints [@user] [points]\``);
         ensureUser(target.id);
         db.users[target.id].points = pts;
         updateUserRank(db.users[target.id]);
@@ -1643,7 +1951,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'admingivepermission') {
         const target = message.mentions.users.first();
-        if (!target) return message.reply('❌ Usage: `+admingivepermission [@user]`');
+        if (!target) return message.reply(`❌ Usage: \`${currentPrefix}admingivepermission [@user]\``);
         ensureUser(target.id);
         db.users[target.id].permissions = true;
         await saveUsers();
@@ -1654,7 +1962,7 @@ client.on('messageCreate', async message => {
         const target = message.mentions.users.first();
         const lvl = parseInt(args[1]);
         if (!target || isNaN(lvl) || lvl < 1) {
-          return message.reply('❌ Usage: `+adminsetlevel [@user] [level]` (e.g. `+adminsetlevel @User 15`)');
+          return message.reply(`❌ Usage: \`${currentPrefix}adminsetlevel [@user] [level]\` (e.g. \`${currentPrefix}adminsetlevel @User 15\`)`);
         }
         ensureUser(target.id);
         db.users[target.id].userLevel = lvl;
@@ -1679,7 +1987,7 @@ client.on('messageCreate', async message => {
         const durationStr = args[0];
         const durationMs = parseDurationToMs(durationStr);
         if (!durationMs) {
-          return message.reply('❌ Usage: `+adminsetlbtime [duration]` (e.g. `+adminsetlbtime 30d` or `+adminsetlbtime 2w`)');
+          return message.reply(`❌ Usage: \`${currentPrefix}adminsetlbtime [duration]\` (e.g. \`${currentPrefix}adminsetlbtime 30d\` or \`${currentPrefix}adminsetlbtime 2w\`)`);
         }
 
         db.config.seasonExpires = Date.now() + durationMs;
