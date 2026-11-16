@@ -1058,7 +1058,8 @@ client.on('messageCreate', async message => {
 
       const colCollector = colMsg.createMessageComponentCollector({ time: 120000 });
       colCollector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your collection session!'), ephemeral: true });
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your collection session!'), ephemeral: true });
 
         if (i.customId === 'sort_rarity') {
           sortBy = 'rarity';
@@ -1073,10 +1074,10 @@ client.on('messageCreate', async message => {
         }
 
         const updated = renderColContainer(currentPage);
-        await i.update({
+        await colMsg.edit({
           components: [updated.container, ...getColRows(currentPage, updated.totalPages)],
           flags: MessageFlags.IsComponentsV2
-        });
+        }).catch(() => {});
       });
       return;
     }
@@ -1101,7 +1102,8 @@ client.on('messageCreate', async message => {
 
       const collector = shopMsg.createMessageComponentCollector({ time: 60000 });
       collector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
         
         if (!user.inventory.items) {
           user.inventory.items = { spray: 0, clover: 0 };
@@ -1109,22 +1111,22 @@ client.on('messageCreate', async message => {
 
         if (i.customId === 'buy_spray') {
           if (user.dice < 5) {
-            return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+            return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
           }
           user.dice -= 5;
           user.inventory.items.spray += 30;
           updateUserRank(user);
           await saveUsers();
-          return i.reply({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), ephemeral: true });
+          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), ephemeral: true });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) {
-            return i.reply({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+            return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
           }
           user.dice -= 15;
           user.inventory.items.clover += 50;
           updateUserRank(user);
           await saveUsers();
-          return i.reply({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), ephemeral: true });
+          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), ephemeral: true });
         }
       });
       return;
@@ -1256,16 +1258,17 @@ client.on('messageCreate', async message => {
 
       const ranksCollector = ranksMsg.createMessageComponentCollector({ time: 120000 });
       ranksCollector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your leaderboard session!'), ephemeral: true });
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your leaderboard session!'), ephemeral: true });
 
         if (i.customId === 'rank_prev' && currentPage > 0) currentPage--;
         if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
 
         const updatedContainer = await renderRanksContainer(currentPage);
-        await i.update({
+        await ranksMsg.edit({
           components: [updatedContainer, getRanksRow(currentPage)],
           flags: MessageFlags.IsComponentsV2
-        });
+        }).catch(() => {});
       });
       return;
     }
@@ -1321,7 +1324,8 @@ client.on('messageCreate', async message => {
       let handled = false;
 
       collector.on('collect', async i => {
-        if (i.user.id !== opponent.id) return i.reply({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== opponent.id) return i.followUp({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
         handled = true;
         
         if (i.customId === 'accept_battle') {
@@ -1417,9 +1421,9 @@ client.on('messageCreate', async message => {
               )
             );
 
-          await i.update({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 });
+          await battleMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
         } else {
-          await i.update({ content: toSmallCaps(`❌ <@${opponent.id}> declined the 3v3 arena clash.`), components: [] });
+          await battleMsg.edit({ content: toSmallCaps(`❌ <@${opponent.id}> declined the 3v3 arena clash.`), components: [] }).catch(() => {});
         }
       });
 
@@ -1604,16 +1608,17 @@ client.on('messageCreate', async message => {
 
       const clanCollector = clanMsg.createMessageComponentCollector({ time: 120000 });
       clanCollector.on('collect', async i => {
-        if (i.user.id !== userId) return i.reply({ content: toSmallCaps('Not your clan list session!'), ephemeral: true });
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your clan list session!'), ephemeral: true });
 
         if (i.customId === 'sort_points') sortBy = 'points';
         if (i.customId === 'sort_members') sortBy = 'members';
 
         const updatedContainer = await renderClanContainer();
-        await i.update({
+        await clanMsg.edit({
           components: [updatedContainer, getClanRows()],
           flags: MessageFlags.IsComponentsV2
-        });
+        }).catch(() => {});
       });
       return;
     }
@@ -1701,13 +1706,15 @@ client.on('messageCreate', async message => {
       const collector = reqMsg.createMessageComponentCollector({ time: 15000 });
 
       collector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+
         if (i.user.id !== target.id) {
-          return i.reply({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
+          return i.followUp({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
         }
 
         if (i.customId === 'trade_decline') {
           collector.stop();
-          return i.update({ content: toSmallCaps(`❌ Trade invitation declined by <@${target.id}>.`), components: [] });
+          return reqMsg.edit({ content: toSmallCaps(`❌ Trade invitation declined by <@${target.id}>.`), components: [] }).catch(() => {});
         }
 
         if (i.customId === 'trade_accept') {
@@ -1741,29 +1748,31 @@ client.on('messageCreate', async message => {
             )
           ];
 
-          await i.update({
+          await reqMsg.edit({
             content: toSmallCaps(`🤝 Trade session open! Use buttons below:`),
             components: [getDisplay(), ...rows],
             flags: MessageFlags.IsComponentsV2
-          });
+          }).catch(() => {});
 
           const tradeCollector = reqMsg.createMessageComponentCollector({ time: 60000 });
 
           tradeCollector.on('collect', async ti => {
+            if (!ti.deferred && !ti.replied) await ti.deferUpdate().catch(() => {});
+
             const isP1 = ti.user.id === userId;
             const isP2 = ti.user.id === target.id;
 
             if (!isP1 && !isP2) {
-              return ti.reply({ content: toSmallCaps('Not your trade session!'), ephemeral: true });
+              return ti.followUp({ content: toSmallCaps('Not your trade session!'), ephemeral: true });
             }
 
             if (ti.customId === 'trade_cancel') {
               tradeCollector.stop();
-              return ti.update({ content: toSmallCaps(`❌ Trade cancelled by <@${ti.user.id}>.`), components: [], flags: MessageFlags.IsComponentsV2 });
+              return reqMsg.edit({ content: toSmallCaps(`❌ Trade cancelled by <@${ti.user.id}>.`), components: [] }).catch(() => {});
             }
 
             if (ti.customId === 'trade_offer_dice') {
-              await ti.reply({ content: toSmallCaps(`🎲 Type the amount of Dice you want to offer in chat:`), ephemeral: true });
+              await ti.followUp({ content: toSmallCaps(`🎲 Type the amount of Dice you want to offer in chat:`), ephemeral: true });
               const msgs = await ti.channel.awaitMessages({ filter: m => m.author.id === ti.user.id, max: 1, time: 20000 }).catch(() => null);
               const m = msgs?.first();
               if (!m) return;
@@ -1781,20 +1790,24 @@ client.on('messageCreate', async message => {
             if (ti.customId === 'trade_offer_chibi') {
               const uObj = db.users[ti.user.id];
               if (!uObj.inventory.chibis || uObj.inventory.chibis.length === 0) {
-                return ti.reply({ content: toSmallCaps('❌ You have no chibis!'), ephemeral: true });
+                return ti.followUp({ content: toSmallCaps('❌ You have no chibis!'), ephemeral: true });
               }
               const options = uObj.inventory.chibis.slice(0, 25).map(c => ({
                 label: `${c.name} (${c.rarity}) Lv.${c.level}`,
                 value: c.chibiId || c.id
               }));
               const menu = new StringSelectMenuBuilder().setCustomId('sel_chibi').setPlaceholder(toSmallCaps('Select Chibi')).addOptions(options);
-              await ti.reply({ content: toSmallCaps('Select from dropdown:'), components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+              
+              await ti.followUp({ content: toSmallCaps('Select from dropdown:'), components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
               
               const sel = await ti.channel.awaitMessageComponent({ filter: int => int.user.id === ti.user.id && int.isStringSelectMenu(), time: 20000 }).catch(() => null);
               if (!sel) return;
+              
+              if (!sel.deferred && !sel.replied) await sel.deferUpdate().catch(() => {});
+              
               const chosen = uObj.inventory.chibis.find(c => (c.chibiId || c.id) === sel.values[0]);
               if (isP1) { p1Chibi = chosen; p1Dice = 0; } else { p2Chibi = chosen; p2Dice = 0; }
-              await sel.update({ content: toSmallCaps('✅ Chibi selected!'), components: [] });
+              
               return reqMsg.edit({ components: [getDisplay(), ...rows], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
             }
 
@@ -1803,7 +1816,7 @@ client.on('messageCreate', async message => {
               const u2 = db.users[target.id];
 
               if ((p1Dice === 0 && !p1Chibi) || (p2Dice === 0 && !p2Chibi)) {
-                return ti.reply({ content: toSmallCaps('❌ Both players must offer something!'), ephemeral: true });
+                return ti.followUp({ content: toSmallCaps('❌ Both players must offer something!'), ephemeral: true });
               }
 
               if (p1Dice > 0) { u1.dice -= p1Dice; u2.dice += p1Dice; }
@@ -1823,7 +1836,7 @@ client.on('messageCreate', async message => {
               await saveUsers();
               tradeCollector.stop();
 
-              return ti.update({ content: toSmallCaps(`✅ Trade completed successfully between <@${userId}> and <@${target.id}>!`), components: [getDisplay()], flags: MessageFlags.IsComponentsV2 });
+              return reqMsg.edit({ content: toSmallCaps(`✅ Trade completed successfully between <@${userId}> and <@${target.id}>!`), components: [getDisplay()], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
             }
           });
         }
