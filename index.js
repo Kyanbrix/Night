@@ -46,7 +46,9 @@ const GameStateSchema = new mongoose.Schema({
       globalLuckMultiplier: 1.0,
       luckEventExpires: 0,
       globalXpMultiplier: 1.0,
-      xpEventExpires: 0
+      xpEventExpires: 0,
+      seasonNumber: 1,
+      seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000) // Default 30 days
     }
   }
 });
@@ -61,7 +63,9 @@ let db = {
     globalLuckMultiplier: 1.0,
     luckEventExpires: 0,
     globalXpMultiplier: 1.0,
-    xpEventExpires: 0
+    xpEventExpires: 0,
+    seasonNumber: 1,
+    seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000)
   }
 };
 
@@ -80,7 +84,7 @@ async function initDatabase() {
     }
     db.users = state.users || {};
     db.clans = state.clans || {};
-    db.config = state.config || db.config;
+    db.config = { ...db.config, ...(state.config || {}) };
   } catch (err) {
     console.error('Database connection error:', err);
     process.exit(1);
@@ -176,6 +180,18 @@ function parseDurationToMs(durationStr) {
     case 'w': return val * 7 * 24 * 60 * 60 * 1000;
     default: return null;
   }
+}
+
+function formatTimeRemaining(ms) {
+  if (ms <= 0) return 'Ended';
+  const seconds = Math.floor(ms / 1000);
+  const days = Math.floor(seconds / (3600 * 24));
+  const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function addExpAndLevelUp(user, chibi, baseExpAmount) {
@@ -341,6 +357,22 @@ client.once('ready', async () => {
   };
   updateStatus();
   setInterval(updateStatus, 60000);
+
+  // Background interval check for automatic season expiration & point/rank resets
+  setInterval(async () => {
+    const now = Date.now();
+    if (db.config.seasonExpires && now >= db.config.seasonExpires) {
+      db.config.seasonNumber = (db.config.seasonNumber || 1) + 1;
+      db.config.seasonExpires = now + (30 * 24 * 60 * 60 * 1000); // Reset for another 30 days
+
+      for (const uId of Object.keys(db.users)) {
+        db.users[uId].points = 0;
+        updateUserRank(db.users[uId]);
+      }
+      await saveUsers();
+      console.log(`Season timer expired! Automatically started Season ${db.config.seasonNumber} and reset all user points/ranks.`);
+    }
+  }, 60000);
 });
 
 client.on('messageCreate', async message => {
@@ -916,7 +948,7 @@ client.on('messageCreate', async message => {
       return message.reply(`💰 Your current points balance is: **${user.points}** (Rank: ${user.rank})`);
     }
 
-    // +ranks (Paginated leaderboard)
+    // +ranks (Paginated leaderboard with Season title, timer, and no levels)
     if (command === 'ranks') {
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => {
@@ -929,11 +961,15 @@ client.on('messageCreate', async message => {
       let currentPage = 0;
       const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
 
+      const timeRemainingMs = Math.max(0, (db.config.seasonExpires || Date.now()) - Date.now());
+      const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
+      const seasonNum = db.config.seasonNumber || 1;
+
       const getRanksPage = (page) => {
         const start = page * itemsPerPage;
         const pageUsers = allSortedUsers.slice(start, start + itemsPerPage);
         return pageUsers
-          .map((u, idx) => `**${start + idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}** | Level: ${u.userLevel}`)
+          .map((u, idx) => `**${start + idx + 1}.** <@${u.uId}> — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}**`)
           .join('\n') || 'No players on the leaderboard yet.';
       };
 
@@ -949,7 +985,10 @@ client.on('messageCreate', async message => {
           .setAccentColor(0xf1c40f)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `# 🏆 Global Ranks & Points Leaderboard (Page ${page + 1}/${totalPages})\n\n${getRanksPage(page)}`
+              `# 🏆 Chibi Global Leaderboard Season ${seasonNum}\n` +
+              `End Season: **${seasonTimerStr}**\n\n` +
+              `**(Page ${page + 1}/${totalPages})**\n\n` +
+              getRanksPage(page)
             )
           );
       };
@@ -1581,6 +1620,46 @@ client.on('messageCreate', async message => {
         db.users[target.id].permissions = true;
         await saveUsers();
         return message.reply(`🛡️ Admin permissions granted to <@${target.id}>.`);
+      }
+
+      // +adminsetlevel
+      if (command === 'adminsetlevel') {
+        const target = message.mentions.users.first();
+        const lvl = parseInt(args[1]);
+        if (!target || isNaN(lvl) || lvl < 1) {
+          return message.reply('❌ Usage: `+adminsetlevel [@user] [level]` (e.g. `+adminsetlevel @User 15`)');
+        }
+        ensureUser(target.id);
+        db.users[target.id].userLevel = lvl;
+        db.users[target.id].userExp = 0;
+        await saveUsers();
+        return message.reply(`🛡️ Admin set user level for <@${target.id}> to **Level ${lvl}**.`);
+      }
+
+      // +adminresetranks
+      if (command === 'adminresetranks') {
+        db.config.seasonNumber = (db.config.seasonNumber || 1) + 1;
+        db.config.seasonExpires = Date.now() + (30 * 24 * 60 * 60 * 1000); // Reset timer to 30 days
+
+        for (const uId of Object.keys(db.users)) {
+          db.users[uId].points = 0;
+          updateUserRank(db.users[uId]);
+        }
+        await saveUsers();
+        return message.reply(`🛡️ **Season Reset Successful!** All player points and ranks have been reset. Welcome to **Season ${db.config.seasonNumber}**! ⚔️`);
+      }
+
+      // +adminsetlbtime
+      if (command === 'adminsetlbtime') {
+        const durationStr = args[0];
+        const durationMs = parseDurationToMs(durationStr);
+        if (!durationMs) {
+          return message.reply('❌ Usage: `+adminsetlbtime [duration]` (e.g. `+adminsetlbtime 30d` or `+adminsetlbtime 2w`)');
+        }
+
+        db.config.seasonExpires = Date.now() + durationMs;
+        await saveUsers();
+        return message.reply(`🛡️ Leaderboard season end timer successfully updated to expire in **${durationStr}**!`);
       }
     }
   } catch (err) {
