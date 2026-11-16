@@ -144,7 +144,7 @@ const SHINY_ICON = '<:shiny:1571311476239630517>';
 const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
 
-// Small Caps Font Converter helper
+// Small Caps Font Converter helper that safely preserves custom Discord emojis (<:name:id>)
 function toSmallCaps(str) {
   if (!str) return '';
   const map = {
@@ -155,7 +155,15 @@ function toSmallCaps(str) {
     K: 'ᴋ', L: 'ʟ', M: 'ᴍ', N: 'ɴ', O: 'ᴏ', P: 'ᴘ', Q: 'ǫ', R: 'ʀ', S: 'ꜱ', T: 'ᴛ',
     U: 'ᴜ', V: 'ᴠ', W: 'ᴡ', X: 'x', Y: 'ʏ', Z: 'ᴢ'
   };
-  return str.split('').map(char => map[char] || char).join('');
+
+  // Split string by custom discord emojis so they remain untouched
+  const parts = str.split(/(<a?:\w+:\d+>)/g);
+  return parts.map(part => {
+    if (part.startsWith('<') && part.endsWith('>')) {
+      return part; // Leave custom emoji strings completely unmodified
+    }
+    return part.split('').map(char => map[char] || char).join('');
+  }).join('');
 }
 
 function getRarityIconMap() {
@@ -1275,7 +1283,7 @@ client.on('messageCreate', async message => {
 
         const lines = await Promise.all(pageUsers.map(async (u, idx) => {
           const username = await getDisplayName(u.uId);
-          return toSmallCaps(`**${start + idx + 1}.** **${username}** — Rank: ${u.rank} | Points: **${u.points.toLocaleString()}**`);
+          return toSmallCaps(`**${start + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${u.points.toLocaleString()}**`);
         }));
 
         return lines.join('\n') || toSmallCaps('No players on the leaderboard yet.');
@@ -1302,8 +1310,8 @@ client.on('messageCreate', async message => {
               pageBody +
               toSmallCaps(
                 `\n\n-----------------------------------\n` +
-                `👤 Your Rank: #${userRankPos} | Rank: ${userRankIcon} | Points: ${userPointsDisplay.toLocaleString()}`
-              )
+                `👤 Your Rank: #${userRankPos} | Rank: `
+              ) + `${userRankIcon}` + toSmallCaps(` | Points: ${userPointsDisplay.toLocaleString()}`)
             )
           );
       };
@@ -1358,7 +1366,7 @@ client.on('messageCreate', async message => {
       updateUserRank(user);
       await saveUsers();
 
-      return message.reply(toSmallCaps(`✅ Successfully equipped ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''} to Team Slot ${slot}!${expMsg}`));
+      return message.reply(toSmallCaps(`✅ Successfully equipped `) + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
     }
 
     // +battle
@@ -1442,7 +1450,7 @@ client.on('messageCreate', async message => {
               const sIcon = c.isShiny ? SHINY_ICON : '';
               const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
               const hp = statCfg.hp + c.level * statCfg.hpPer;
-              return toSmallCaps(`**[${idx + 1}]** ${rIcon} ${c.emoji} **${c.name}** ${sIcon} (Lvl ${c.level}) — ❤️ HP: \`${hp}\``);
+              return toSmallCaps(`**[${idx + 1}]** `) + `${rIcon}` + toSmallCaps(` `) + `${c.emoji} **${c.name}** ${sIcon}` + toSmallCaps(` (Lvl ${c.level}) — ❤️ HP: \`${hp}\``);
             }).join('\n');
           };
 
@@ -1558,8 +1566,10 @@ client.on('messageCreate', async message => {
             ) +
             `🎲 ${bestRollIconPart} ${bestRollOddsPart}\n` +
             toSmallCaps(
-              `⚜️ ${user.rank}\n` +
-              `🏆 ${user.points.toLocaleString()} Points\n` +
+              `⚜️ `
+            ) + `${user.rank}` +
+            toSmallCaps(
+              `\n🏆 ${user.points.toLocaleString()} Points\n` +
               `🌍 Rank ${leaderboardPos}\n` +
               `🔰 Clan: ${user.clan || 'None'}`
             )
@@ -1576,7 +1586,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // +clanlist (Clan UI rework: removed "*" from names, applied font text helper)
+    // +clanlist
     if (command === 'clanlist') {
       const clanNames = Object.keys(db.clans);
       if (clanNames.length === 0) {
@@ -1681,7 +1691,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully joined clan ${clanName}!`));
     }
 
-    // +cclaninfo (Clan UI rework: removed "*" from names, applied font text helper & icons)
+    // +cclaninfo
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -1694,7 +1704,7 @@ client.on('messageCreate', async message => {
           if (mUser) updateUserRank(mUser);
           const mUsername = await getDisplayName(mId);
           const role = mId === clan.leader ? 'Leader' : mId === clan.viceLeader ? 'Vice-Leader' : 'Member';
-          return toSmallCaps(`${idx + 1}. ${mUsername} [${role}] ${mUser?.rank || '<:unranked:1571314276071907519>'} | Points: ${mUser?.points || 0}`);
+          return toSmallCaps(`${idx + 1}. ${mUsername} [${role}] `) + `${mUser?.rank || '<:unranked:1571314276071907519>'}` + toSmallCaps(` | Points: ${mUser?.points || 0}`);
         })
       );
 
@@ -1768,14 +1778,16 @@ client.on('messageCreate', async message => {
                 new TextDisplayBuilder().setContent(
                   toSmallCaps(
                     `# 🤝 Secure Trade Session\n\n` +
-                    `<@${userId}> ${user.rank}\n` +
-                    `|------------|\n`
+                    `<@${userId}> `
+                  ) + `${user.rank}` +
+                  toSmallCaps(
+                    `\n|------------|\n`
                   ) + `${p1Display}\n` +
                   toSmallCaps(`|------------|\n`) + `${p2Display}\n` +
                   toSmallCaps(
                     `|------------|\n` +
-                    `<@${target.id}> ${targetUser.rank}`
-                  )
+                    `<@${target.id}> `
+                  ) + `${targetUser.rank}`
                 )
               );
           };
