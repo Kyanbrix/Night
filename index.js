@@ -49,6 +49,7 @@ const GameStateSchema = new mongoose.Schema({
     type: Object,
     default: {
       ownerId: '',
+      mainGuildId: '',
       globalLuckMultiplier: 1.0,
       luckEventExpires: 0,
       globalXpMultiplier: 1.0,
@@ -70,6 +71,7 @@ let db = {
   bannedUsers: {},
   config: {
     ownerId: '',
+    mainGuildId: '',
     globalLuckMultiplier: 1.0,
     luckEventExpires: 0,
     globalXpMultiplier: 1.0,
@@ -144,7 +146,6 @@ const SHINY_ICON = '<:shiny:1571311476239630517>';
 const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
 
-// Small Caps Font Converter helper that safely preserves custom Discord emojis
 function toSmallCaps(str) {
   if (!str) return '';
   const map = {
@@ -539,6 +540,7 @@ client.on('messageCreate', async message => {
       user.started = true;
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
+      if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
       updateUserRank(user);
       updatePeakRank(user);
       await saveUsers();
@@ -622,7 +624,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // CLEAN & POLISHED HELP CENTER
     if (command === 'help') {
       const helpText =
         toSmallCaps('🎲 **Rolling, Drops & Games**\n') +
@@ -646,7 +647,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}collections\` (${currentPrefix}col) — Chibi binder\n` +
         `\`${currentPrefix}profile\` (${currentPrefix}p) [@user] — User profile\n` +
         `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] — 2-Player Trade\n\n` +
-        toSmallCaps('🏛️ **Clans & Server**\n`') +
+        toSmallCaps('🏛️ **Clans & Server**\n') +
         `\`${currentPrefix}clanlist\` — View clans\n` +
         `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\`\n` +
         `\`${currentPrefix}prefixchange\` / \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\``;
@@ -806,7 +807,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`🎁 Daily Reward Claimed!\n🔥 Streak: ${user.streak} Days\n🎲 Reward: +${rewardDice}x Dice (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`));
     }
 
-    // ROLL COMMAND WITH WORKING SPRAY & CLOVER BOOST CONSUMPTION
     if (command === 'roll') {
       const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
@@ -956,7 +956,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`));
     }
 
-    // INVENTORY COMMAND: ITEMS ONLY (NO CHIBIS)
     if (command === 'inventory') {
       if (!user.inventory.items) {
         user.inventory.items = { spray: 0, clover: 0 };
@@ -982,7 +981,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // COLLECTIONS COMMAND: CHIBIS BINDER
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll to summon chibis.`));
@@ -1092,7 +1090,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED SHOP COMMAND WITH INTERACTION ACKNOWLEDGMENTS
     if (command === 'shop') {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
@@ -1312,6 +1309,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully equipped `) + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
     }
 
+    // BATTLE COMMAND WITH 5-SECOND CHALLENGE ACCEPTANCE TIMER & DYNAMIC ATK/DEF/HP TRACKING
     if (command === 'battle') {
       const opponent = message.mentions.users.first();
       if (!opponent || opponent.bot || opponent.id === userId) {
@@ -1325,13 +1323,16 @@ client.on('messageCreate', async message => {
       );
 
       const battleMsg = await message.reply({
-        content: toSmallCaps(`⚔️ <@${opponent.id}>, you have been challenged to a 3v3 Chibi Team Clash by <@${userId}>!`),
+        content: toSmallCaps(`⚔️ <@${opponent.id}>, you have been challenged to a 3v3 Chibi Team Clash by <@${userId}>! (Accept within 5 seconds)`),
         components: [row]
       });
 
-      const collector = battleMsg.createMessageComponentCollector({ time: 120000 });
+      const collector = battleMsg.createMessageComponentCollector({ time: 5000 });
+      let handled = false;
+
       collector.on('collect', async i => {
         if (i.user.id !== opponent.id) return i.reply({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
+        handled = true;
         
         if (i.customId === 'accept_battle') {
           const p1User = user;
@@ -1347,12 +1348,25 @@ client.on('messageCreate', async message => {
           const p1Team = getTeamChibis(p1User);
           const p2Team = getTeamChibis(p2User);
 
-          const getTeamPower = (team) => {
-            return team.reduce((acc, c) => acc + calculateChibiCombatPower(c), 50);
+          const getTeamCombatStats = (team) => {
+            let totalPower = 50;
+            const detailed = team.map(c => {
+              if (!c) return { hp: 0, atk: 0, def: 0 };
+              const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
+              const hp = statCfg.hp + c.level * statCfg.hpPer;
+              const atk = statCfg.atk + c.level * statCfg.atkPer;
+              const def = statCfg.def + c.level * statCfg.defPer;
+              totalPower += hp + atk * 3 + def * 2;
+              return { hp, atk, def };
+            });
+            return { totalPower, detailed };
           };
 
-          const p1Power = getTeamPower(p1Team) * (0.85 + Math.random() * 0.3);
-          const p2Power = getTeamPower(p2Team) * (0.85 + Math.random() * 0.3);
+          const p1Stats = getTeamCombatStats(p1Team);
+          const p2Stats = getTeamCombatStats(p2Team);
+
+          const p1Power = p1Stats.totalPower * (0.85 + Math.random() * 0.3);
+          const p2Power = p2Stats.totalPower * (0.85 + Math.random() * 0.3);
 
           const isP1Winner = p1Power >= p2Power;
           const winner = isP1Winner ? message.author : opponent;
@@ -1385,14 +1399,17 @@ client.on('messageCreate', async message => {
           const p1Name = user.customNickname || message.author.username;
           const p2Name = db.users[opponent.id].customNickname || opponent.username;
 
-          const renderTeamLines = (team) => {
+          const renderTeamLineWithStats = (team, isWinnerTeam) => {
             return team.map((c, idx) => {
               if (!c) return toSmallCaps(`**[${idx + 1}]** *Empty Slot*`);
               const rIcon = rarityIconsMap[c.rarity] || '📦';
               const sIcon = c.isShiny ? SHINY_ICON : '';
               const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
               const hp = statCfg.hp + c.level * statCfg.hpPer;
-              return toSmallCaps(`**[${idx + 1}]** `) + `${rIcon}` + toSmallCaps(` `) + `${c.emoji} **${c.name}** ${sIcon}` + toSmallCaps(` (Lvl ${c.level}) — ❤️ HP: \`${hp}\``);
+              const atk = statCfg.atk + c.level * statCfg.atkPer;
+              const def = statCfg.def + c.level * statCfg.defPer;
+              const remainingHp = isWinnerTeam ? hp : 0;
+              return toSmallCaps(`**[${idx + 1}]** `) + `${rIcon}` + ` ${c.emoji} **${c.name}** ${sIcon}` + toSmallCaps(` (Lvl ${c.level}) — ❤️ HP: \`${remainingHp}\` | 🗡️ ATK: \`${atk}\` | 🛡️ DEF: \`${def}\``);
             }).join('\n');
           };
 
@@ -1404,8 +1421,8 @@ client.on('messageCreate', async message => {
                   `# ⚔️ 3v3 Chibi Arena Clash Result\n\n` +
                   `🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n` +
                   `🛡️ ${p1Name}'s Team Lineup:\n`
-                ) + renderTeamLines(p1Team) +
-                toSmallCaps(`\n\n🛡️ ${p2Name}'s Team Lineup:\n`) + renderTeamLines(p2Team) +
+                ) + renderTeamLineWithStats(p1Team, isP1Winner) +
+                toSmallCaps(`\n\n🛡️ ${p2Name}'s Team Lineup:\n`) + renderTeamLineWithStats(p2Team, !isP1Winner) +
                 toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points & +${totalExpWon} EXP! 💔 Loser lost -${losePenalty.lose} Points.`)
               )
             );
@@ -1413,6 +1430,12 @@ client.on('messageCreate', async message => {
           await i.update({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 });
         } else {
           await i.update({ content: toSmallCaps(`❌ <@${opponent.id}> declined the 3v3 arena clash.`), components: [] });
+        }
+      });
+
+      collector.on('end', async () => {
+        if (!handled) {
+          await battleMsg.edit({ content: toSmallCaps(`⏳ Arena clash request timed out (5s elapsed) and was automatically cancelled.`), components: [] }).catch(() => {});
         }
       });
       return;
@@ -1454,7 +1477,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED PROFILE COMMAND: SUPPORTS MENTIONS AND VIEWING OTHER USERS
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1668,7 +1690,7 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // FULLY FIXED TRADE COMMAND WITH EXTENDED TIMEOUTS & INTERACTION ACKNOWLEDGMENTS
+    // FULLY REWORKED TRADE COMMAND WITH 6S ACCEPTANCE TIMER & EXACT FORMATTING UI BOX
     if (command === 'trade') {
       const target = message.mentions.users.first();
       if (!target || target.bot || target.id === userId) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}trade [@user]`));
@@ -1684,11 +1706,12 @@ client.on('messageCreate', async message => {
       );
 
       const reqMsg = await message.reply({
-        content: toSmallCaps(`🤝 <@${target.id}>, you have been invited to trade by <@${userId}>!`),
+        content: toSmallCaps(`🤝 <@${target.id}>, you have been invited to trade by <@${userId}>! (Accept within 6 seconds)`),
         components: [acceptRow]
       });
 
-      const reqCollector = reqMsg.createMessageComponentCollector({ time: 120000 });
+      const reqCollector = reqMsg.createMessageComponentCollector({ time: 6000 });
+      let tradeAccepted = false;
 
       reqCollector.on('collect', async i => {
         if (i.user.id !== target.id) return i.reply({ content: toSmallCaps('This trade invitation is not for you!'), ephemeral: true });
@@ -1699,6 +1722,7 @@ client.on('messageCreate', async message => {
         }
 
         if (i.customId === 'accept_trade_req') {
+          tradeAccepted = true;
           reqCollector.stop();
 
           let p1OfferType = null;
@@ -1706,7 +1730,7 @@ client.on('messageCreate', async message => {
           let p2OfferType = null;
           let p2OfferData = null;
 
-          const renderTradeUI = () => {
+          const renderTradeUIBox = () => {
             const p1Display = p1OfferData 
               ? (p1OfferType === 'chibi' ? `${rarityIconsMap[p1OfferData.rarity]} ${p1OfferData.emoji} **${p1OfferData.name}** ${p1OfferData.isShiny ? SHINY_ICON : ''} \`[${(p1OfferData.chibiId || p1OfferData.id).slice(-6)}]\`` : toSmallCaps(`**${p1OfferData}x 🎲 Dice**`))
               : toSmallCaps('*No offer yet*');
@@ -1719,18 +1743,11 @@ client.on('messageCreate', async message => {
               .setAccentColor(0xf1c40f)
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  toSmallCaps(
-                    `# 🤝 Secure Trade Session\n\n` +
-                    `<@${userId}> `
-                  ) + `${user.rank}` +
-                  toSmallCaps(
-                    `\n|------------|\n`
-                  ) + `${p1Display}\n` +
-                  toSmallCaps(`|------------|\n`) + `${p2Display}\n` +
-                  toSmallCaps(
-                    `|------------|\n` +
-                    `<@${target.id}> `
-                  ) + `${targetUser.rank}`
+                  `<@${userId}>\n` +
+                  `${p1Display}\n` +
+                  `-------------\n` +
+                  `${p2Display}\n` +
+                  `<@${target.id}>`
                 )
               );
           };
@@ -1747,7 +1764,7 @@ client.on('messageCreate', async message => {
 
           await i.update({
             content: toSmallCaps(`🤝 Trade Session Active! Both players, submit your offers below:`),
-            components: [renderTradeUI(), actionRow1, actionRow2],
+            components: [renderTradeUIBox(), actionRow1, actionRow2],
             flags: MessageFlags.IsComponentsV2
           });
 
@@ -1810,7 +1827,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await collected.delete().catch(() => {});
-                await reqMsg.edit({ components: [renderTradeUI(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
+                await reqMsg.edit({ components: [renderTradeUIBox(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
 
               } else if (typeInteraction.customId === 'choose_chibi') {
                 const activeUserObj = db.users[activeId];
@@ -1854,7 +1871,7 @@ client.on('messageCreate', async message => {
                 }
 
                 await menuInteraction.update({ content: toSmallCaps(`✅ Chibi offer registered: **${chibiObj.name}**`), components: [] });
-                await reqMsg.edit({ components: [renderTradeUI(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
+                await reqMsg.edit({ components: [renderTradeUIBox(), actionRow1, actionRow2], flags: MessageFlags.IsComponentsV2 });
               }
 
             } else if (si.customId === 'confirm_trade') {
@@ -1898,11 +1915,17 @@ client.on('messageCreate', async message => {
 
               return si.update({
                 content: toSmallCaps(`✅ Trade Successfully Completed Between <@${userId}> and <@${target.id}>!`),
-                components: [renderTradeUI()],
+                components: [renderTradeUIBox()],
                 flags: MessageFlags.IsComponentsV2
               });
             }
           });
+        }
+      });
+
+      reqCollector.on('end', async () => {
+        if (!tradeAccepted) {
+          await reqMsg.edit({ content: toSmallCaps(`⏳ Trade request timed out (6s elapsed) and was automatically cancelled.`), components: [] }).catch(() => {});
         }
       });
       return;
@@ -1911,6 +1934,18 @@ client.on('messageCreate', async message => {
     const isOwner = () => {
       const ownerId = db.config.ownerId || userId;
       return userId === ownerId;
+    };
+
+    // STRICT MAIN-SERVER ONLY ADMIN CHECK
+    const checkAdminMainServer = (msg) => {
+      if (!isOwner() && !user.permissions) return false;
+      if (!db.config.mainGuildId) {
+        if (msg.guild) db.config.mainGuildId = msg.guild.id;
+      }
+      if (!msg.guild || msg.guild.id !== db.config.mainGuildId) {
+        return false;
+      }
+      return true;
     };
 
     const isAdminOrOwner = () => {
@@ -1967,8 +2002,8 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'admincommands') {
-      if (!isAdminOrOwner()) {
-        return message.reply(toSmallCaps('❌ You do not have permission to view or use admin commands!'));
+      if (!checkAdminMainServer(message)) {
+        return message.reply('You cannot use this Admin power in your own server, you must in the main server to run this.');
       }
 
       const container = new ContainerBuilder()
@@ -1977,7 +2012,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 🛡️ Bot Admin Commands List\n\n` +
-              `*Restricted to Bot Owner, Authorized Admins, and Server Administrators.*\n\n` +
+              `*Restricted to Bot Owner & Authorized Admins in Main Server Only.*\n\n` +
               `• ${currentPrefix}adminsetlbseason [season_num] - Set leaderboard season\n` +
               `• ${currentPrefix}adminresetrank - Reset ranks & points only (Season stays active)\n` +
               `• ${currentPrefix}adminsetnn [@user] [nn] - Set custom nickname for user with data (Owner only)\n` +
@@ -1999,8 +2034,8 @@ client.on('messageCreate', async message => {
     }
 
     if (command.startsWith('admin')) {
-      if (!isAdminOrOwner()) {
-        return message.reply(toSmallCaps('❌ You do not have permission to use admin commands!'));
+      if (!checkAdminMainServer(message)) {
+        return message.reply('You cannot use this Admin power in your own server, you must in the main server to run this.');
       }
 
       if (command === 'adminsetlbseason') {
