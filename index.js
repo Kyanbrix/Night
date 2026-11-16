@@ -1720,19 +1720,20 @@ client.on('messageCreate', async message => {
         if (i.customId === 'trade_accept') {
           collector.stop();
 
-          let p1Dice = 0;
-          let p2Dice = 0;
-          let p1Chibi = null;
-          let p2Chibi = null;
+          // State tracking for both players (can hold dice AND chibi simultaneously)
+          const p1Offer = { dice: 0, chibi: null };
+          const p2Offer = { dice: 0, chibi: null };
 
           const getEmbed = () => {
-            const p1Txt = p1Chibi 
-              ? `${rarityIconsMap[p1Chibi.rarity]} ${p1Chibi.emoji} **${p1Chibi.name}** (Lv.${p1Chibi.level})` 
-              : (p1Dice > 0 ? `**${p1Dice} 🎲 Dice**` : '*Empty*');
-              
-            const p2Txt = p2Chibi 
-              ? `${rarityIconsMap[p2Chibi.rarity]} ${p2Chibi.emoji} **${p2Chibi.name}** (Lv.${p2Chibi.level})` 
-              : (p2Dice > 0 ? `**${p2Dice} 🎲 Dice**` : '*Empty*');
+            const getOfferText = (offer) => {
+              let parts = [];
+              if (offer.dice > 0) parts.push(`**${offer.dice} 🎲 Dice**`);
+              if (offer.chibi) parts.push(`${rarityIconsMap[offer.chibi.rarity]} ${offer.chibi.emoji} **${offer.chibi.name}** (Lv.${offer.chibi.level})`);
+              return parts.length > 0 ? parts.join(' + ') : '*Empty*';
+            };
+
+            const p1Txt = getOfferText(p1Offer);
+            const p2Txt = getOfferText(p2Offer);
             
             return {
               color: 0xf1c40f,
@@ -1747,7 +1748,7 @@ client.on('messageCreate', async message => {
 
           const tradeRows = [
             new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('trade_offer_dice').setLabel(toSmallCaps('Offer 10 Dice 🎲')).setStyle(ButtonStyle.Primary),
+              new ButtonBuilder().setCustomId('trade_offer_dice').setLabel(toSmallCaps('Offer Dice [Qty] 🎲')).setStyle(ButtonStyle.Primary),
               new ButtonBuilder().setCustomId('trade_offer_chibi').setLabel(toSmallCaps('Offer Chibi 🐾')).setStyle(ButtonStyle.Success)
             ),
             new ActionRowBuilder().addComponents(
@@ -1769,6 +1770,7 @@ client.on('messageCreate', async message => {
 
             const isP1 = ti.user.id === userId;
             const isP2 = ti.user.id === target.id;
+            const currentOffer = isP1 ? p1Offer : p2Offer;
 
             if (!isP1 && !isP2) {
               return ti.followUp({ content: toSmallCaps('Not your trade session!'), ephemeral: true });
@@ -1780,17 +1782,23 @@ client.on('messageCreate', async message => {
             }
 
             if (ti.customId === 'trade_offer_dice') {
+              await ti.followUp({ content: toSmallCaps(`🎲 Type the amount of Dice you want to offer in chat (e.g. 50):`), ephemeral: true });
+              const msgs = await ti.channel.awaitMessages({ filter: m => m.author.id === ti.user.id, max: 1, time: 20000 }).catch(() => null);
+              const m = msgs?.first();
+              if (!m) return;
+              
+              const amt = parseInt(m.content);
               const uObj = db.users[ti.user.id];
-              if (uObj.dice < 10) {
-                return ti.followUp({ content: toSmallCaps('❌ You need at least 10 dice to offer!'), ephemeral: true });
+              await m.delete().catch(() => {});
+
+              if (isNaN(amt) || amt <= 0) {
+                return ti.followUp({ content: toSmallCaps('❌ Invalid dice amount!'), ephemeral: true });
               }
-              if (isP1) {
-                p1Dice = p1Dice === 0 ? 10 : 0;
-                if (p1Dice > 0) p1Chibi = null; // Clear chibi if switching to dice
-              } else {
-                p2Dice = p2Dice === 0 ? 10 : 0;
-                if (p2Dice > 0) p2Chibi = null;
+              if (uObj.dice < amt) {
+                return ti.followUp({ content: toSmallCaps(`❌ You don't have enough dice! You have ${uObj.dice} 🎲.`), ephemeral: true });
               }
+
+              currentOffer.dice = amt;
               return reqMsg.edit({ embeds: [getEmbed()], components: tradeRows }).catch(() => {});
             }
 
@@ -1800,7 +1808,6 @@ client.on('messageCreate', async message => {
                 return ti.followUp({ content: toSmallCaps('❌ You have no chibis in your inventory to offer!'), ephemeral: true });
               }
 
-              // Discord dropdown menus support max 25 options
               const options = uObj.inventory.chibis.slice(0, 25).map(c => ({
                 label: `${c.name} (${c.rarity}) Lv.${c.level}`.slice(0, 100),
                 value: c.chibiId || c.id
@@ -1829,14 +1836,8 @@ client.on('messageCreate', async message => {
               const chosenChibi = uObj.inventory.chibis.find(c => (c.chibiId || c.id) === chosenId);
 
               if (chosenChibi) {
-                if (isP1) {
-                  p1Chibi = chosenChibi;
-                  p1Dice = 0; // Clear dice if offering chibi
-                } else {
-                  p2Chibi = chosenChibi;
-                  p2Dice = 0;
-                }
-                await reqMsg.edit({ embeds: [getEmbed()], components: tradeRows }).catch(() => {});
+                currentOffer.chibi = chosenChibi;
+                return reqMsg.edit({ embeds: [getEmbed()], components: tradeRows }).catch(() => {});
               }
               return;
             }
@@ -1845,28 +1846,37 @@ client.on('messageCreate', async message => {
               const u1 = db.users[userId];
               const u2 = db.users[target.id];
 
-              if ((p1Dice === 0 && !p1Chibi) || (p2Dice === 0 && !p2Chibi)) {
-                return ti.followUp({ content: toSmallCaps('❌ Both players must offer something before confirming!'), ephemeral: true });
+              const p1HasSomething = p1Offer.dice > 0 || p1Offer.chibi !== null;
+              const p2HasSomething = p2Offer.dice > 0 || p2Offer.chibi !== null;
+
+              if (!p1HasSomething || !p2HasSomething) {
+                return ti.followUp({ content: toSmallCaps('❌ Both players must offer at least something (dice or chibi) before confirming!'), ephemeral: true });
               }
 
-              // Execute Player 1 transfer to Player 2
-              if (p1Dice > 0) {
-                u1.dice -= p1Dice;
-                u2.dice += p1Dice;
-              } else if (p1Chibi) {
-                const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1Chibi.chibiId || p1Chibi.id));
+              if (u1.dice < p1Offer.dice || u2.dice < p2Offer.dice) {
+                return ti.followUp({ content: toSmallCaps('❌ One of the players no longer has enough dice for this trade!'), ephemeral: true });
+              }
+
+              // Transfer Player 1 -> Player 2
+              if (p1Offer.dice > 0) {
+                u1.dice -= p1Offer.dice;
+                u2.dice += p1Offer.dice;
+              }
+              if (p1Offer.chibi) {
+                const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1Offer.chibi.chibiId || p1Offer.chibi.id));
                 if (idx !== -1) {
                   const [transferred] = u1.inventory.chibis.splice(idx, 1);
                   u2.inventory.chibis.push(transferred);
                 }
               }
 
-              // Execute Player 2 transfer to Player 1
-              if (p2Dice > 0) {
-                u2.dice -= p2Dice;
-                u1.dice += p2Dice;
-              } else if (p2Chibi) {
-                const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2Chibi.chibiId || p2Chibi.id));
+              // Transfer Player 2 -> Player 1
+              if (p2Offer.dice > 0) {
+                u2.dice -= p2Offer.dice;
+                u1.dice += p2Offer.dice;
+              }
+              if (p2Offer.chibi) {
+                const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2Offer.chibi.chibiId || p2Offer.chibi.id));
                 if (idx !== -1) {
                   const [transferred] = u2.inventory.chibis.splice(idx, 1);
                   u1.inventory.chibis.push(transferred);
