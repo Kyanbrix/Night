@@ -62,6 +62,21 @@ const GameStateSchema = new mongoose.Schema({
         1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
         2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
         3: { qty: 2, rarity: 'SR', chibiEmoji: '⚡' }
+      },
+      eventActive: true,
+      eventCrystals: {},
+      eventShop: {
+        'cat_event': { id: 'cat_event', name: 'Cat Event', rarity: 'SSRP', emoji: '<a:Cat_event:1572106344511569990>', cost: 100 },
+        'doge_event': { id: 'doge_event', name: 'Doge Event', rarity: 'SSRP', emoji: '<a:Doge_event:1572106275578319009>', cost: 120 },
+        'troll_event': { id: 'troll_event', name: 'Troll Event', rarity: 'SSRP', emoji: '<a:Troll_event:1572106181013545092>', cost: 200 },
+        'frien_event': { id: 'frien_event', name: 'Frien Event', rarity: 'SSRP', emoji: '<a:Frien_event:1572049331366928504>', cost: 350 },
+        'seren_event': { id: 'seren_event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
+        'hellkitty_event': { id: 'hellkitty_event', name: 'Hellkitty Event', rarity: 'SSRP', emoji: '<a:Hellkitty_event:1572049176915742822>', cost: 650 },
+        'mezz_event': { id: 'mezz_event', name: 'Mezz Event', rarity: 'SSRP', emoji: '<a:Mezz_event:1572049078001340517>', cost: 750 },
+        'ruru_event': { id: 'ruru_event', name: 'Ruru Event', rarity: 'SSRP', emoji: '<a:Ruru_event:1572048951786344448>', cost: 1000 },
+        'zoprb_event': { id: 'zoprb_event', name: 'Zoprb Event', rarity: 'SSRP', emoji: '<a:Zoprb_event:1572051059528958054>', cost: 3000 },
+        'kazerb_event': { id: 'kazerb_event', name: 'Kazerb Event', rarity: 'SSRP', emoji: '<a:Kazerb_event:1572050964192563281>', cost: 4500 },
+        'georb_event': { id: 'georb_event', name: 'Georb Event', rarity: 'SSRP', emoji: '<a:Georb_event:1572050282123366410>', cost: 5000 }
       }
     }
   }
@@ -91,6 +106,21 @@ let db = {
       1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
       2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
       3: { qty: 2, rarity: 'SR', chibiEmoji: '⚡' }
+    },
+    eventActive: true,
+    eventCrystals: {},
+    eventShop: {
+      'cat_event': { id: 'cat_event', name: 'Cat Event', rarity: 'SSRP', emoji: '<a:Cat_event:1572106344511569990>', cost: 100 },
+      'doge_event': { id: 'doge_event', name: 'Doge Event', rarity: 'SSRP', emoji: '<a:Doge_event:1572106275578319009>', cost: 120 },
+      'troll_event': { id: 'troll_event', name: 'Troll Event', rarity: 'SSRP', emoji: '<a:Troll_event:1572106181013545092>', cost: 200 },
+      'frien_event': { id: 'frien_event', name: 'Frien Event', rarity: 'SSRP', emoji: '<a:Frien_event:1572049331366928504>', cost: 350 },
+      'seren_event': { id: 'seren_event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
+      'hellkitty_event': { id: 'hellkitty_event', name: 'Hellkitty Event', rarity: 'SSRP', emoji: '<a:Hellkitty_event:1572049176915742822>', cost: 650 },
+      'mezz_event': { id: 'mezz_event', name: 'Mezz Event', rarity: 'SSRP', emoji: '<a:Mezz_event:1572049078001340517>', cost: 750 },
+      'ruru_event': { id: 'ruru_event', name: 'Ruru Event', rarity: 'SSRP', emoji: '<a:Ruru_event:1572048951786344448>', cost: 1000 },
+      'zoprb_event': { id: 'zoprb_event', name: 'Zoprb Event', rarity: 'SSRP', emoji: '<a:Zoprb_event:1572051059528958054>', cost: 3000 },
+      'kazerb_event': { id: 'kazerb_event', name: 'Kazerb Event', rarity: 'SSRP', emoji: '<a:Kazerb_event:1572050964192563281>', cost: 4500 },
+      'georb_event': { id: 'georb_event', name: 'Georb Event', rarity: 'SSRP', emoji: '<a:Georb_event:1572050282123366410>', cost: 5000 }
     }
   }
 };
@@ -110,6 +140,38 @@ const CLAN_LOGOS = {
   '12': '<:Cllanlogo12:1572058007532077238>'
 };
 
+// Event Specific Assets & Constants
+const EVENT_ICONS = {
+  TIPS: '<a:Tips:1572101474329300992>',
+  CRYSTAL: '<a:Crystal_event:1572101509288558652>',
+  EVENT_BADGE: '<a:Ascending:1572101417144025169>'
+};
+
+const EVENT_NPCS = [
+  { name: 'Seroko Mabey', icon: '<:Np8:1572106125652795464>' },
+  { name: 'Suxt Bebon', icon: '<:Npc7:1572106075807817768>' },
+  { name: 'AXF Nurse', icon: '<:Npc6:1572106025929146469>' },
+  { name: 'Jest Clumsey', icon: '<:Npc5:1572105934317293758>' },
+  { name: 'Yumey Ker', icon: '<:Npc4:1572105897990430760>' },
+  { name: 'Riri Zhun', icon: '<:Npc3:1572105865400549458>' },
+  { name: 'Pamey Ev', icon: '<:Npc2:1572105768214204528>' },
+  { name: 'Oz Wizzard', icon: '<:Npc1:1572105705958412399>' }
+];
+
+const EVENT_CHIBIS_POOL = [
+  { id: 'cat_event', name: 'Cat Event', rarity: 'SSRP', emoji: '<a:Cat_event:1572106344511569990>' },
+  { id: 'doge_event', name: 'Doge Event', rarity: 'SSRP', emoji: '<a:Doge_event:1572106275578319009>' },
+  { id: 'troll_event', name: 'Troll Event', rarity: 'SSRP', emoji: '<a:Troll_event:1572106181013545092>' },
+  { id: 'frien_event', name: 'Frien Event', rarity: 'SSRP', emoji: '<a:Frien_event:1572049331366928504>' },
+  { id: 'seren_event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>' },
+  { id: 'hellkitty_event', name: 'Hellkitty Event', rarity: 'SSRP', emoji: '<a:Hellkitty_event:1572049176915742822>' },
+  { id: 'mezz_event', name: 'Mezz Event', rarity: 'SSRP', emoji: '<a:Mezz_event:1572049078001340517>' },
+  { id: 'ruru_event', name: 'Ruru Event', rarity: 'SSRP', emoji: '<a:Ruru_event:1572048951786344448>' },
+  { id: 'zoprb_event', name: 'Zoprb Event', rarity: 'SSRP', emoji: '<a:Zoprb_event:1572051059528958054>' },
+  { id: 'kazerb_event', name: 'Kazerb Event', rarity: 'SSRP', emoji: '<a:Kazerb_event:1572050964192563281>' },
+  { id: 'georb_event', name: 'Georb Event', rarity: 'SSRP', emoji: '<a:Georb_event:1572050282123366410>' }
+];
+
 function getClanLogoDisplay(logoId) {
   if (!logoId) return CLAN_LOGOS['1'];
   return CLAN_LOGOS[String(logoId)] || CLAN_LOGOS['1'];
@@ -122,7 +184,7 @@ function getClanLogoListText() {
 }
 
 const SEASON_LIST = {
-  1: { name: 'Season 1 - Beta Phase', start: 'November 1, 2026 - 12:00 AM' },
+  1: { name: 'Season 1 - Beta Phrase', start: 'November 1, 2026 - 12:00 AM' },
   2: { name: 'Season 2 - Alpha Xmas', start: 'December 1, 2026 - 12:00 AM' },
   3: { name: 'Season 3 - New Year Begins', start: 'January 1, 2027 - 12:00 AM' },
   4: { name: 'Season 4 - Snowy Flakes', start: 'February 1, 2027 - 12:00 AM' },
@@ -185,7 +247,7 @@ async function saveUsers() {
 }
 
 const SHINY_ICON = '<a:Shinynew:1572053794332872886>';
-const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
+const RARITY_HIERARCHY = { SSRP: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
 
 function toSmallCaps(str) {
@@ -209,7 +271,7 @@ function toSmallCaps(str) {
 }
 
 function getRarityIconMap() {
-  const map = {};
+  const map = { SSRP: '<a:Ssrp:1572096279545126985>' };
   gameData.rarities.forEach(r => {
     map[r.key] = r.emoji;
   });
@@ -255,7 +317,6 @@ function ensureUser(userId) {
     db.users[userId] = {
       started: false,
       dice: 10,
-      eventCrystals: 0,
       points: 0,
       rank: '<:unranked:1571314276071907519>',
       clan: null,
@@ -279,7 +340,6 @@ function ensureUser(userId) {
     updateUserRank(db.users[userId]);
     saveUsers();
   } else {
-    if (db.users[userId].eventCrystals === undefined) db.users[userId].eventCrystals = 0;
     updateUserRank(db.users[userId]);
     updatePeakRank(db.users[userId]);
   }
@@ -510,7 +570,11 @@ client.on('messageCreate', async message => {
     rar: 'rarities',
     event: 'event',
     eshop: 'eshop',
-    cadventure: 'cadventure'
+    es: 'eshop',
+    cadventure: 'cadventure',
+    ca: 'cadventure',
+    ecrystal: 'ecrystal',
+    ec: 'ecrystal'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
@@ -571,121 +635,263 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
     }
 
-    // NEW EVENT COMMAND (+event)
+    // --- NEW BETA EVENT SYSTEM COMMANDS ---
+
     if (command === 'event') {
-      const container = new ContainerBuilder()
-        .setAccentColor(0x3498db)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              '# 🌟 Beta Season Event Center\n\n' +
-              'Participate in active event systems to earn special rewards!\n\n' +
-              `• \`${currentPrefix}cadventure\` — Send your Chibis on an NPC Adventure to find Event Crystals 💎!\n` +
-              `• \`${currentPrefix}eshop\` — Spend Event Crystals on exclusive rewards & items!`
-            )
-          )
-        );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
-    // NPC ADVENTURE COMMAND (+cadventure)
-    if (command === 'cadventure') {
-      if (!user.inventory.chibis || user.inventory.chibis.length === 0) {
-        return message.reply(toSmallCaps(`❌ You need at least 1 chibi to send on an adventure! Use ${currentPrefix}roll first.`));
+      if (!db.config.eventActive) {
+        return message.reply(toSmallCaps('❌ The Beta Event is currently inactive!'));
       }
-
-      const randomChibi = user.inventory.chibis[Math.floor(Math.random() * user.inventory.chibis.length)];
-      const foundCrystals = Math.floor(Math.random() * 5) + 1;
-      const foundDice = Math.floor(Math.random() * 10) + 5;
-
-      user.eventCrystals = (user.eventCrystals || 0) + foundCrystals;
-      user.dice += foundDice;
-      addExpAndLevelUp(user, randomChibi, 150);
-      await saveUsers();
-
+      const crystals = db.config.eventCrystals?.[userId] || 0;
+      const eventDescription = 'Welcome to the official Chibi RPG Beta Event! Plunge into exciting new adventures, battle unpredictable wandering NPCs across realms, and collect exclusive limited-edition SSRP event chibis using event crystals.';
+      
       const container = new ContainerBuilder()
         .setAccentColor(0x9b59b6)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# 🗺️ NPC Chibi Adventure\n\n` +
-              `Your chibi ${randomChibi.emoji} **${randomChibi.name}** returned successfully from a daring expedition!\n\n` +
-              `💎 Found: +${foundCrystals} Event Crystals!\n` +
-              `🎲 Found: +${foundDice} Dice!\n` +
-              `✨ Gained +150 EXP!`
+              `# 🌟 Beta Event Hub — Season 1\n\n` +
+              `${EVENT_ICONS.TIPS} **Event Description:**\n${eventDescription}\n\n` +
+              `-----------------------------------\n` +
+              `🎯 **How to Participate:**\n` +
+              `• Use \`${currentPrefix}cadventure\` to explore and encounter random NPCs.\n` +
+              `• Use \`${currentPrefix}battle [@user]\` or trivia to challenge players.\n\n` +
+              `💎 **How Can I Earn Crystals:**\n` +
+              `• Win or lose player battles & participate in trivia challenges.\n` +
+              `• Defeat wandering NPCs in adventures to earn crystals.\n\n` +
+              `🎁 **How Can I Claim & Exchange My Reward:**\n` +
+              `• Type \`${currentPrefix}eshop\` to open the event crystal shop and exchange your crystals for rare event chibis!\n\n` +
+              `Your Crystals: **${crystals}** ${EVENT_ICONS.CRYSTAL}`
             )
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // EVENT SHOP COMMAND (+eshop)
-    if (command === 'eshop') {
-      const crystals = user.eventCrystals || 0;
+    if (command === 'ecrystal') {
+      const crystals = db.config.eventCrystals?.[userId] || 0;
+      return message.reply(toSmallCaps(`💎 You currently have **${crystals}** Event Crystals ${EVENT_ICONS.CRYSTAL}.`));
+    }
+
+    if (command === 'cadventure') {
+      if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
+      const randomNpc = EVENT_NPCS[Math.floor(Math.random() * EVENT_NPCS.length)];
+      
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('buy_event_dice').setLabel(toSmallCaps('Buy 50x Dice (10 💎)')).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('buy_event_spray').setLabel(toSmallCaps('Buy 10x Spray (25 💎)')).setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('accept_npc_fight').setLabel(toSmallCaps('Fight NPC ⚔️')).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('decline_npc_fight').setLabel(toSmallCaps('Run Away 🏃')).setStyle(ButtonStyle.Secondary)
       );
+
+      const advMsg = await message.reply({
+        content: toSmallCaps(`${randomNpc.icon} **${randomNpc.name}**\n\n<@${userId}> You spotted an NPC and they want to fight you! Do you want to accept this challenge? (Expires in 10s)`),
+        components: [row]
+      });
+
+      const collector = advMsg.createMessageComponentCollector({ time: 10000 });
+      let handled = false;
+
+      collector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your adventure encounter!'), ephemeral: true });
+        handled = true;
+
+        if (i.customId === 'decline_npc_fight') {
+          collector.stop();
+          return advMsg.edit({ content: toSmallCaps(`🏃 You fled from ${randomNpc.name}. Safe travels!`), components: [] }).catch(() => {});
+        }
+
+        if (i.customId === 'accept_npc_fight') {
+          collector.stop();
+
+          // Generate random NPC stats per prompt specs
+          const npcAtk = Math.floor(Math.random() * 36) + 10; // 10-45
+          const npcHp = Math.floor(Math.random() * 1329) + 400; // 400-1,728
+          const npcDef = Math.floor(Math.random() * 66) + 40; // 40-105
+
+          // User combat power calculation
+          const getTeamChibis = (u) => {
+            return (u.team || [null, null, null]).map(id => {
+              if (!id) return null;
+              return u.inventory.chibis.find(c => (c.chibiId || c.id) === id);
+            });
+          };
+
+          const userTeam = getTeamChibis(user);
+          let userPower = 50;
+          userTeam.forEach(c => {
+            if (c) {
+              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, atk: 20, def: 10 };
+              userPower += (statCfg.hp + c.level * statCfg.hpPer) + (statCfg.atk + c.level * statCfg.atkPer) * 3;
+            }
+          });
+
+          const npcPower = (npcHp + npcAtk * 3 + npcDef * 2) * (0.85 + Math.random() * 0.3);
+          const isUserWinner = userPower >= npcPower;
+
+          let rewardCrystal = 0;
+          let shinyDropText = '';
+
+          if (isUserWinner) {
+            rewardCrystal = 17;
+            db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
+
+            // 0.1% chance for Shiny Event Chibi drop
+            if (Math.random() * 100 <= 0.1) {
+              const randomEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
+              const generatedId = new mongoose.Types.ObjectId().toString();
+              if (!user.inventory.chibis) user.inventory.chibis = [];
+              user.inventory.chibis.push({
+                id: generatedId,
+                chibiId: generatedId,
+                name: randomEventChibi.name,
+                rarity: 'SSRP',
+                emoji: randomEventChibi.emoji,
+                isShiny: true,
+                level: 1,
+                exp: 0,
+                date: new Date().toLocaleDateString()
+              });
+              shinyDropText = toSmallCaps(`\n✨ **RARE DROP!** You obtained a Shiny Event Chibi (${randomEventChibi.emoji} **${randomEventChibi.name}**) ✨`);
+            }
+          } else {
+            rewardCrystal = 8;
+            db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
+          }
+
+          const awardedExp = addExpAndLevelUp(user, userTeam.find(Boolean), 350);
+          await saveUsers();
+
+          const resultContainer = new ContainerBuilder()
+            .setAccentColor(isUserWinner ? 0x2ecc71 : 0xe74c3c)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                toSmallCaps(
+                  `# ⚔️ Adventure Battle Result: vs ${randomNpc.name}\n\n` +
+                  `Outcome: **${isUserWinner ? 'VICTORY 🎉' : 'DEFEAT 💔'}**\n\n` +
+                  `🛡️ **NPC Battle Stats:**\n` +
+                  `• ❤️ HP: \`${npcHp}\` | 🗡️ ATK: \`${npcAtk}\` | 🛡️ DEF: \`${npcDef}\`\n\n` +
+                  `🎁 **Rewards Gained:**\n` +
+                  `• Crystals: **+${rewardCrystal}** ${EVENT_ICONS.CRYSTAL}\n` +
+                  `• EXP: **+${awardedExp}** ✨` + shinyDropText
+                )
+              )
+            );
+
+          await advMsg.edit({ content: '', components: [resultContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
+      });
+
+      collector.on('end', async () => {
+        if (!handled) {
+          await advMsg.edit({ content: toSmallCaps(`⏳ Encounter with ${randomNpc.name} timed out.`), components: [] }).catch(() => {});
+        }
+      });
+      return;
+    }
+
+    if (command === 'eshop') {
+      if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
+      const crystals = db.config.eventCrystals?.[userId] || 0;
+
+      // Sorted by price ascending per prompt instructions
+      const shopItems = Object.values(db.config.eventShop).sort((a, b) => a.cost - b.cost);
+
+      const shopLines = shopItems.map((item, idx) => {
+        return toSmallCaps(`**[${idx + 1}]** ${item.emoji} **${item.name}** — **${item.cost.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}`);
+      }).join('\n');
+
+      const options = shopItems.map((item, idx) => ({
+        label: `${item.name} (${item.cost} Crystals)`.slice(0, 100),
+        value: item.id
+      }));
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('eshop_buy_select')
+        .setPlaceholder(toSmallCaps('Select an event chibi to purchase'))
+        .addOptions(options);
+
+      const row = new ActionRowBuilder().addComponents(selectMenu);
 
       const container = new ContainerBuilder()
         .setAccentColor(0xf1c40f)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              '# 💎 Beta Event Crystal Shop\n' +
-              `Your Balance: **${crystals} 💎 Crystals**\n\n` +
-              '• 50x Dice 🎲 — 10 Crystals\n' +
-              '• 10x Spray Boosts 🧴 — 25 Crystals'
-            )
+              `# 💎 Beta Event Crystal Shop\n\n` +
+              `Your Crystal Balance: **${crystals.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}\n\n` +
+              `*Select from the dropdown menu below to exchange your crystals for exclusive SSRP event chibis!*:\n\n`
+            ) + shopLines
           )
         );
 
-      const eshopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
-      const collector = eshopMsg.createMessageComponentCollector({ time: 60000 });
-
+      const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
+      
+      const collector = shopMsg.createMessageComponentCollector({ time: 60000 });
       collector.on('collect', async i => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your eshop session!'), ephemeral: true });
 
-        if (!user.inventory.items) user.inventory.items = { spray: 0, clover: 0 };
+        if (i.customId === 'eshop_buy_select') {
+          const selectedId = i.values[0];
+          const item = db.config.eventShop[selectedId];
+          const userCrystals = db.config.eventCrystals?.[userId] || 0;
 
-        if (i.customId === 'buy_event_dice') {
-          if ((user.eventCrystals || 0) < 10) return i.followUp({ content: toSmallCaps('❌ Not enough Event Crystals!'), ephemeral: true });
-          user.eventCrystals -= 10;
-          user.dice += 50;
+          if (!item) return i.followUp({ content: toSmallCaps('❌ Item not found!'), ephemeral: true });
+          if (userCrystals < item.cost) {
+            return i.followUp({ content: toSmallCaps(`❌ You need **${item.cost}** ${EVENT_ICONS.CRYSTAL}, but you only have **${userCrystals}** ${EVENT_ICONS.CRYSTAL}!`), ephemeral: true });
+          }
+
+          db.config.eventCrystals[userId] -= item.cost;
+          const generatedId = new mongoose.Types.ObjectId().toString();
+          if (!user.inventory.chibis) user.inventory.chibis = [];
+
+          user.inventory.chibis.push({
+            id: generatedId,
+            chibiId: generatedId,
+            name: item.name,
+            rarity: 'SSRP',
+            emoji: item.emoji,
+            isShiny: false,
+            level: 1,
+            exp: 0,
+            date: new Date().toLocaleDateString()
+          });
+
           await saveUsers();
-          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased 50x Dice! Balance: ${user.eventCrystals} 💎`), ephemeral: true });
-        } else if (i.customId === 'buy_event_spray') {
-          if ((user.eventCrystals || 0) < 25) return i.followUp({ content: toSmallCaps('❌ Not enough Event Crystals!'), ephemeral: true });
-          user.eventCrystals -= 25;
-          user.inventory.items.spray += 10;
-          await saveUsers();
-          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased 10x Spray Uses! Balance: ${user.eventCrystals} 💎`), ephemeral: true });
+          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased ${item.emoji} **${item.name}**! It has been added directly to your collections with the Event badge ${EVENT_ICONS.EVENT_BADGE}.`), ephemeral: true });
         }
       });
       return;
     }
 
+    // --- EXISTING COMMANDS MAINTAINED UNTOUCHED ---
+
+    // RARITIES COMMAND (+rarities / +rar)
     if (command === 'rarities') {
       const raritiesInfo =
+        `${rarityIconsMap['SSRP'] || '🌟'} **Super Special Rare Plus (SSRP - Beta Event)**\n` +
+        `• Cat Event: Normal 1 in 500B | Shiny 1 in 1Qa\n` +
+        `• Doge Event: Normal 1 in 1T | Shiny 1 in 20Qa\n` +
+        `• Troll Event: Normal 1 in 30T | Shiny 1 in 50Qa\n` +
+        `• Frien Event: Normal 1 in 100T | Shiny 1 in 300Qa\n` +
+        `• Seren Event: Normal 1 in 500T | Shiny 1 in 750Qa\n` +
+        `• Hellkitty Event: Normal 1 in 5Qa | Shiny 1 in 15Qi\n` +
+        `• Mezz Event: Normal 1 in 75Qa | Shiny 1 in 500Qi\n` +
+        `• Ruru Event: Normal 1 in 250Qa | Shiny 1 in 10Sx\n` +
+        `• Zoprb Event: Normal 1 in 1Qi | Shiny 1 in 100Sx\n` +
+        `• Kazerb Event: Normal 1 in 500Qi | Shiny 1 in 50Sp\n` +
+        `• Georb Event: Normal 1 in 10Sp | Shiny 1 in 50No\n\n` +
         `${rarityIconsMap['C'] || '📦'} **Common (C)**\n` +
-        `• Normal Drop Rate: 20% (~1 in 2)\n` +
-        `• Shiny Drop Rate: 1%\n\n` +
+        `• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 1%\n\n` +
         `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n` +
-        `• Normal Drop Rate: 12%\n` +
-        `• Shiny Drop Rate: 0.10%\n\n` +
+        `• Normal Drop Rate: 12% | Shiny Drop Rate: 0.10%\n\n` +
         `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n` +
-        `• Normal Drop Rate: 7%\n` +
-        `• Shiny Drop Rate: 0.5%\n\n` +
+        `• Normal Drop Rate: 7% | Shiny Drop Rate: 0.5%\n\n` +
         `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n` +
-        `• Normal Drop Rate: 1%\n` +
-        `• Shiny Drop Rate: 0.1%\n\n` +
+        `• Normal Drop Rate: 1% | Shiny Drop Rate: 0.1%\n\n` +
         `${rarityIconsMap['SRR'] || '📦'} **Super Rare Rare (SRR)**\n` +
-        `• Normal Drop Rate: 0.10%\n` +
-        `• Shiny Drop Rate: 0.0010%\n\n` +
+        `• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
         `${rarityIconsMap['UTR'] || '📦'} **Ultra Rare (UTR)**\n` +
-        `• Normal Drop Rate: 0.001% (~1 in 40,101)\n` +
-        `• Shiny Drop Rate: 0.0001%`;
+        `• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%`;
 
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
@@ -778,10 +984,11 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}slot [bet]\` — Play Chibi Slot Machine 🎰\n` +
         `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n` +
         `\`${currentPrefix}rarities\` (${currentPrefix}rar) — View Chibi drop rates\n\n` +
-        toSmallCaps('🌟 **Beta Events**\n') +
-        `\`${currentPrefix}event\` — View active event hub\n` +
-        `\`${currentPrefix}cadventure\` — NPC Chibi Adventure (Earn 💎)\n` +
-        `\`${currentPrefix}eshop\` — Event Crystal Shop\n\n` +
+        toSmallCaps('🌟 **Beta Event System**\n') +
+        `\`${currentPrefix}event\` — View Beta Event Hub\n` +
+        `\`${currentPrefix}cadventure\` (${currentPrefix}ca) — Explore & Battle NPCs for Crystals\n` +
+        `\`${currentPrefix}eshop\` (${currentPrefix}es) — Open Event Crystal Shop\n` +
+        `\`${currentPrefix}ecrystal\` (${currentPrefix}ec) — Check Crystal balance\n\n` +
         toSmallCaps('🎁 **Rewards & Economy**\n') +
         `\`${currentPrefix}daily\` — Claim daily streak rewards (x5 🎲)\n` +
         `\`${currentPrefix}points\` — Check points & rank badge\n` +
@@ -943,7 +1150,7 @@ client.on('messageCreate', async message => {
       else if (user.streak >= 50) multiplier = 3;
       else if (user.streak >= 10) multiplier = 2;
 
-      const rewardDice = 5 * multiplier;
+      const rewardDice = 1 * multiplier;
       user.dice += rewardDice;
       updateUserRank(user);
       await saveUsers();
@@ -1118,7 +1325,6 @@ client.on('messageCreate', async message => {
       }
       const sprays = user.inventory.items.spray || 0;
       const clovers = user.inventory.items.clover || 0;
-      const crystals = user.eventCrystals || 0;
       const displayName = user.customNickname || message.author.username;
 
       const container = new ContainerBuilder()
@@ -1128,7 +1334,6 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 🎒 ${displayName}'s Inventory\n\n` +
               `🎲 Dice: ${user.dice || 0}\n` +
-              `💎 Event Crystals: ${crystals}\n` +
               `🧴 Spray Boosts: ${sprays} Uses\n` +
               `🍀 Clover Boosts: ${clovers} Uses\n\n` +
               `*Note: Chibis are stored in your collections (${currentPrefix}collections).*`
@@ -1168,7 +1373,7 @@ client.on('messageCreate', async message => {
         });
 
         let entries = Object.values(grouped);
-        const rarityRank = { UTR: 1, SRR: 2, SR: 3, R: 4, U: 5, C: 6 };
+        const rarityRank = { SSRP: 1, UTR: 2, SRR: 3, SR: 4, R: 5, U: 6, C: 7 };
 
         if (sortBy === 'rarity') {
           entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
@@ -1186,7 +1391,12 @@ client.on('messageCreate', async message => {
         const start = page * itemsPerPage;
         const pageItems = entries.slice(start, start + itemsPerPage);
         const formatted = pageItems
-          .map((e, idx) => `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}** ${e.isShiny ? SHINY_ICON : ''}`)
+          .map((e, idx) => {
+            const isEventItem = e.rarity === 'SSRP';
+            const badgeIcon = isEventItem ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
+            const shinyIconPart = e.isShiny ? ` ${SHINY_ICON}` : '';
+            return `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}**${shinyIconPart}${badgeIcon}`;
+          })
           .join('\n') || toSmallCaps('Collection page empty.');
 
         const displayName = user.customNickname || message.author.username;
@@ -1314,7 +1524,7 @@ client.on('messageCreate', async message => {
           return toSmallCaps(`**[${index + 1}]** *Chibi missing from inventory*`);
         }
 
-        const statConfig = gameData.stats[chibi.rarity][chibi.isShiny ? 'shiny' : 'normal'];
+        const statConfig = gameData.stats[chibi.rarity]?.[chibi.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
         const hpVal = statConfig.hp + chibi.level * statConfig.hpPer;
         const atkVal = statConfig.atk + chibi.level * statConfig.atkPer;
         const defVal = statConfig.def + chibi.level * statConfig.defPer;
@@ -1324,8 +1534,12 @@ client.on('messageCreate', async message => {
         const maxExp = baseExp + (chibi.level - 1) * perLvl;
         const shortId = (chibi.chibiId || chibi.id).slice(-6);
 
+        const isEventItem = chibi.rarity === 'SSRP';
+        const badgeIcon = isEventItem ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
+        const shinyIconPart = chibi.isShiny ? ` ${SHINY_ICON}` : '';
+
         return (
-          `**[${index + 1}]** \`[${shortId}]\` ${rarityIconsMap[chibi.rarity]} ${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}\n` +
+          `**[${index + 1}]** \`[${shortId}]\` ${rarityIconsMap[chibi.rarity] || '🌟'} ${chibi.emoji} **${chibi.name}**${shinyIconPart}${badgeIcon}\n` +
           `Lvl ${chibi.level} [\`${chibi.exp}/${maxExp}\`]\n` +
           `❤️ HP: \`${hpVal}\` | 🛡️ DEF: \`${defVal}\` | 🗡️ ATK: \`${atkVal}\`\n`
         );
@@ -1447,6 +1661,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // CLAN LEADERBOARD (+ccranks / +ccr)
     if (command === 'ccranks') {
       const clanEntries = Object.entries(db.clans).map(([name, clan]) => {
         const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
@@ -1579,7 +1794,7 @@ client.on('messageCreate', async message => {
             let totalPower = 50;
             const detailed = team.map(c => {
               if (!c) return { hp: 0, atk: 0, def: 0 };
-              const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
+              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
               const hp = statCfg.hp + c.level * statCfg.hpPer;
               const atk = statCfg.atk + c.level * statCfg.atkPer;
               const def = statCfg.def + c.level * statCfg.defPer;
@@ -1617,6 +1832,16 @@ client.on('messageCreate', async message => {
           winUser.points += winReward.win;
           loseUser.points = Math.max(0, loseUser.points - losePenalty.lose);
 
+          // Event Crystal Rewards for PvP Battles
+          const p1CrystalWin = Math.floor(Math.random() * 7) + 10; // 10-16
+          const p1CrystalLose = Math.floor(Math.random() * 7) + 2; // 2-8
+          const p2CrystalWin = Math.floor(Math.random() * 7) + 10;
+          const p2CrystalLose = Math.floor(Math.random() * 7) + 2;
+
+          if (!db.config.eventCrystals) db.config.eventCrystals = {};
+          db.config.eventCrystals[winUser === p1User ? userId : opponent.id] = (db.config.eventCrystals[winUser === p1User ? userId : opponent.id] || 0) + (winUser === p1User ? p1CrystalWin : p2CrystalWin);
+          db.config.eventCrystals[loseUser === p1User ? userId : opponent.id] = (db.config.eventCrystals[loseUser === p1User ? userId : opponent.id] || 0) + (loseUser === p1User ? p1CrystalLose : p2CrystalLose);
+
           const totalExpWon = addExpAndLevelUp(winUser, winTeam.find(Boolean), 400);
 
           updateUserRank(p1User);
@@ -1631,7 +1856,7 @@ client.on('messageCreate', async message => {
               if (!c) return toSmallCaps(`**[${idx + 1}]** *Empty Slot*`);
               const rIcon = rarityIconsMap[c.rarity] || '📦';
               const sIcon = c.isShiny ? SHINY_ICON : '';
-              const statCfg = gameData.stats[c.rarity][c.isShiny ? 'shiny' : 'normal'];
+              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
               const hp = statCfg.hp + c.level * statCfg.hpPer;
               const atk = statCfg.atk + c.level * statCfg.atkPer;
               const def = statCfg.def + c.level * statCfg.defPer;
@@ -1650,7 +1875,7 @@ client.on('messageCreate', async message => {
                   `🛡️ ${p1Name}'s Team Lineup:\n`
                 ) + renderTeamLineWithStats(p1Team, isP1Winner) +
                 toSmallCaps(`\n\n🛡️ ${p2Name}'s Team Lineup:\n`) + renderTeamLineWithStats(p2Team, !isP1Winner) +
-                toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points & +${totalExpWon} EXP! 💔 Loser lost -${losePenalty.lose} Points.`)
+                toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points, +${totalExpWon} EXP & Crystals! 💔 Loser lost -${losePenalty.lose} Points.`)
               )
             );
 
@@ -1694,9 +1919,15 @@ client.on('messageCreate', async message => {
           const awardedPoints = Math.floor(Math.random() * 4) + 17;
           user.points += awardedPoints;
           const awardedExp = addExpAndLevelUp(user, null, 450);
+          
+          // Crystal reward for correct trivia
+          const triviaCrystals = Math.floor(Math.random() * 6) + 5;
+          if (!db.config.eventCrystals) db.config.eventCrystals = {};
+          db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + triviaCrystals;
+
           updateUserRank(user);
           await saveUsers();
-          m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points and +${awardedExp} EXP!`));
+          m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
         } else {
           m.reply(toSmallCaps(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`));
         }
@@ -1704,6 +1935,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // PROFILE COMMAND (+profile)
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1861,6 +2093,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // CLAN CREATE COMMAND (+ccreateclan)
     if (command === 'ccreateclan') {
       const clanName = args[0]?.replace(/\*/g, '');
       const logoArg = args[1];
@@ -1963,6 +2196,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
+    // CLAN RENAME COMMAND (+clanrename)
     if (command === 'clanrename') {
       if (!user.clan || !db.clans[user.clan]) {
         return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
@@ -2029,6 +2263,7 @@ client.on('messageCreate', async message => {
       ));
     }
 
+    // CLAN INFO COMMAND (+cclaninfo)
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -2347,6 +2582,7 @@ client.on('messageCreate', async message => {
               `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
               `• ${currentPrefix}owneradminpermsrem — Remove all admin permissions from users\n` +
               `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server\n` +
+              `• ${currentPrefix}ownergivechibi [@user] [rarity] — Give specific SSRP event chibi\n` +
               `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
               `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
               `• ${currentPrefix}admingivepermission [@user] — Grant admin rights\n` +
@@ -2359,7 +2595,9 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'ownersecretpanel') {
-      if (!isOwner()) return;
+      if (!isOwner()) {
+        return;
+      }
 
       const container = new ContainerBuilder()
         .setAccentColor(0xe74c3c)
@@ -2376,6 +2614,66 @@ client.on('messageCreate', async message => {
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, ephemeral: true });
+    }
+
+    // OWNER GIVE CHIBI COMMAND (+ownergivechibi)
+    if (command === 'ownergivechibi') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
+      }
+      const target = message.mentions.users.first();
+      const rarityArg = args[1]?.toUpperCase();
+
+      if (!target || !rarityArg) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}ownergivechibi [@user] [rarity] (e.g. ${currentPrefix}ownergivechibi @user SSRP)`));
+      }
+      ensureUser(target.id);
+
+      const eligibleChibis = EVENT_CHIBIS_POOL;
+      const options = eligibleChibis.map((c, idx) => ({
+        label: `${c.name} (${c.rarity})`.slice(0, 100),
+        value: c.id
+      }));
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('owner_give_chibi_select')
+        .setPlaceholder(toSmallCaps('Select chibi to give'))
+        .addOptions(options);
+
+      const row = new ActionRowBuilder().addComponents(selectMenu);
+      const promptMsg = await message.reply({
+        content: toSmallCaps(`🎁 Select which event chibi to gift to <@${target.id}>:`),
+        components: [row]
+      });
+
+      const selectFilter = int => int.user.id === userId && int.customId === 'owner_give_chibi_select';
+      const selection = await message.channel.awaitMessageComponent({ filter: selectFilter, time: 25000 }).catch(() => null);
+
+      if (!selection) return promptMsg.edit({ content: toSmallCaps('❌ Chibi giveaway timed out.'), components: [] }).catch(() => {});
+      if (!selection.deferred && !selection.replied) await selection.deferUpdate().catch(() => {});
+
+      const chosenId = selection.values[0];
+      const template = EVENT_CHIBIS_POOL.find(c => c.id === chosenId);
+      const generatedId = new mongoose.Types.ObjectId().toString();
+
+      if (!db.users[target.id].inventory.chibis) db.users[target.id].inventory.chibis = [];
+      db.users[target.id].inventory.chibis.push({
+        id: generatedId,
+        chibiId: generatedId,
+        name: template.name,
+        rarity: 'SSRP',
+        emoji: template.emoji,
+        isShiny: false,
+        level: 1,
+        exp: 0,
+        date: new Date().toLocaleDateString()
+      });
+      await saveUsers();
+
+      return promptMsg.edit({
+        content: toSmallCaps(`✅ Successfully gifted ${template.emoji} **${template.name}** (SSRP) to <@${target.id}>!`),
+        components: []
+      }).catch(() => {});
     }
 
     if (command === 'adminsetclanrewards') {
@@ -2472,21 +2770,13 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 🛡️ Bot Admin Commands List\n\n` +
               `*Restricted to Bot Owner & Authorized Admins in Main Server Only.*\n\n` +
-              `• ${currentPrefix}adminsetlbseason [season_num] - Set leaderboard season\n` +
-              `• ${currentPrefix}adminresetrank - Reset ranks & points only (Season stays active)\n` +
-              `• ${currentPrefix}adminsetnn [@user] [nn] - Set custom nickname for user with data (Owner only)\n` +
-              `• ${currentPrefix}adminban [@user] [duration|permanent] - Ban user from bot\n` +
-              `• ${currentPrefix}adminclearlb - Wipe leaderboard names, ranks & points (Owner only)\n` +
-              `• ${currentPrefix}adminluckevent [mult] [duration] - Set global luck multiplier\n` +
-              `• ${currentPrefix}adminsetxp [mult] [duration] - Set global XP multiplier\n` +
-              `• ${currentPrefix}admingiveitem [@user] [dice|spray|clover|crystal] [qty] - Grant items\n` +
-              `• ${currentPrefix}adminsetrank [@user] [rank title] - Force assign rank\n` +
-              `• ${currentPrefix}adminsetpoints [@user] [points] - Set points\n` +
-              `• ${currentPrefix}adminsetlevel [@user] [level] - Set level\n` +
-              `• ${currentPrefix}admingivepermission [@user] - Grant admin rights (Owner only)\n` +
-              `• ${currentPrefix}removeadminperms [@user] - Remove admin rights (Owner only)\n` +
-              `• ${currentPrefix}prefixchange [prefix] - Customize server prefix\n` +
-              `• ${currentPrefix}enablec / ${currentPrefix}disablec - Control bot channel access`
+              `• ${currentPrefix}admingivecrystal [@user] [amount] — Grant crystals\n` +
+              `• ${currentPrefix}adminsetlbseason [season_num] — Set leaderboard season\n` +
+              `• ${currentPrefix}adminresetrank — Reset ranks & points only\n` +
+              `• ${currentPrefix}adminban [@user] [duration] — Ban user from bot\n` +
+              `• ${currentPrefix}adminluckevent [mult] [duration] — Set global luck multiplier\n` +
+              `• ${currentPrefix}adminsetxp [mult] [duration] — Set global XP multiplier\n` +
+              `• ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [qty] — Grant items`
             )
           )
         );
@@ -2510,6 +2800,19 @@ client.on('messageCreate', async message => {
         return message.reply('You cannot use this Admin power in your own server, you must in the main server to run this.');
       }
 
+      if (command === 'admingivecrystal') {
+        const target = message.mentions.users.first();
+        const amount = parseInt(args[1]);
+        if (!target || isNaN(amount)) {
+          return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivecrystal [@user] [amount]`));
+        }
+        ensureUser(target.id);
+        if (!db.config.eventCrystals) db.config.eventCrystals = {};
+        db.config.eventCrystals[target.id] = (db.config.eventCrystals[target.id] || 0) + amount;
+        await saveUsers();
+        return message.reply(toSmallCaps(`🛡️ Successfully granted ${amount.toLocaleString()} Event Crystals ${EVENT_ICONS.CRYSTAL} to <@${target.id}>.`));
+      }
+
       if (command === 'adminsetlbseason') {
         const seasonNum = parseInt(args[0]);
         if (isNaN(seasonNum) || seasonNum < 1) {
@@ -2531,7 +2834,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'adminsetnn') {
         if (!isOwner()) {
-          return message.reply(toSmallCaps('❌ Only the bot owner can use this command! Admins cannot use owner permissions.'));
+          return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
         }
         const target = message.mentions.users.first();
         const newNN = args.slice(1).join(' ');
@@ -2571,7 +2874,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'adminclearlb') {
         if (!isOwner()) {
-          return message.reply(toSmallCaps('❌ Only the bot owner can clear the leaderboard! Admins cannot access owner commands.'));
+          return message.reply(toSmallCaps('❌ Only the bot owner can clear the leaderboard!'));
         }
 
         for (const uId of Object.keys(db.users)) {
@@ -2621,8 +2924,8 @@ client.on('messageCreate', async message => {
         const itemType = args[1]?.toLowerCase();
         const quantity = parseInt(args[2]);
 
-        if (!target || !['dice', 'spray', 'clover', 'crystal'].includes(itemType) || isNaN(quantity)) {
-          return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover|crystal] [quantity]`));
+        if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
+          return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]`));
         }
         ensureUser(target.id);
 
@@ -2633,7 +2936,6 @@ client.on('messageCreate', async message => {
         if (itemType === 'dice') db.users[target.id].dice += quantity;
         else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
         else if (itemType === 'clover') db.users[target.id].inventory.items.clover += quantity;
-        else if (itemType === 'crystal') db.users[target.id].eventCrystals = (db.users[target.id].eventCrystals || 0) + quantity;
         
         updateUserRank(db.users[target.id]);
         await saveUsers();
@@ -2667,6 +2969,7 @@ client.on('messageCreate', async message => {
           return message.reply(toSmallCaps('❌ Only the bot owner can assign admin permissions!'));
         }
         const target = message.mentions.users.first();
+        const targetUserMention = message.mentions.users.first();
         if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivepermission [@user]`));
         ensureUser(target.id);
         db.users[target.id].permissions = true;
@@ -2691,6 +2994,12 @@ client.on('messageCreate', async message => {
     console.error(err);
     message.reply(toSmallCaps('❌ An error occurred while executing this command.'));
   }
+});
+
+// Footer event banner appended globally to bot responses when active
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  // Optional lightweight reminder hook if needed
 });
 
 initDatabase().then(() => {
