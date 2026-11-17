@@ -2056,29 +2056,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-      const leaderName = await getDisplayName(clan.leader);
-      const remainingRenames = 3 - (clan.renameCount || 0);
-
-      const section = new SectionBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# CLAN: ${logoEmoji} ${cleanClanName}\n\n` +
-              `LEADER: ${leaderName}\n` +
-              `TOTAL POINTS: ${totalPoints.toLocaleString()}\n` +
-              `RENAME USES LEFT: ${remainingRenames}/3\n\n` +
-              `MEMBERS:\n`
-            ) + memberLines.join('\n')
-          )
-        );
-
-      const container = new ContainerBuilder()
-        .setAccentColor(0x1abc9c)
-        .addSectionComponents(section);
-
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
     if (command === 'tradehistory') {
       if (!db.tradeHistories[userId] || db.tradeHistories[userId].length === 0) {
         return message.reply(toSmallCaps('📜 You have no recorded trade history yet.'));
