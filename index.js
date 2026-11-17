@@ -300,33 +300,6 @@ function ensureUser(userId) {
   }
 }
 
-function parseDurationToMs(durationStr) {
-  const match = durationStr.match(/^(\d+)([smhdw])$/i);
-  if (!match) return null;
-  const val = parseInt(match[1], 10);
-  const unit = match[2].toLowerCase();
-  switch (unit) {
-    case 's': return val * 1000;
-    case 'm': return val * 60 * 1000;
-    case 'h': return val * 60 * 60 * 1000;
-    case 'd': return val * 24 * 60 * 60 * 1000;
-    case 'w': return val * 7 * 24 * 60 * 60 * 1000;
-    default: return null;
-  }
-}
-
-function formatTimeRemaining(ms) {
-  if (ms <= 0) return toSmallCaps('Ended');
-  const seconds = Math.floor(ms / 1000);
-  const days = Math.floor(seconds / (3600 * 24));
-  const hours = Math.floor((seconds % (3600 * 24)) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (days > 0) return toSmallCaps(`${days}d ${hours}h`);
-  if (hours > 0) return toSmallCaps(`${hours}h ${minutes}m`);
-  return toSmallCaps(`${minutes}m`);
-}
-
 function addExpAndLevelUp(user, chibi, baseExpAmount) {
   const xpMultiplier = db.config.globalXpMultiplier || 1.0;
   const expAmount = Math.round(baseExpAmount * xpMultiplier);
@@ -352,25 +325,6 @@ function addExpAndLevelUp(user, chibi, baseExpAmount) {
     }
   }
   return expAmount;
-}
-
-function parseOddsNumber(oddsString) {
-  if (!oddsString) return 1;
-  const cleanStr = oddsString.replace(/,/g, '').trim();
-  const match = cleanStr.match(/(\d+(?:\.\d+)?)([KMBTQSiNoSp]*)/i);
-  if (!match) return 1;
-  const numPart = parseFloat(match[1]);
-  const unit = match[2] ? match[2].toUpperCase() : '';
-  if (unit.includes('NO')) return numPart * 1e30;
-  if (unit.includes('SP')) return numPart * 1e27;
-  if (unit.includes('SX')) return numPart * 1e24;
-  if (unit.includes('QI')) return numPart * 1e18;
-  if (unit.includes('QA')) return numPart * 1e15;
-  if (unit.includes('T')) return numPart * 1e12;
-  if (unit.includes('B')) return numPart * 1e9;
-  if (unit.includes('M')) return numPart * 1e6;
-  if (unit.includes('K')) return numPart * 1e3;
-  return numPart;
 }
 
 const TRIVIA_BANK = [
@@ -671,9 +625,9 @@ client.on('messageCreate', async message => {
         handled = true;
 
         if (i.customId === 'fight_npc') {
-          const npcAtk = Math.floor(Math.random() * 36) + 10; // 10 - 45
-          const npcHp = Math.floor(Math.random() * 1329) + 400; // 400 - 1728
-          const npcDef = Math.floor(Math.random() * 66) + 40; // 40 - 105
+          const npcAtk = Math.floor(Math.random() * 36) + 10;
+          const npcHp = Math.floor(Math.random() * 1329) + 400;
+          const npcDef = Math.floor(Math.random() * 66) + 40;
 
           const eventChibisPool = gameData.eventChibis || [];
           const randomEventChibi = eventChibisPool[Math.floor(Math.random() * eventChibisPool.length)] || { name: 'Cat Event', rarity: 'SSRP', emoji: '<a:Cat_event:1572106344511569990>' };
@@ -706,22 +660,27 @@ client.on('messageCreate', async message => {
             rewardCrystal = 17;
             user.crystals = (user.crystals || 0) + rewardCrystal;
 
-            // 0.1% chance for shiny event chibi, or normal event chibi
-            const isShinyDrop = Math.random() * 100 <= 0.1;
-            const generatedId = new mongoose.Types.ObjectId().toString();
-            const droppedChibi = {
-              id: generatedId,
-              chibiId: generatedId,
-              name: `${randomEventChibi.name} ${EVENT_ICON}`,
-              rarity: 'SSRP',
-              emoji: randomEventChibi.emoji,
-              isShiny: isShinyDrop,
-              level: 1,
-              exp: 0,
-              date: new Date().toLocaleDateString()
-            };
-            user.inventory.chibis.push(droppedChibi);
-            dropText = `\n🎁 **NPC Drop:** Received ${randomEventChibi.emoji} **${randomEventChibi.name}** ${isShinyDrop ? `${SHINY_ICON} (Shiny Event Drop!)` : ''} ${EVENT_ICON}!`;
+            // 0.01% chance for shiny event chibi, scaled by global luck multiplier
+            const activeLuckMult = db.config.globalLuckMultiplier || 1.0;
+            const shinyChance = 0.01 * activeLuckMult;
+            const isShinyDrop = Math.random() * 100 <= shinyChance;
+
+            if (isShinyDrop) {
+              const generatedId = new mongoose.Types.ObjectId().toString();
+              const droppedChibi = {
+                id: generatedId,
+                chibiId: generatedId,
+                name: `${randomEventChibi.name} ${EVENT_ICON}`,
+                rarity: 'SSRP',
+                emoji: randomEventChibi.emoji,
+                isShiny: true,
+                level: 1,
+                exp: 0,
+                date: new Date().toLocaleDateString()
+              };
+              user.inventory.chibis.push(droppedChibi);
+              dropText = `\n🎁 **NPC Drop:** Received ${randomEventChibi.emoji} **${randomEventChibi.name}** ${SHINY_ICON} (Shiny Event Drop!) ${EVENT_ICON}!`;
+            }
           } else {
             rewardCrystal = 8;
             user.crystals = (user.crystals || 0) + rewardCrystal;
@@ -758,10 +717,6 @@ client.on('messageCreate', async message => {
       });
       return;
     }
-
-    // STANDARD COMMAND FOOTER APPEND HELPER
-    const originalReply = message.reply.bind(message);
-    // We can append the event reminder to text messages or containers where appropriate, or keep clean.
 
     if (command === 'help') {
       const helpText =
@@ -1075,46 +1030,79 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
+    // COLLECTIONS COMMAND (+collections / +col) with Sort & Pagination
     if (command === 'collections') {
       if (!user.inventory || !user.inventory.chibis || user.inventory.chibis.length === 0) {
         return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll or ${currentPrefix}eshop.`));
       }
 
+      let sortBy = 'rarity'; // 'rarity' or 'alpha'
       let currentPage = 0;
       const itemsPerPage = 10;
-      const totalPages = Math.max(1, Math.ceil(user.inventory.chibis.length / itemsPerPage));
+
+      const getSortedChibis = () => {
+        let chibis = [...user.inventory.chibis];
+        const rarityRank = { SSRP: 1, UTR: 2, SRR: 3, SR: 4, R: 5, U: 6, C: 7 };
+
+        if (sortBy === 'rarity') {
+          chibis.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
+        } else if (sortBy === 'alpha') {
+          chibis.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return chibis;
+      };
 
       const renderCol = (page) => {
+        const sortedChibis = getSortedChibis();
+        const totalPages = Math.max(1, Math.ceil(sortedChibis.length / itemsPerPage));
+        if (page >= totalPages) page = totalPages - 1;
+
         const start = page * itemsPerPage;
-        const pageItems = user.inventory.chibis.slice(start, start + itemsPerPage);
+        const pageItems = sortedChibis.slice(start, start + itemsPerPage);
+        
         const formatted = pageItems.map((c, idx) => {
+          const itemNum = start + idx + 1;
           const shortId = (c.chibiId || c.id).slice(-6);
+          const rarityIcon = rarityIconsMap[c.rarity] || '📦';
+          const chibiEmoji = c.emoji || '✨';
+          const namePart = c.name; 
           const shinyPart = c.isShiny ? ` ${SHINY_ICON}` : '';
-          return `**${start + idx + 1}.** \`[${shortId}]\` ${rarityIconsMap[c.rarity] || '📦'} ${c.emoji} **${c.name}**${shinyPart} (Lvl ${c.level})`;
+
+          // Exact requested format: 1. [Id] quantity [rarity icon] [chibi icon] chibi name [shiny icon] [event icon]
+          return `${itemNum}. \`[${shortId}]\` 1x ${rarityIcon} ${chibiEmoji} **${namePart}**${shinyPart}`;
         }).join('\n');
 
         const displayName = user.customNickname || message.author.username;
-        return new ContainerBuilder()
+        const container = new ContainerBuilder()
           .setAccentColor(0x9b59b6)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
               toSmallCaps(
-                `# 📖 ${displayName}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\n`
+                `# 📖 ${displayName}'s Chibi Collection (Page ${page + 1}/${totalPages})\n` +
+                `Sort: ${sortBy === 'rarity' ? 'Rarity' : 'Alphabetical'}\n\n`
               ) + formatted +
               toSmallCaps(`\n\n*Total Chibis Owned: ${user.inventory.chibis.length}*`)
             )
           );
+        return { container, totalPages };
       };
 
-      const getRows = (page) => {
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('col_prev').setLabel(toSmallCaps('◀ Previous')).setStyle(ButtonStyle.Primary).setDisabled(page === 0),
-          new ButtonBuilder().setCustomId('col_next').setLabel(toSmallCaps('Next ▶')).setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
-        );
+      const getColRows = (page, totalPages) => {
+        return [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('sort_rarity').setLabel(toSmallCaps('Order Rarity')).setStyle(sortBy === 'rarity' ? ButtonStyle.Success : ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('sort_alpha').setLabel(toSmallCaps('Order Alphabetical')).setStyle(sortBy === 'alpha' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          ),
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('col_prev').setLabel(toSmallCaps('◀ Previous')).setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId('col_next').setLabel(toSmallCaps('Next ▶')).setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+          )
+        ];
       };
 
+      const initialRender = renderCol(currentPage);
       const colMsg = await message.reply({
-        components: [renderCol(currentPage), getRows(currentPage)],
+        components: [initialRender.container, ...getColRows(currentPage, initialRender.totalPages)],
         flags: MessageFlags.IsComponentsV2
       });
 
@@ -1123,11 +1111,21 @@ client.on('messageCreate', async message => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your session!'), ephemeral: true });
 
-        if (i.customId === 'col_prev' && currentPage > 0) currentPage--;
-        if (i.customId === 'col_next' && currentPage < totalPages - 1) currentPage++;
+        if (i.customId === 'sort_rarity') {
+          sortBy = 'rarity';
+          currentPage = 0;
+        } else if (i.customId === 'sort_alpha') {
+          sortBy = 'alpha';
+          currentPage = 0;
+        } else if (i.customId === 'col_prev' && currentPage > 0) {
+          currentPage--;
+        } else if (i.customId === 'col_next') {
+          currentPage++;
+        }
 
+        const updated = renderCol(currentPage);
         await colMsg.edit({
-          components: [renderCol(currentPage), getRows(currentPage)],
+          components: [updated.container, ...getColRows(currentPage, updated.totalPages)],
           flags: MessageFlags.IsComponentsV2
         }).catch(() => {});
       });
@@ -1233,8 +1231,8 @@ client.on('messageCreate', async message => {
           const winnerUser = isP1Win ? p1User : p2User;
           const loserUser = isP1Win ? p2User : p1User;
 
-          const winCrystals = Math.floor(Math.random() * 7) + 10; // 10 - 16
-          const loseCrystals = Math.floor(Math.random() * 7) + 2; // 2 - 8
+          const winCrystals = Math.floor(Math.random() * 7) + 10;
+          const loseCrystals = Math.floor(Math.random() * 7) + 2;
 
           winnerUser.crystals = (winnerUser.crystals || 0) + winCrystals;
           loserUser.crystals = (loserUser.crystals || 0) + loseCrystals;
@@ -1314,7 +1312,6 @@ client.on('messageCreate', async message => {
 
     const isOwner = () => userId === (db.config.ownerId || userId) || user.permissions === true;
 
-    // ADMIN COMMAND: +admingivecrystal @user [amount]
     if (command === 'admingivecrystal') {
       if (!isOwner() && !message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return message.reply(toSmallCaps('❌ You do not have permission to use this command!'));
@@ -1330,7 +1327,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`🎁 Granted **${amount}** ${CRYSTAL_EMOJI} Crystals to <@${target.id}>!`));
     }
 
-    // OWNER COMMAND: +ownergivechibi @user [id or rarity]
     if (command === 'ownergivechibi') {
       if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
       const target = message.mentions.users.first();
@@ -1377,8 +1373,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // Append Event footer to general command responses if needed
-    // Done!
   } catch (err) {
     console.error(err);
     message.reply(toSmallCaps('❌ An error occurred while executing this command.'));
