@@ -2043,7 +2043,7 @@ client.on('messageCreate', async message => {
         .setAccentColor(0x1abc9c)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            toSmallCaps(`# CLAN: `) + `${logoEmoji} ` + toSmallCaps(`${cleanClanName}\n\n`) +
+            toSmallCaps(`# CLAN: ${cleanClanName}   `) + `${logoEmoji}\n\n` +
             toSmallCaps(
               `LEADER: ${leaderName}\n` +
               `TOTAL POINTS: ${totalPoints.toLocaleString()}\n` +
