@@ -789,6 +789,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] — 2-Player Trade\n\n` +
         toSmallCaps('🏛️ **Clans & Server**\n') +
         `\`${currentPrefix}clanlist\` — View clans\n` +
+        `\`${currentPrefix}cclaninfo\` — Clan details & info\n` +
         `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\` / \`${currentPrefix}clanleave\` / \`${currentPrefix}clanrename\`\n` +
         `\`${currentPrefix}prefixchange\` / \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\``;
 
