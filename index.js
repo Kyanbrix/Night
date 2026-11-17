@@ -2036,7 +2036,11 @@ client.on('messageCreate', async message => {
           }
         }
 
-        if (highestChibi && (highestTier > (targetUserData.bestRollTier || 0) || (highestTier === (targetUserData.bestRollTier || 0) && highestVal > (targetUserData.bestRollVal || 0)))) {
+        if (highestChibi && (
+          targetUserData.bestRoll === '1 in 1' ||
+          highestTier > (targetUserData.bestRollTier || 0) ||
+          (highestTier === (targetUserData.bestRollTier || 0) && highestVal > (targetUserData.bestRollVal || 0))
+        )) {
           targetUserData.bestRollTier = highestTier;
           targetUserData.bestRollVal = highestVal;
           targetUserData.bestRoll = highestChibi.oddsStr;
