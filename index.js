@@ -2017,7 +2017,7 @@ client.on('messageCreate', async message => {
     }
 
     // FIXED PROFILE COMMAND WITH RIGHT-SIDE THUMBNAIL AVATAR
-    if (command === 'profile') {
+     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
       ensureUser(targetUserId);
@@ -2053,7 +2053,6 @@ client.on('messageCreate', async message => {
 
       const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
-      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -2074,7 +2073,7 @@ client.on('messageCreate', async message => {
       }
 
       const profileText = toSmallCaps(
-        `# ${displayName}\n\n` +
+        `# 🌸 ${displayName}'s Profile\n\n` +
         `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n` +
         `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
         `⚜️ RANK: `
@@ -2083,6 +2082,15 @@ client.on('messageCreate', async message => {
         `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
         `🛡️ CLAN: ${clanDisplayStr}`
       );
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(profileText)
+        );
+
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
 
       const section = new SectionBuilder();
       section.addTextDisplayComponents(new TextDisplayBuilder().setContent(profileText));
