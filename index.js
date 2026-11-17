@@ -2024,7 +2024,8 @@ client.on('messageCreate', async message => {
 
         for (const c of targetUserData.inventory.chibis) {
           const tier = RARITY_HIERARCHY[c.rarity] || 1;
-          const template = gameData.chibis.find(t => t.name === c.name && t.rarity === c.rarity);
+          const allChibisPool = [...(gameData.chibis || []), ...(gameData.eventChibis || [])];
+          const template = allChibisPool.find(t => t.name === c.name && t.rarity === c.rarity);
           const oddsStr = template ? (c.isShiny ? template.shinyOdds : template.odds) : '1 in 1';
           const val = parseOddsNumber(oddsStr);
 
