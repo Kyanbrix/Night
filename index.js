@@ -640,32 +640,61 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
     }
 
-    // --- OWNER COMMANDS (-oc / -ownercommands / -ownerresetdata) ---
+    // --- REWORKED ADMIN & OWNER COMMAND PANELS ---
 
     const isOwner = () => {
       if (!db.config.ownerId) {
         db.config.ownerId = userId;
       }
-      return userId === db.config.ownerId || user.permissions === true;
+      return userId === db.config.ownerId;
     };
 
-    if (command === 'ownercommands') {
+    const isAdmin = () => {
+      return isOwner() || user.permissions === true;
+    };
+
+    if (command === 'ownercommands' || command === 'oc') {
       if (!isOwner()) {
-        return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
+        return message.reply(toSmallCaps('❌ Only the primary bot owner can access owner commands!'));
       }
       const container = new ContainerBuilder()
         .setAccentColor(0x9b59b6)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# 👑 Owner Command List\n\n` +
-              `• ${currentPrefix}oc or ${currentPrefix}ownercommands — View this owner menu\n` +
-              `• ${currentPrefix}ownerresetdata — Wipe all user data and reset everyone back to -start\n` +
-              `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
-              `• ${currentPrefix}ownergivechibi [@user] [rarity] — Give specific SSRP event chibi\n` +
-              `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
-              `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
-              `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server`
+              `# 👑 Owner Control Center\n\n` +
+              `• \`${currentPrefix}ownerresetdata\` — Wipe all user data and reset everyone\n` +
+              `• \`${currentPrefix}ownersecretpanel\` — View secret system statistics\n` +
+              `• \`${currentPrefix}owneradminpermsrem\` — Revoke admin permissions from all users\n` +
+              `• \`${currentPrefix}ownergivechibi [@user]\` — Gift exclusive SSRP event chibis\n` +
+              `• \`${currentPrefix}adminsetclanrewards\` — Configure seasonal clan rewards\n` +
+              `• \`${currentPrefix}fixadmin\` — Assign yourself as main owner & server`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'admincommands' || command === 'ac') {
+      if (!isAdmin()) {
+        return message.reply(toSmallCaps('❌ You do not have administrator permissions to access this panel!'));
+      }
+      const container = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🛡️ Administrator Operations Panel\n\n` +
+              `• \`${currentPrefix}admingivecrystal [@user] [qty]\` — Grant Event Crystals\n` +
+              `• \`${currentPrefix}adminsetlbseason [num]\` — Set active leaderboard season\n` +
+              `• \`${currentPrefix}adminresetrank\` — Reset all points and ranks\n` +
+              `• \`${currentPrefix}adminban [@user] [duration]\` — Ban user from bot\n` +
+              `• \`${currentPrefix}adminluckevent [mult] [time]\` — Set global luck event\n` +
+              `• \`${currentPrefix}adminsetxp [mult] [time]\` — Set global XP event\n` +
+              `• \`${currentPrefix}admingiveitem [@user] [item] [qty]\` — Grant items or dice\n` +
+              `• \`${currentPrefix}adminsetnn [@user] [name]\` — Set custom user nickname\n` +
+              `• \`${currentPrefix}adminclearlb\` — Clear leaderboard data\n` +
+              `• \`${currentPrefix}admingivepermission [@user]\` — Grant admin rights *(Owner only)*`
             )
           )
         );
@@ -2009,7 +2038,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- FIXED PROFILE COMMAND ---
+    // --- REDESIGNED DASHBOARD STYLE PROFILE COMMAND ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -2049,6 +2078,18 @@ client.on('messageCreate', async message => {
         }
       }
 
+      // Calculate collection rarity counts
+      const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+      if (targetUserData.inventory && targetUserData.inventory.chibis) {
+        targetUserData.inventory.chibis.forEach(c => {
+          if (rarityCounts[c.rarity] !== undefined) {
+            rarityCounts[c.rarity]++;
+          }
+        });
+      }
+
+      const totalChibis = targetUserData.inventory.chibis.length;
+      const uniqueChibis = new Set(targetUserData.inventory.chibis.map(c => c.name)).size;
       const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
 
@@ -2058,8 +2099,6 @@ client.on('messageCreate', async message => {
       const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
 
-      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : toSmallCaps('None');
-      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
       const displayName = targetUserData.customNickname || targetMember.username;
 
       let clanDisplayStr = 'None';
@@ -2070,21 +2109,35 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const profileText = toSmallCaps(
-        `# 🌸 ${displayName}'s Profile\n\n` +
-        `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n` +
-        `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
-        `⚜️ RANK: `
-      ) + `${targetUserData.rank}` + toSmallCaps(
-        `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
-        `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
-        `🛡️ CLAN: ${clanDisplayStr}`
+      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : toSmallCaps('None');
+      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
+
+      // Dashboard layout matching reference card style
+      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  Joined ${targetMember.createdAt ? targetMember.createdAt.toLocaleDateString() : 'Recently'}\n\n`);
+      
+      const statsSection = toSmallCaps(
+        `## 📊 Stats\n` +
+        `Drops: **${totalChibis}**                 Today's Drops: **0 / 200**          Dice: **${targetUserData.dice} 🎲**\n` +
+        `Points: **${targetUserData.points.toLocaleString()}**            Global Rank: **${leaderboardPos}**       Streak: **${targetUserData.streak || 0}d**\n` +
+        `Level: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})   Clan: **${clanDisplayStr}**\n\n`
+      );
+
+      const collectionSection = toSmallCaps(
+        `## 📦 Collection Rarity Breakdown\n` +
+        `${rarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**         ` +
+        `${rarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**         ` +
+        `${rarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n` +
+        `${rarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**           ` +
+        `${rarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**             ` +
+        `${rarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**\n` +
+        `${rarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**\n\n` +
+        `🎲 **Best Roll:** ${bestRollIconPart} ${bestRollOddsPart}`
       );
 
       const container = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
+        .setAccentColor(0x36393f)
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(profileText)
+          new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection)
         );
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -2631,32 +2684,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`🛡️ Admin override successful! You are now set as the Bot Owner & Admin, and this server (${message.guild ? message.guild.name : 'DM'}) is locked as the Main Server.`));
     }
 
-    if (command === 'ownercl') {
-      if (!isOwner()) {
-        return message.reply(toSmallCaps('❌ Only the bot owner can view the owner command list!'));
-      }
-
-      const container = new ContainerBuilder()
-        .setAccentColor(0x9b59b6)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# 👑 Owner Command List\n\n` +
-              `• ${currentPrefix}oc or ${currentPrefix}ownercommands — View owner commands\n` +
-              `• ${currentPrefix}ownerresetdata — Wipe all user data & reset everyone to -start\n` +
-              `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
-              `• ${currentPrefix}owneradminpermsrem — Remove all admin permissions from users\n` +
-              `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server\n` +
-              `• ${currentPrefix}ownergivechibi [@user] [rarity] — Give specific SSRP event chibi\n` +
-              `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
-              `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
-              `• ${currentPrefix}adminsetclanrewards [1|2|3] [qty] [rarity] [emoji] — Set clan rewards`
-            )
-          )
-        );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
     if (command === 'ownersecretpanel') {
       if (!isOwner()) {
         return;
@@ -2820,31 +2847,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ Chibi bot commands are now disabled in <#${message.channel.id}>.`));
     }
 
-    if (command === 'admincommands') {
-      if (!checkAdminMainServer(message)) {
-        return message.reply('You cannot use this Admin power in your own server, you must in the main server to run this.');
-      }
-
-      const container = new ContainerBuilder()
-        .setAccentColor(0xe74c3c)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# 🛡️ Bot Admin Commands List\n\n` +
-              `*Restricted to Bot Owner & Authorized Admins in Main Server Only.*\n\n` +
-              `• ${currentPrefix}admingivecrystal [@user] [amount] — Grant crystals\n` +
-              `• ${currentPrefix}adminsetlbseason [season_num] — Set leaderboard season\n` +
-              `• ${currentPrefix}adminresetrank — Reset ranks & points only\n` +
-              `• ${currentPrefix}adminban [@user] [duration] — Ban user from bot\n` +
-              `• ${currentPrefix}adminluckevent [mult] [duration] — Set global luck multiplier\n` +
-              `• ${currentPrefix}adminsetxp [mult] [duration] — Set global XP multiplier\n` +
-              `• ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [qty] — Grant items`
-            )
-          )
-        );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
     if (command === 'removeadminperms') {
       if (!isOwner()) {
         return message.reply(toSmallCaps('❌ Only the bot owner can remove admin permissions!'));
@@ -2895,8 +2897,8 @@ client.on('messageCreate', async message => {
       }
 
       if (command === 'adminsetnn') {
-        if (!isOwner()) {
-          return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
+        if (!isAdmin()) {
+          return message.reply(toSmallCaps('❌ Only administrators can use this command!'));
         }
         const target = message.mentions.users.first();
         const newNN = args.slice(1).join(' ');
@@ -2912,7 +2914,7 @@ client.on('messageCreate', async message => {
 
         db.users[target.id].customNickname = newNN;
         await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Owner successfully set custom nickname for <@${target.id}> to ${newNN}!`));
+        return message.reply(toSmallCaps(`🛡️ Admin successfully set custom nickname for <@${target.id}> to ${newNN}!`));
       }
 
       if (command === 'adminban') {
@@ -2935,8 +2937,8 @@ client.on('messageCreate', async message => {
       }
 
       if (command === 'adminclearlb') {
-        if (!isOwner()) {
-          return message.reply(toSmallCaps('❌ Only the bot owner can clear the leaderboard!'));
+        if (!isAdmin()) {
+          return message.reply(toSmallCaps('❌ Only administrators can clear the leaderboard!'));
         }
 
         for (const uId of Object.keys(db.users)) {
@@ -2946,7 +2948,7 @@ client.on('messageCreate', async message => {
           updateUserRank(db.users[uId]);
         }
         await saveUsers();
-        return message.reply(toSmallCaps('⚠️ Owner Warning: All names, ranks, and points in the leaderboard have been completely cleared!'));
+        return message.reply(toSmallCaps('⚠️ Admin Warning: All names, ranks, and points in the leaderboard have been completely cleared!'));
       }
 
       if (command === 'adminluckevent') {
@@ -3035,7 +3037,7 @@ client.on('messageCreate', async message => {
         ensureUser(target.id);
         db.users[target.id].permissions = true;
         await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Owner permissions granted to <@${target.id}>.`));
+        return message.reply(toSmallCaps(`🛡️ Admin permissions granted to <@${target.id}>.`));
       }
 
       if (command === 'adminsetlevel') {
