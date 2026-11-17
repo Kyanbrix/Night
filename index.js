@@ -8,6 +8,8 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
   MessageFlags,
   PermissionsBitField
 } = require('discord.js');
@@ -556,6 +558,9 @@ client.on('messageCreate', async message => {
     ec: 'enablec',
     dc: 'disablec',
     ac: 'admincommands',
+    oc: 'ownercommands',
+    ownercommands: 'ownercommands',
+    ownerresetdata: 'ownerresetdata',
     cnn: 'customnn',
     ss: 'seasons',
     hss: 'higheststats',
@@ -581,7 +586,7 @@ client.on('messageCreate', async message => {
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -633,6 +638,77 @@ client.on('messageCreate', async message => {
 
     if (!user.started && command !== 'help' && command !== 'status') {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
+    }
+
+    // --- OWNER COMMANDS (-oc / -ownercommands / -ownerresetdata) ---
+
+    const isOwner = () => {
+      if (!db.config.ownerId) {
+        db.config.ownerId = userId;
+      }
+      return userId === db.config.ownerId || user.permissions === true;
+    };
+
+    if (command === 'ownercommands') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
+      }
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 👑 Owner Command List\n\n` +
+              `• ${currentPrefix}oc or ${currentPrefix}ownercommands — View this owner menu\n` +
+              `• ${currentPrefix}ownerresetdata — Wipe all user data and reset everyone back to -start\n` +
+              `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
+              `• ${currentPrefix}ownergivechibi [@user] [rarity] — Give specific SSRP event chibi\n` +
+              `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
+              `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
+              `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'ownerresetdata') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can execute data resets!'));
+      }
+
+      // Reset all user data in database
+      for (const uId of Object.keys(db.users)) {
+        db.users[uId] = {
+          started: false,
+          dice: 10,
+          points: 0,
+          rank: '<:unranked:1571314276071907519>',
+          clan: null,
+          customNickname: null,
+          highestSeasonRank: '<:unranked:1571314276071907519>',
+          highestSeasonPoints: 0,
+          inventory: { chibis: [], items: { spray: 0, clover: 0 } },
+          team: [null, null, null],
+          equippedChibi: null,
+          bestRoll: 'None',
+          bestRollTier: 0,
+          bestRollVal: 0,
+          bestChibi: null,
+          userLevel: 1,
+          userExp: 0,
+          lastDrop: 0,
+          lastDaily: 0,
+          streak: 0,
+          permissions: (uId === db.config.ownerId ? true : false)
+        };
+      }
+      db.clans = {};
+      db.tradeHistories = {};
+      if (db.config.eventCrystals) db.config.eventCrystals = {};
+      await saveUsers();
+
+      return message.reply(toSmallCaps('⚠️ OWNER NOTICE: All user data, inventories, teams, and stats have been completely reset! All users must use `-start` again.'));
     }
 
     // --- BETA EVENT SYSTEM COMMANDS ---
@@ -1940,7 +2016,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED PROFILE COMMAND (+profile) RESTORED WITH FULL CONTAINERBUILDER & TEXTDISPLAY
+    // FIXED PROFILE COMMAND WITH RIGHT-SIDE THUMBNAIL AVATAR
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1977,6 +2053,7 @@ client.on('messageCreate', async message => {
 
       const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
+      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -2007,11 +2084,17 @@ client.on('messageCreate', async message => {
         `🛡️ CLAN: ${clanDisplayStr}`
       );
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
+      const profileSection = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(profileText)
+        )
+        .setAccessory(
+          new ThumbnailBuilder().setURL(avatarUrl)
         );
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addSectionComponents(profileSection);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -2539,13 +2622,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    const isOwner = () => {
-      if (!db.config.ownerId) {
-        db.config.ownerId = userId;
-      }
-      return userId === db.config.ownerId || user.permissions === true;
-    };
-
     const checkAdminMainServer = (msg) => {
       if (!msg.guild) return false;
       if (!db.config.ownerId) db.config.ownerId = userId;
@@ -2578,14 +2654,14 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 👑 Owner Command List\n\n` +
+              `• ${currentPrefix}oc or ${currentPrefix}ownercommands — View owner commands\n` +
+              `• ${currentPrefix}ownerresetdata — Wipe all user data & reset everyone to -start\n` +
               `• ${currentPrefix}ownersecretpanel — Exclusive Owner Secret Panel\n` +
               `• ${currentPrefix}owneradminpermsrem — Remove all admin permissions from users\n` +
               `• ${currentPrefix}fixadmin — Set yourself as owner & current server as main server\n` +
               `• ${currentPrefix}ownergivechibi [@user] [rarity] — Give specific SSRP event chibi\n` +
               `• ${currentPrefix}adminsetnn [@user] [nickname] — Set custom nickname\n` +
               `• ${currentPrefix}adminclearlb — Wipe leaderboard points & ranks\n` +
-              `• ${currentPrefix}admingivepermission [@user] — Grant admin rights\n` +
-              `• ${currentPrefix}removeadminperms [@user] — Remove specific admin rights\n` +
               `• ${currentPrefix}adminsetclanrewards [1|2|3] [qty] [rarity] [emoji] — Set clan rewards`
             )
           )
@@ -2895,7 +2971,7 @@ client.on('messageCreate', async message => {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminluckevent [multiplier] [duration] (e.g. ${currentPrefix}adminluckevent 2.0 30m)`));
         }
 
-      db.config.globalLuckMultiplier = mult;
+        db.config.globalLuckMultiplier = mult;
         db.config.luckEventExpires = Date.now() + durationMs;
         await saveUsers();
 
