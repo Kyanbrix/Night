@@ -219,7 +219,7 @@ function getRarityIconMap() {
 function updateUserRank(user) {
   const pts = user.points || 0;
   if (pts >= 8002) {
-    user.rank = '<:Inferno:1571314769741357117>';
+    user.rank = '<a:Infernonew:1572081189508878340>';
   } else if (pts >= 5501) {
     user.rank = '<:Obsidian:1571314669732237533>';
   } else if (pts >= 4001) {
