@@ -8,7 +8,6 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
-  SectionBuilder,
   MessageFlags,
   PermissionsBitField
 } = require('discord.js');
@@ -114,7 +113,7 @@ let db = {
       'doge_event': { id: 'doge_event', name: 'Doge Event', rarity: 'SSRP', emoji: '<a:Doge_event:1572106275578319009>', cost: 120 },
       'troll_event': { id: 'troll_event', name: 'Troll Event', rarity: 'SSRP', emoji: '<a:Troll_event:1572106181013545092>', cost: 200 },
       'frien_event': { id: 'frien_event', name: 'Frien Event', rarity: 'SSRP', emoji: '<a:Frien_event:1572049331366928504>', cost: 350 },
-      'seren_event': { id: 'Seren Event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
+      'seren_event': { id: 'seren_event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
       'hellkitty_event': { id: 'hellkitty_event', name: 'Hellkitty Event', rarity: 'SSRP', emoji: '<a:Hellkitty_event:1572049176915742822>', cost: 650 },
       'mezz_event': { id: 'mezz_event', name: 'Mezz Event', rarity: 'SSRP', emoji: '<a:Mezz_event:1572049078001340517>', cost: 750 },
       'ruru_event': { id: 'ruru_event', name: 'Ruru Event', rarity: 'SSRP', emoji: '<a:Ruru_event:1572048951786344448>', cost: 1000 },
@@ -1941,7 +1940,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED PROFILE COMMAND (+profile) RESTORED WITH FULL TEXTDISPLAY & SECTION BUILDERS WITHOUT BROKEN SYNTAX
+    // FIXED PROFILE COMMAND (+profile) RESTORED WITH FULL CONTAINERBUILDER & TEXTDISPLAY
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1997,28 +1996,22 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const profileSection = new SectionBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# ${displayName}\n\n` +
-              `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n`
-            ) +
-            `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
-            toSmallCaps(
-              `⚜️ RANK: `
-            ) + `${targetUserData.rank}` +
-            toSmallCaps(
-              `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
-              `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
-              `🛡️ CLAN: `
-            ) + clanDisplayStr
-          )
-        );
+      const profileText = toSmallCaps(
+        `# ${displayName}\n\n` +
+        `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n` +
+        `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
+        `⚜️ RANK: `
+      ) + `${targetUserData.rank}` + toSmallCaps(
+        `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
+        `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
+        `🛡️ CLAN: ${clanDisplayStr}`
+      );
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
-        .addSectionComponents(profileSection);
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(profileText)
+        );
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -2902,7 +2895,7 @@ client.on('messageCreate', async message => {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminluckevent [multiplier] [duration] (e.g. ${currentPrefix}adminluckevent 2.0 30m)`));
         }
 
-        db.config.globalLuckMultiplier = mult;
+      db.config.globalLuckMultiplier = mult;
         db.config.luckEventExpires = Date.now() + durationMs;
         await saveUsers();
 
