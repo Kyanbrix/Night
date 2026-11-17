@@ -48,6 +48,11 @@
       "name": "Ultra Rare",
       "emoji": "<a:Utrrnew1:1572096274415747234>",
       "weight": 0.0001
+    },
+    {
+      "key": "SSRP",
+      "name": "Super Ultra Rare",
+      "emoji": "<a:Ssrp:1572096279545126985>"
     }
   ],
   "chibis": [
