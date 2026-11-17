@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -59,6 +60,7 @@ const GameStateSchema = new mongoose.Schema({
       seasonStartedAt: Date.now(),
       seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
       clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
+      maintenanceMode: false,
       clanRewards: {
         1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
         2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
@@ -103,6 +105,7 @@ let db = {
     seasonStartedAt: Date.now(),
     seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
     clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
+    maintenanceMode: false,
     clanRewards: {
       1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
       2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
@@ -535,6 +538,16 @@ client.on('messageCreate', async message => {
   let command = args.shift().toLowerCase();
   const userId = message.author.id;
 
+  const isOwner = () => {
+    if (!db.config.ownerId) db.config.ownerId = userId;
+    return userId === db.config.ownerId;
+  };
+
+  // --- MAINTENANCE MODE CHECK ---
+  if (db.config.maintenanceMode && !isOwner()) {
+    return message.reply(toSmallCaps('The bot currently under maintenance.'));
+  }
+
   if (db.bannedUsers && db.bannedUsers[userId]) {
     const banInfo = db.bannedUsers[userId];
     if (banInfo.expires === 'permanent' || Date.now() < banInfo.expires) {
@@ -586,7 +599,7 @@ client.on('messageCreate', async message => {
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -642,13 +655,6 @@ client.on('messageCreate', async message => {
 
     // --- REWORKED ADMIN & OWNER COMMAND PANELS ---
 
-    const isOwner = () => {
-      if (!db.config.ownerId) {
-        db.config.ownerId = userId;
-      }
-      return userId === db.config.ownerId;
-    };
-
     const isAdmin = () => {
       return isOwner() || user.permissions === true;
     };
@@ -663,6 +669,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 👑 Owner Control Center\n\n` +
+              `• \`${currentPrefix}ownerbotmaintenance\` — Toggle bot maintenance mode\n` +
               `• \`${currentPrefix}ownerresetdata\` — Wipe all user data and reset everyone\n` +
               `• \`${currentPrefix}ownersecretpanel\` — View secret system statistics\n` +
               `• \`${currentPrefix}owneradminpermsrem\` — Revoke admin permissions from all users\n` +
@@ -685,6 +692,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 🛡️ Administrator Operations Panel\n\n` +
+              `• \`${currentPrefix}adminrestoreall\` — Restore and sync all user data profiles\n` +
               `• \`${currentPrefix}admingivecrystal [@user] [qty]\` — Grant Event Crystals\n` +
               `• \`${currentPrefix}adminsetlbseason [num]\` — Set active leaderboard season\n` +
               `• \`${currentPrefix}adminresetrank\` — Reset all points and ranks\n` +
@@ -699,6 +707,31 @@ client.on('messageCreate', async message => {
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'ownerbotmaintenance') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can toggle maintenance mode!'));
+      }
+      db.config.maintenanceMode = !db.config.maintenanceMode;
+      await saveUsers();
+      const statusText = db.config.maintenanceMode ? 'ENABLED 🔴 (Bot locked for maintenance)' : 'DISABLED 🟢 (Bot is fully operational)';
+      return message.reply(toSmallCaps(`🛠️ Maintenance mode successfully updated: ${statusText}`));
+    }
+
+    if (command === 'adminrestoreall') {
+      if (!isAdmin()) {
+        return message.reply(toSmallCaps('❌ Only administrators can restore all user data!'));
+      }
+      let restoredCount = 0;
+      for (const uId of Object.keys(db.users)) {
+        ensureUser(uId);
+        updateUserRank(db.users[uId]);
+        updatePeakRank(db.users[uId]);
+        restoredCount++;
+      }
+      await saveUsers();
+      return message.reply(toSmallCaps(`🔄 Successfully restored and synchronized data profiles for all **${restoredCount}** registered users!`));
     }
 
     if (command === 'ownerresetdata') {
@@ -2038,7 +2071,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- REDESIGNED DASHBOARD STYLE PROFILE COMMAND ---
+    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -2089,9 +2122,9 @@ client.on('messageCreate', async message => {
       }
 
       const totalChibis = targetUserData.inventory.chibis.length;
-      const uniqueChibis = new Set(targetUserData.inventory.chibis.map(c => c.name)).size;
       const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
+      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -2112,18 +2145,19 @@ client.on('messageCreate', async message => {
       const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : toSmallCaps('None');
       const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
 
-      // Dashboard layout matching reference card style
-      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  Joined ${targetMember.createdAt ? targetMember.createdAt.toLocaleDateString() : 'Recently'}\n\n`);
+      const joinedDateStr = targetMember.joinedAt ? targetMember.joinedAt.toLocaleDateString() : (targetMember.createdAt ? targetMember.createdAt.toLocaleDateString() : 'N/A');
+
+      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  Joined ${joinedDateStr}\n\n`);
       
       const statsSection = toSmallCaps(
-        `## 📊 Stats\n` +
-        `Drops: **${totalChibis}**                 Today's Drops: **0 / 200**          Dice: **${targetUserData.dice} 🎲**\n` +
-        `Points: **${targetUserData.points.toLocaleString()}**            Global Rank: **${leaderboardPos}**       Streak: **${targetUserData.streak || 0}d**\n` +
-        `Level: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})   Clan: **${clanDisplayStr}**\n\n`
+        `## 📊 STATS\n` +
+        `DROPS: **${totalChibis}**                 TODAY'S DROPS: **0 / 200**          DICE: **${targetUserData.dice} 🎲**\n` +
+        `POINTS: **${targetUserData.points.toLocaleString()}**            GLOBAL RANK: **${leaderboardPos}**       STREAK: **${targetUserData.streak || 0}D**\n` +
+        `LEVEL: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})   CLAN: **${clanDisplayStr}**\n\n`
       );
 
       const collectionSection = toSmallCaps(
-        `## 📦 Collection Rarity Breakdown\n` +
+        `## 📦 COLLECTION RARITY BREAKDOWN\n` +
         `${rarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**         ` +
         `${rarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**         ` +
         `${rarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n` +
@@ -2131,14 +2165,20 @@ client.on('messageCreate', async message => {
         `${rarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**             ` +
         `${rarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**\n` +
         `${rarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**\n\n` +
-        `🎲 **Best Roll:** ${bestRollIconPart} ${bestRollOddsPart}`
+        `🎲 **BEST ROLL:** ${bestRollIconPart} ${bestRollOddsPart}`
       );
+
+      const section = new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection)
+        )
+        .setThumbnailAccessory(
+          new ThumbnailBuilder().setUrl(avatarUrl)
+        );
 
       const container = new ContainerBuilder()
         .setAccentColor(0x36393f)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection)
-        );
+        .addSectionComponents(section);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
