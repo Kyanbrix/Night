@@ -9,7 +9,6 @@ const {
   TextDisplayBuilder,
   SeparatorBuilder,
   SectionBuilder,
-  ThumbnailBuilder,
   MessageFlags,
   PermissionsBitField
 } = require('discord.js');
@@ -1727,7 +1726,6 @@ client.on('messageCreate', async message => {
 
       const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
-      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -1764,9 +1762,6 @@ client.on('messageCreate', async message => {
               `🛡️ CLAN: `
             ) + clanDisplayStr
           )
-        )
-        .setThumbnailAccessory(
-          new ThumbnailBuilder().setURL(avatarUrl)
         );
 
       const container = new ContainerBuilder()
