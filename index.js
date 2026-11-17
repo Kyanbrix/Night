@@ -2039,6 +2039,26 @@ client.on('messageCreate', async message => {
       const leaderName = await getDisplayName(clan.leader);
       const remainingRenames = 3 - (clan.renameCount || 0);
 
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# CLAN: ${logoEmoji} ${cleanClanName}\n\n` +
+              `LEADER: ${leaderName}\n` +
+              `TOTAL POINTS: ${totalPoints.toLocaleString()}\n` +
+              `RENAME USES LEFT: ${remainingRenames}/3\n\n` +
+              `MEMBERS:\n`
+            ) + memberLines.join('\n')
+          )
+        );
+
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+      const leaderName = await getDisplayName(clan.leader);
+      const remainingRenames = 3 - (clan.renameCount || 0);
+
       const section = new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
