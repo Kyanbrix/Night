@@ -298,7 +298,7 @@ function updateUserRank(user) {
 function updatePeakRank(user) {
   const pts = user.highestSeasonPoints || 0;
   if (pts >= 8002) {
-    user.highestSeasonRank = '<:Inferno:1571314769741357117>';
+    user.highestSeasonRank = '<a:Infernonew:1572081189508878340>';
   } else if (pts >= 5501) {
     user.highestSeasonRank = '<:Obsidian:1571314669732237533>';
   } else if (pts >= 4001) {
@@ -962,9 +962,9 @@ client.on('messageCreate', async message => {
         `• Kazerb Event: Normal 1 in 500Qi | Shiny 1 in 50Sp\n` +
         `• Georb Event: Normal 1 in 10Sp | Shiny 1 in 50No\n\n` +
         `${rarityIconsMap['C'] || '📦'} **Common (C)**\n` +
-        `• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 1%\n\n` +
+        `• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 5%\n\n` +
         `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n` +
-        `• Normal Drop Rate: 12% | Shiny Drop Rate: 0.10%\n\n` +
+        `• Normal Drop Rate: 12% | Shiny Drop Rate: 1%\n\n` +
         `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n` +
         `• Normal Drop Rate: 7% | Shiny Drop Rate: 0.5%\n\n` +
         `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n` +
@@ -972,7 +972,7 @@ client.on('messageCreate', async message => {
         `${rarityIconsMap['SRR'] || '📦'} **Super Rare Rare (SRR)**\n` +
         `• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
         `${rarityIconsMap['UTR'] || '📦'} **Ultra Rare (UTR)**\n` +
-        `• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%`;
+        `• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.001%`;
 
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
@@ -1275,7 +1275,7 @@ client.on('messageCreate', async message => {
           R: { normal: 7, shiny: 0.5 },
           SR: { normal: 1, shiny: 0.1 },
           SRR: { normal: 0.10, shiny: 0.0010 },
-          UTR: { normal: 0.001, shiny: 0.0001 }
+          UTR: { normal: 0.01, shiny: 0.0001 }
         };
 
         const adjustedRarities = gameData.rarities.map(r => {
@@ -2084,17 +2084,13 @@ client.on('messageCreate', async message => {
         `🛡️ CLAN: ${clanDisplayStr}`
       );
 
-      const profileSection = new SectionBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(profileText)
-        )
-        .setAccessory(
-          new ThumbnailBuilder().setURL(avatarUrl)
-        );
+      const section = new SectionBuilder();
+      section.addTextDisplayComponents(new TextDisplayBuilder().setContent(profileText));
+      section.setAccessory(new ThumbnailBuilder().setURL(avatarUrl));
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
-        .addSectionComponents(profileSection);
+        .addSectionComponents(section);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
