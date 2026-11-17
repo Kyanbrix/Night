@@ -114,7 +114,7 @@ let db = {
       'doge_event': { id: 'doge_event', name: 'Doge Event', rarity: 'SSRP', emoji: '<a:Doge_event:1572106275578319009>', cost: 120 },
       'troll_event': { id: 'troll_event', name: 'Troll Event', rarity: 'SSRP', emoji: '<a:Troll_event:1572106181013545092>', cost: 200 },
       'frien_event': { id: 'frien_event', name: 'Frien Event', rarity: 'SSRP', emoji: '<a:Frien_event:1572049331366928504>', cost: 350 },
-      'seren_event': { id: 'seren_event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
+      'seren_event': { id: 'Seren Event', name: 'Seren Event', rarity: 'SSRP', emoji: '<a:Seren_event:1572049443765751939>', cost: 550 },
       'hellkitty_event': { id: 'hellkitty_event', name: 'Hellkitty Event', rarity: 'SSRP', emoji: '<a:Hellkitty_event:1572049176915742822>', cost: 650 },
       'mezz_event': { id: 'mezz_event', name: 'Mezz Event', rarity: 'SSRP', emoji: '<a:Mezz_event:1572049078001340517>', cost: 750 },
       'ruru_event': { id: 'ruru_event', name: 'Ruru Event', rarity: 'SSRP', emoji: '<a:Ruru_event:1572048951786344448>', cost: 1000 },
@@ -140,7 +140,6 @@ const CLAN_LOGOS = {
   '12': '<:Cllanlogo12:1572058007532077238>'
 };
 
-// Event Specific Assets & Constants matching exact prompt formatting
 const EVENT_ICONS = {
   TIPS: '<a:Tips:1572101474329300992>',
   CRYSTAL: '<a:Crystal_event:1572101509288558652>',
@@ -706,7 +705,6 @@ client.on('messageCreate', async message => {
         if (i.customId === 'accept_npc_fight') {
           collector.stop();
 
-          // NPC Stats per prompt specs: ATK [10-45], HP [400-1728], DEF [40-105]
           const npcAtk = Math.floor(Math.random() * 36) + 10;
           const npcHp = Math.floor(Math.random() * 1329) + 400;
           const npcDef = Math.floor(Math.random() * 66) + 40;
@@ -738,7 +736,7 @@ client.on('messageCreate', async message => {
             rewardCrystal = 17;
             db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
 
-            // 0.1% chance for NPC Shiny Event Chibi Drop
+            // ONLY SHINY CHIBI EVENT IS DROPPABLE AT 0.1% CHANCE (Normal chibi event never drops here)
             if (Math.random() * 100 <= 0.1) {
               const droppedEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
               const generatedId = new mongoose.Types.ObjectId().toString();
@@ -754,9 +752,9 @@ client.on('messageCreate', async message => {
                 exp: 0,
                 date: new Date().toLocaleDateString()
               });
-              npcDropText = `RECEIVED SHINY ${droppedEventChibi.emoji} ${droppedEventChibi.name}`;
+              npcDropText = `RECEIVED SHINY ${SHINY_ICON} ${droppedEventChibi.emoji} ${droppedEventChibi.name}`;
             } else {
-              npcDropText = `RECEIVED ${npcRandomChibi.emoji} ${npcRandomChibi.name}`;
+              npcDropText = 'NO SHINY DROP (0.1% CHANCE)';
             }
           } else {
             rewardCrystal = 8;
@@ -1401,6 +1399,7 @@ client.on('messageCreate', async message => {
         const formatted = pageItems
           .map((e, idx) => {
             const isEventItem = e.rarity === 'SSRP';
+            // FIXED DOUBLE EVENT BADGE: Only show EVENT_BADGE once here!
             const badgeIcon = isEventItem ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
             const shinyIconPart = e.isShiny ? ` ${SHINY_ICON}` : '';
             return `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}**${shinyIconPart}${badgeIcon}`;
@@ -1942,7 +1941,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED PROFILE COMMAND (+profile)
+    // FIXED PROFILE COMMAND (+profile) RESTORED WITH FULL TEXTDISPLAY & SECTION BUILDERS WITHOUT BROKEN SYNTAX
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1998,22 +1997,28 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const profileText = toSmallCaps(
-        `# ${displayName}\n\n` +
-        `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n` +
-        `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
-        `⚜️ RANK: `
-      ) + `${targetUserData.rank}` + toSmallCaps(
-        `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
-        `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
-        `🛡️ CLAN: ${clanDisplayStr}`
-      );
+      const profileSection = new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# ${displayName}\n\n` +
+              `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n`
+            ) +
+            `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
+            toSmallCaps(
+              `⚜️ RANK: `
+            ) + `${targetUserData.rank}` +
+            toSmallCaps(
+              `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
+              `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
+              `🛡️ CLAN: `
+            ) + clanDisplayStr
+          )
+        );
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(profileText)
-        );
+        .addSectionComponents(profileSection);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
