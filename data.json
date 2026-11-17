@@ -52,7 +52,7 @@
     {
       "key": "SSRP",
       "name": "Super Ultra Rare",
-      "emoji": "<a:Ssrp:1572096279545126985>"
+      "emoji": "<a:Ssrp:1572096279545126985>",
       "weight": 0.005
     }
   ],
@@ -306,36 +306,54 @@
         "atkPer": 23,
         "defPer": 19
       }
+    },
+    "SSRP": {
+      "normal": {
+        "hp": 450,
+        "atk": 75,
+        "def": 40,
+        "hpPer": 35,
+        "atkPer": 22,
+        "defPer": 18
+      },
+      "shiny": {
+        "hp": 1500,
+        "atk": 150,
+        "def": 95,
+        "hpPer": 105,
+        "atkPer": 30,
+        "defPer": 24
+      }
     }
   },
   "dropTable": [
     {
       "name": "Normal Drop",
-      "emoji": "\ud83d\ude14",
+      "emoji": "📉",
       "dice": 1,
       "weight": 60
     },
     {
       "name": "Rare Drop",
-      "emoji": "\ud83c\udf89",
+      "emoji": "🎉",
       "dice": 3,
       "weight": 10
     },
     {
       "name": "Epic Drop",
-      "emoji": "\ud83d\udc8e",
+      "emoji": "💎",
       "dice": 5,
       "weight": 3
     },
     {
       "name": "Legendary Drop",
-      "emoji": "\ud83c\udf40",
+      "emoji": "🍀",
       "dice": 10,
       "weight": 1
     },
     {
       "name": "Extreme Drop",
-      "emoji": "\u2620\ufe0f",
+      "emoji": "☠️",
       "dice": 50,
       "weight": 0.001
     }
