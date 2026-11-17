@@ -140,7 +140,7 @@ const CLAN_LOGOS = {
   '12': '<:Cllanlogo12:1572058007532077238>'
 };
 
-// Event Specific Assets & Constants
+// Event Specific Assets & Constants matching exact prompt formatting
 const EVENT_ICONS = {
   TIPS: '<a:Tips:1572101474329300992>',
   CRYSTAL: '<a:Crystal_event:1572101509288558652>',
@@ -571,8 +571,10 @@ client.on('messageCreate', async message => {
     event: 'event',
     eshop: 'eshop',
     es: 'eshop',
-    cadventure: 'cadventure',
-    ca: 'cadventure',
+    cadventure: 'eadventure',
+    ca: 'eadventure',
+    eadventure: 'eadventure',
+    ea: 'eadventure',
     ecrystal: 'ecrystal',
     ec: 'ecrystal'
   };
@@ -635,32 +637,34 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
     }
 
-    // --- NEW BETA EVENT SYSTEM COMMANDS ---
+    // --- BETA EVENT SYSTEM COMMANDS ---
 
     if (command === 'event') {
       if (!db.config.eventActive) {
         return message.reply(toSmallCaps('❌ The Beta Event is currently inactive!'));
       }
       const crystals = db.config.eventCrystals?.[userId] || 0;
-      const eventDescription = 'Welcome to the official Chibi RPG Beta Event! Plunge into exciting new adventures, battle unpredictable wandering NPCs across realms, and collect exclusive limited-edition SSRP event chibis using event crystals.';
+      const eventDescription = 'Welcome to the official Chibi RPG Beta Event! Embark on thrilling adventures, challenge mysterious wandering NPCs across the realm, battle rival players in the arena, and collect exclusive rare event chibis using event crystals to claim supreme glory and build the ultimate collection!';
       
       const container = new ContainerBuilder()
         .setAccentColor(0x9b59b6)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             toSmallCaps(
-              `# 🌟 Beta Event Hub — Season 1\n\n` +
-              `${EVENT_ICONS.TIPS} **Event Description:**\n${eventDescription}\n\n` +
+              `# 📦 BETA EVENT HUB & INFORMATION\n\n` +
+              `${EVENT_ICONS.TIPS} **DESCRIPTION:**\n${eventDescription}\n\n` +
               `-----------------------------------\n` +
-              `🎯 **How to Participate:**\n` +
-              `• Use \`${currentPrefix}cadventure\` to explore and encounter random NPCs.\n` +
-              `• Use \`${currentPrefix}battle [@user]\` or trivia to challenge players.\n\n` +
-              `💎 **How Can I Earn Crystals:**\n` +
-              `• Win or lose player battles & participate in trivia challenges.\n` +
-              `• Defeat wandering NPCs in adventures to earn crystals.\n\n` +
-              `🎁 **How Can I Claim & Exchange My Reward:**\n` +
-              `• Type \`${currentPrefix}eshop\` to open the event crystal shop and exchange your crystals for rare event chibis!\n\n` +
-              `Your Crystals: **${crystals}** ${EVENT_ICONS.CRYSTAL}`
+              `🎯 **HOW TO PARTICIPATE:**\n` +
+              `• TYPE \`${currentPrefix}eadventure\` (OR \`${currentPrefix}ca\`) TO EXPLORE AND BATTLE WANDERING EVENT NPCS.\n` +
+              `• TYPE \`${currentPrefix}battle [@user]\` TO CLASH AGAINST OTHER PLAYERS IN 3v3 ARENA BATTLES.\n` +
+              `• TYPE \`${currentPrefix}eshop\` (OR \`${currentPrefix}es\`) TO OPEN THE EVENT SHOP AND TRADE YOUR CRYSTALS.\n\n` +
+              `💎 **HOW CAN I EARN CRYSTALS:**\n` +
+              `• BATTLING PLAYERS (\`${currentPrefix}battle\`): WINNING REWARDS YOU WITH 10–16 CRYSTALS ${EVENT_ICONS.CRYSTAL}, WHILE LOSING GRANTS 2–8 CRYSTALS.\n` +
+              `• ADVENTURE (\`${currentPrefix}eadventure\`): DEFEATING WANDERING NPCS REWARDS YOU WITH 17 CRYSTALS ${EVENT_ICONS.CRYSTAL}, OR 8 CRYSTALS IF DEFEATED.\n` +
+              `• TRIVIA (\`${currentPrefix}trivia\`): CORRECT ANSWERS AWARD BONUS POINTS AND XP.\n\n` +
+              `🎁 **HOW CAN I CLAIM & EXCHANGE MY REWARD:**\n` +
+              `• ACCUMULATE EVENT CRYSTALS AND OPEN THE EVENT SHOP USING \`${currentPrefix}eshop\`.\n\n` +
+              `YOUR CRYSTALS: **${crystals}** ${EVENT_ICONS.CRYSTAL}`
             )
           )
         );
@@ -672,7 +676,7 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`💎 You currently have **${crystals}** Event Crystals ${EVENT_ICONS.CRYSTAL}.`));
     }
 
-    if (command === 'cadventure') {
+    if (command === 'eadventure') {
       if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
       const randomNpc = EVENT_NPCS[Math.floor(Math.random() * EVENT_NPCS.length)];
       
@@ -702,12 +706,12 @@ client.on('messageCreate', async message => {
         if (i.customId === 'accept_npc_fight') {
           collector.stop();
 
-          // Generate random NPC stats per prompt specs
-          const npcAtk = Math.floor(Math.random() * 36) + 10; // 10-45
-          const npcHp = Math.floor(Math.random() * 1329) + 400; // 400-1,728
-          const npcDef = Math.floor(Math.random() * 66) + 40; // 40-105
+          // NPC Stats per prompt specs: ATK [10-45], HP [400-1728], DEF [40-105]
+          const npcAtk = Math.floor(Math.random() * 36) + 10;
+          const npcHp = Math.floor(Math.random() * 1329) + 400;
+          const npcDef = Math.floor(Math.random() * 66) + 40;
+          const npcRandomChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
 
-          // User combat power calculation
           const getTeamChibis = (u) => {
             return (u.team || [null, null, null]).map(id => {
               if (!id) return null;
@@ -728,33 +732,36 @@ client.on('messageCreate', async message => {
           const isUserWinner = userPower >= npcPower;
 
           let rewardCrystal = 0;
-          let shinyDropText = '';
+          let npcDropText = '*None*';
 
           if (isUserWinner) {
             rewardCrystal = 17;
             db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
 
-            // 0.1% chance for Shiny Event Chibi drop
+            // 0.1% chance for NPC Shiny Event Chibi Drop
             if (Math.random() * 100 <= 0.1) {
-              const randomEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
+              const droppedEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
               const generatedId = new mongoose.Types.ObjectId().toString();
               if (!user.inventory.chibis) user.inventory.chibis = [];
               user.inventory.chibis.push({
                 id: generatedId,
                 chibiId: generatedId,
-                name: randomEventChibi.name,
+                name: droppedEventChibi.name,
                 rarity: 'SSRP',
-                emoji: randomEventChibi.emoji,
+                emoji: droppedEventChibi.emoji,
                 isShiny: true,
                 level: 1,
                 exp: 0,
                 date: new Date().toLocaleDateString()
               });
-              shinyDropText = toSmallCaps(`\n✨ **RARE DROP!** You obtained a Shiny Event Chibi (${randomEventChibi.emoji} **${randomEventChibi.name}**) ✨`);
+              npcDropText = `RECEIVED SHINY ${droppedEventChibi.emoji} ${droppedEventChibi.name}`;
+            } else {
+              npcDropText = `RECEIVED ${npcRandomChibi.emoji} ${npcRandomChibi.name}`;
             }
           } else {
             rewardCrystal = 8;
             db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
+            npcDropText = 'DEFEATED (NO DROP)';
           }
 
           const awardedExp = addExpAndLevelUp(user, userTeam.find(Boolean), 350);
@@ -765,13 +772,15 @@ client.on('messageCreate', async message => {
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
                 toSmallCaps(
-                  `# ⚔️ Adventure Battle Result: vs ${randomNpc.name}\n\n` +
-                  `Outcome: **${isUserWinner ? 'VICTORY 🎉' : 'DEFEAT 💔'}**\n\n` +
-                  `🛡️ **NPC Battle Stats:**\n` +
-                  `• ❤️ HP: \`${npcHp}\` | 🗡️ ATK: \`${npcAtk}\` | 🛡️ DEF: \`${npcDef}\`\n\n` +
-                  `🎁 **Rewards Gained:**\n` +
-                  `• Crystals: **+${rewardCrystal}** ${EVENT_ICONS.CRYSTAL}\n` +
-                  `• EXP: **+${awardedExp}** ✨` + shinyDropText
+                  `# ⚔️ ADVENTURE BATTLE RESULT\n\n` +
+                  `OPPONENT: ${randomNpc.icon} ${randomNpc.name}\n` +
+                  `NPC CHIBI: ${npcRandomChibi.emoji} ${npcRandomChibi.name}\n` +
+                  `NPC STATS -> ⚔️ ATK: ${npcAtk} | ❤️ HP: ${npcHp}\n` +
+                  `🛡️ DEF: ${npcDef}\n\n` +
+                  `${isUserWinner ? '🏆 VICTORY! YOU DEFEATED THE NPC!' : '💔 DEFEATED BY THE NPC!'}\n` +
+                  `💎 CRYSTALS EARNED: +${rewardCrystal} ${EVENT_ICONS.CRYSTAL}\n` +
+                  `🎁 NPC DROP: ${npcDropText}\n` +
+                  `✨ EXP GAINED: +${awardedExp}`
                 )
               )
             );
@@ -792,7 +801,6 @@ client.on('messageCreate', async message => {
       if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
       const crystals = db.config.eventCrystals?.[userId] || 0;
 
-      // Sorted by price ascending per prompt instructions
       const shopItems = Object.values(db.config.eventShop).sort((a, b) => a.cost - b.cost);
 
       const shopLines = shopItems.map((item, idx) => {
@@ -986,7 +994,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}rarities\` (${currentPrefix}rar) — View Chibi drop rates\n\n` +
         toSmallCaps('🌟 **Beta Event System**\n') +
         `\`${currentPrefix}event\` — View Beta Event Hub\n` +
-        `\`${currentPrefix}cadventure\` (${currentPrefix}ca) — Explore & Battle NPCs for Crystals\n` +
+        `\`${currentPrefix}eadventure\` (${currentPrefix}ca) — Explore & Battle NPCs for Crystals\n` +
         `\`${currentPrefix}eshop\` (${currentPrefix}es) — Open Event Crystal Shop\n` +
         `\`${currentPrefix}ecrystal\` (${currentPrefix}ec) — Check Crystal balance\n\n` +
         toSmallCaps('🎁 **Rewards & Economy**\n') +
@@ -1920,7 +1928,6 @@ client.on('messageCreate', async message => {
           user.points += awardedPoints;
           const awardedExp = addExpAndLevelUp(user, null, 450);
           
-          // Crystal reward for correct trivia
           const triviaCrystals = Math.floor(Math.random() * 6) + 5;
           if (!db.config.eventCrystals) db.config.eventCrystals = {};
           db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + triviaCrystals;
@@ -1935,7 +1942,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // PROFILE COMMAND (+profile)
+    // FIXED PROFILE COMMAND (+profile)
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -1965,7 +1972,7 @@ client.on('messageCreate', async message => {
           targetUserData.bestRollTier = highestTier;
           targetUserData.bestRollVal = highestVal;
           targetUserData.bestRoll = highestChibi.oddsStr;
-          targetUserData.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity]} ${highestChibi.chibi.emoji} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
+          targetUserData.bestChibi = `${rarityIconsMap[highestChibi.chibi.rarity] || '🌟'} ${highestChibi.chibi.emoji} ${highestChibi.chibi.isShiny ? SHINY_ICON : ''}`;
           await saveUsers();
         }
       }
@@ -1991,28 +1998,22 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const profileSection = new SectionBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# ${displayName}\n\n` +
-              `📊 Level ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n`
-            ) +
-            `🎲 ${bestRollIconPart} ${bestRollOddsPart}\n` +
-            toSmallCaps(
-              `⚜️ `
-            ) + `${targetUserData.rank}` +
-            toSmallCaps(
-              `\n🏆 ${targetUserData.points.toLocaleString()} Points\n` +
-              `🌍 Rank ${leaderboardPos}\n` +
-              `🛡️ CLAN: `
-            ) + clanDisplayStr
-          )
-        );
+      const profileText = toSmallCaps(
+        `# ${displayName}\n\n` +
+        `📊 LEVEL ${targetUserData.userLevel} (${targetUserData.userExp}/${targetUserMaxExp} EXP)\n` +
+        `🎲 BEST ROLL: ${bestRollIconPart} ${bestRollOddsPart}\n` +
+        `⚜️ RANK: `
+      ) + `${targetUserData.rank}` + toSmallCaps(
+        `\n🏆 POINTS: ${targetUserData.points.toLocaleString()}\n` +
+        `🌍 GLOBAL RANK: ${leaderboardPos}\n` +
+        `🛡️ CLAN: ${clanDisplayStr}`
+      );
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
-        .addSectionComponents(profileSection);
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(profileText)
+        );
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -2969,7 +2970,6 @@ client.on('messageCreate', async message => {
           return message.reply(toSmallCaps('❌ Only the bot owner can assign admin permissions!'));
         }
         const target = message.mentions.users.first();
-        const targetUserMention = message.mentions.users.first();
         if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivepermission [@user]`));
         ensureUser(target.id);
         db.users[target.id].permissions = true;
@@ -2994,12 +2994,6 @@ client.on('messageCreate', async message => {
     console.error(err);
     message.reply(toSmallCaps('❌ An error occurred while executing this command.'));
   }
-});
-
-// Footer event banner appended globally to bot responses when active
-client.on('messageCreate', async message => {
-  if (message.author.bot) return;
-  // Optional lightweight reminder hook if needed
 });
 
 initDatabase().then(() => {
