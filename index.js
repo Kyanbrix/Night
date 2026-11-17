@@ -180,7 +180,7 @@ async function saveUsers() {
   }
 }
 
-const SHINY_ICON = '<:shiny:1571311476239630517>';
+const SHINY_ICON = '<a:Shinynew:1572053794332872886>';
 const RARITY_HIERARCHY = { UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
 
