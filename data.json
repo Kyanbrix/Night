@@ -56,6 +56,19 @@
       "weight": 0.005
     }
   ],
+  "eventChibis": [
+    { "id": "1", "name": "Cat Event", "rarity": "SSRP", "emoji": "<a:Cat_event:1572106344511569990>", "cost": 100, "odds": "1 in 500B", "shinyOdds": "1 in 1Qa" },
+    { "id": "2", "name": "Doge Event", "rarity": "SSRP", "emoji": "<a:Doge_event:1572106275578319009>", "cost": 120, "odds": "1 in 1T", "shinyOdds": "1 in 20Qa" },
+    { "id": "3", "name": "Troll Event", "rarity": "SSRP", "emoji": "<a:Troll_event:1572106181013545092>", "cost": 200, "odds": "1 in 30T", "shinyOdds": "1 in 50Qa" },
+    { "id": "4", "name": "Frien Event", "rarity": "SSRP", "emoji": "<a:Frien_event:1572049331366928504>", "cost": 350, "odds": "1 in 100T", "shinyOdds": "1 in 300Qa" },
+    { "id": "5", "name": "Seren Event", "rarity": "SSRP", "emoji": "<a:Seren_event:1572049443765751939>", "cost": 550, "odds": "1 in 500T", "shinyOdds": "1 in 750Qa" },
+    { "id": "6", "name": "Hellkitty Event", "rarity": "SSRP", "emoji": "<a:Hellkitty_event:1572049176915742822>", "cost": 650, "odds": "1 in 5Qa", "shinyOdds": "1 in 15Qi" },
+    { "id": "7", "name": "Mezz Event", "rarity": "SSRP", "emoji": "<a:Mezz_event:1572049078001340517>", "cost": 750, "odds": "1 in 75Qa", "shinyOdds": "1 in 500Qi" },
+    { "id": "8", "name": "Ruru Event", "rarity": "SSRP", "emoji": "<a:ruru_event:1572048951786344448>", "cost": 1000, "odds": "1 in 250Qa", "shinyOdds": "1 in 10Sx" },
+    { "id": "9", "name": "Zoprb Event", "rarity": "SSRP", "emoji": "<a:Zoprb_event:1572051059528958054>", "cost": 3000, "odds": "1 in 1Qi", "shinyOdds": "1 in 100Sx" },
+    { "id": "10", "name": "Kazerb Event", "rarity": "SSRP", "emoji": "<a:Kazerb_event:1572050964192563281>", "cost": 4500, "odds": "1 in 500Qi", "shinyOdds": "1 in 50Sp" },
+    { "id": "11", "name": "Georb Event", "rarity": "SSRP", "emoji": "<a:Georb_event:1572050282123366410>", "cost": 5000, "odds": "1 in 10Sp", "shinyOdds": "1 in 50No" }
+  ],
   "chibis": [
     {
       "name": "Pampam",
@@ -200,130 +213,32 @@
   ],
   "stats": {
     "C": {
-      "normal": {
-        "hp": 120,
-        "atk": 6,
-        "def": 3,
-        "hpPer": 4,
-        "atkPer": 2,
-        "defPer": 1
-      },
-      "shiny": {
-        "hp": 160,
-        "atk": 15,
-        "def": 7,
-        "hpPer": 10,
-        "atkPer": 5,
-        "defPer": 3
-      }
+      "normal": { "hp": 120, "atk": 6, "def": 3, "hpPer": 4, "atkPer": 2, "defPer": 1 },
+      "shiny": { "hp": 160, "atk": 15, "def": 7, "hpPer": 10, "atkPer": 5, "defPer": 3 }
     },
     "U": {
-      "normal": {
-        "hp": 150,
-        "atk": 9,
-        "def": 5,
-        "hpPer": 6,
-        "atkPer": 8,
-        "defPer": 5
-      },
-      "shiny": {
-        "hp": 200,
-        "atk": 14,
-        "def": 9,
-        "hpPer": 12,
-        "atkPer": 9,
-        "defPer": 7
-      }
+      "normal": { "hp": 150, "atk": 9, "def": 5, "hpPer": 6, "atkPer": 8, "defPer": 5 },
+      "shiny": { "hp": 200, "atk": 14, "def": 9, "hpPer": 12, "atkPer": 9, "defPer": 7 }
     },
     "R": {
-      "normal": {
-        "hp": 180,
-        "atk": 12,
-        "def": 7,
-        "hpPer": 16,
-        "atkPer": 9,
-        "defPer": 8
-      },
-      "shiny": {
-        "hp": 220,
-        "atk": 15,
-        "def": 9,
-        "hpPer": 21,
-        "atkPer": 13,
-        "defPer": 10
-      }
+      "normal": { "hp": 180, "atk": 12, "def": 7, "hpPer": 16, "atkPer": 9, "defPer": 8 },
+      "shiny": { "hp": 220, "atk": 15, "def": 9, "hpPer": 21, "atkPer": 13, "defPer": 10 }
     },
     "SR": {
-      "normal": {
-        "hp": 210,
-        "atk": 21,
-        "def": 13,
-        "hpPer": 13,
-        "atkPer": 11,
-        "defPer": 9
-      },
-      "shiny": {
-        "hp": 520,
-        "atk": 45,
-        "def": 29,
-        "hpPer": 30,
-        "atkPer": 18,
-        "defPer": 15
-      }
+      "normal": { "hp": 210, "atk": 21, "def": 13, "hpPer": 13, "atkPer": 11, "defPer": 9 },
+      "shiny": { "hp": 520, "atk": 45, "def": 29, "hpPer": 30, "atkPer": 18, "defPer": 15 }
     },
     "SRR": {
-      "normal": {
-        "hp": 270,
-        "atk": 26,
-        "def": 18,
-        "hpPer": 17,
-        "atkPer": 14,
-        "defPer": 12
-      },
-      "shiny": {
-        "hp": 640,
-        "atk": 61,
-        "def": 37,
-        "hpPer": 54,
-        "atkPer": 22,
-        "defPer": 19
-      }
+      "normal": { "hp": 270, "atk": 26, "def": 18, "hpPer": 17, "atkPer": 14, "defPer": 12 },
+      "shiny": { "hp": 640, "atk": 61, "def": 37, "hpPer": 54, "atkPer": 22, "defPer": 19 }
     },
     "UTR": {
-      "normal": {
-        "hp": 350,
-        "atk": 55,
-        "def": 30,
-        "hpPer": 25,
-        "atkPer": 17,
-        "defPer": 15
-      },
-      "shiny": {
-        "hp": 1200,
-        "atk": 115,
-        "def": 75,
-        "hpPer": 83,
-        "atkPer": 23,
-        "defPer": 19
-      }
+      "normal": { "hp": 350, "atk": 55, "def": 30, "hpPer": 25, "atkPer": 17, "defPer": 15 },
+      "shiny": { "hp": 1200, "atk": 115, "def": 75, "hpPer": 83, "atkPer": 23, "defPer": 19 }
     },
     "SSRP": {
-      "normal": {
-        "hp": 450,
-        "atk": 75,
-        "def": 40,
-        "hpPer": 35,
-        "atkPer": 22,
-        "defPer": 18
-      },
-      "shiny": {
-        "hp": 1500,
-        "atk": 150,
-        "def": 95,
-        "hpPer": 105,
-        "atkPer": 30,
-        "defPer": 24
-      }
+      "normal": { "hp": 450, "atk": 75, "def": 40, "hpPer": 35, "atkPer": 22, "defPer": 18 },
+      "shiny": { "hp": 1500, "atk": 150, "def": 95, "hpPer": 105, "atkPer": 30, "defPer": 24 }
     }
   },
   "dropTable": [
@@ -358,4 +273,4 @@
       "weight": 0.001
     }
   ]
-} 
+}
