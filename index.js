@@ -298,7 +298,7 @@ function updateUserRank(user) {
 function updatePeakRank(user) {
   const pts = user.highestSeasonPoints || 0;
   if (pts >= 8002) {
-    user.highestSeasonRank = '<a:Infernonew:1572081189508878340>';
+    user.highestSeasonRank = '<:Inferno:1571314769741357117>';
   } else if (pts >= 5501) {
     user.highestSeasonRank = '<:Obsidian:1571314669732237533>';
   } else if (pts >= 4001) {
@@ -677,7 +677,6 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('❌ Only the bot owner can execute data resets!'));
       }
 
-      // Reset all user data in database
       for (const uId of Object.keys(db.users)) {
         db.users[uId] = {
           started: false,
@@ -811,7 +810,6 @@ client.on('messageCreate', async message => {
             rewardCrystal = 17;
             db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
 
-            // ONLY SHINY CHIBI EVENT IS DROPPABLE AT 0.1% CHANCE (Normal chibi event never drops here)
             if (Math.random() * 100 <= 0.1) {
               const droppedEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
               const generatedId = new mongoose.Types.ObjectId().toString();
@@ -944,8 +942,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- EXISTING COMMANDS MAINTAINED UNTOUCHED ---
-
     // RARITIES COMMAND (+rarities / +rar)
     if (command === 'rarities') {
       const raritiesInfo =
@@ -962,9 +958,9 @@ client.on('messageCreate', async message => {
         `• Kazerb Event: Normal 1 in 500Qi | Shiny 1 in 50Sp\n` +
         `• Georb Event: Normal 1 in 10Sp | Shiny 1 in 50No\n\n` +
         `${rarityIconsMap['C'] || '📦'} **Common (C)**\n` +
-        `• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 5%\n\n` +
+        `• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 1%\n\n` +
         `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n` +
-        `• Normal Drop Rate: 12% | Shiny Drop Rate: 1%\n\n` +
+        `• Normal Drop Rate: 12% | Shiny Drop Rate: 0.10%\n\n` +
         `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n` +
         `• Normal Drop Rate: 7% | Shiny Drop Rate: 0.5%\n\n` +
         `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n` +
@@ -972,7 +968,7 @@ client.on('messageCreate', async message => {
         `${rarityIconsMap['SRR'] || '📦'} **Super Rare Rare (SRR)**\n` +
         `• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
         `${rarityIconsMap['UTR'] || '📦'} **Ultra Rare (UTR)**\n` +
-        `• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.001%`;
+        `• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%`;
 
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
@@ -1275,7 +1271,7 @@ client.on('messageCreate', async message => {
           R: { normal: 7, shiny: 0.5 },
           SR: { normal: 1, shiny: 0.1 },
           SRR: { normal: 0.10, shiny: 0.0010 },
-          UTR: { normal: 0.01, shiny: 0.0001 }
+          UTR: { normal: 0.001, shiny: 0.0001 }
         };
 
         const adjustedRarities = gameData.rarities.map(r => {
@@ -1474,7 +1470,6 @@ client.on('messageCreate', async message => {
         const formatted = pageItems
           .map((e, idx) => {
             const isEventItem = e.rarity === 'SSRP';
-            // FIXED DOUBLE EVENT BADGE: Only show EVENT_BADGE once here!
             const badgeIcon = isEventItem ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
             const shinyIconPart = e.isShiny ? ` ${SHINY_ICON}` : '';
             return `**${start + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}**${shinyIconPart}${badgeIcon}`;
@@ -1743,7 +1738,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN LEADERBOARD (+ccranks / +ccr)
     if (command === 'ccranks') {
       const clanEntries = Object.entries(db.clans).map(([name, clan]) => {
         const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
@@ -1914,9 +1908,8 @@ client.on('messageCreate', async message => {
           winUser.points += winReward.win;
           loseUser.points = Math.max(0, loseUser.points - losePenalty.lose);
 
-          // Event Crystal Rewards for PvP Battles
-          const p1CrystalWin = Math.floor(Math.random() * 7) + 10; // 10-16
-          const p1CrystalLose = Math.floor(Math.random() * 7) + 2; // 2-8
+          const p1CrystalWin = Math.floor(Math.random() * 7) + 10;
+          const p1CrystalLose = Math.floor(Math.random() * 7) + 2;
           const p2CrystalWin = Math.floor(Math.random() * 7) + 10;
           const p2CrystalLose = Math.floor(Math.random() * 7) + 2;
 
@@ -2016,8 +2009,8 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // FIXED PROFILE COMMAND WITH RIGHT-SIDE THUMBNAIL AVATAR
-     if (command === 'profile') {
+    // --- FIXED PROFILE COMMAND ---
+    if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
       ensureUser(targetUserId);
@@ -2088,17 +2081,6 @@ client.on('messageCreate', async message => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(profileText)
         );
-
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
-      const section = new SectionBuilder();
-      section.addTextDisplayComponents(new TextDisplayBuilder().setContent(profileText));
-      section.setAccessory(new ThumbnailBuilder().setURL(avatarUrl));
-
-      const container = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
-        .addSectionComponents(section);
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -2179,7 +2161,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN CREATE COMMAND (+ccreateclan)
     if (command === 'ccreateclan') {
       const clanName = args[0]?.replace(/\*/g, '');
       const logoArg = args[1];
@@ -2282,7 +2263,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // CLAN RENAME COMMAND (+clanrename)
     if (command === 'clanrename') {
       if (!user.clan || !db.clans[user.clan]) {
         return message.reply(toSmallCaps('❌ You are not currently in any clan!'));
@@ -2349,7 +2329,6 @@ client.on('messageCreate', async message => {
       ));
     }
 
-    // CLAN INFO COMMAND (+cclaninfo)
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
@@ -2695,7 +2674,6 @@ client.on('messageCreate', async message => {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, ephemeral: true });
     }
 
-    // OWNER GIVE CHIBI COMMAND (+ownergivechibi)
     if (command === 'ownergivechibi') {
       if (!isOwner()) {
         return message.reply(toSmallCaps('❌ Only the bot owner can use this command!'));
