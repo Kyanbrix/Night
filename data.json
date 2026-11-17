@@ -17,42 +17,43 @@
       "key": "C",
       "name": "Common",
       "emoji": "<:common:1571309159679262720>",
-      "weight": 40
+      "weight": 50
     },
     {
       "key": "U",
       "name": "Uncommon",
       "emoji": "<:uncommon:1571309216000377015>",
-      "weight": 25
+      "weight": 35
     },
     {
       "key": "R",
       "name": "Rare",
       "emoji": "<:rare:1571309272854171708>",
-      "weight": 10
+      "weight": 15
     },
     {
       "key": "SR",
       "name": "Super Rare",
       "emoji": "<:sr:1571309375895769159>",
-      "weight": 3
+      "weight": 1
     },
     {
       "key": "SRR",
       "name": "Super Super Rare",
       "emoji": "<:srr:1571309440614006975>",
-      "weight": 0.005
+      "weight": 0.1
     },
     {
       "key": "UTR",
       "name": "Ultra Rare",
       "emoji": "<a:Utrrnew1:1572096274415747234>",
-      "weight": 0.0001
+      "weight": 0.01
     },
     {
       "key": "SSRP",
       "name": "Super Ultra Rare",
       "emoji": "<a:Ssrp:1572096279545126985>"
+      "weight": 0.005
     }
   ],
   "chibis": [
