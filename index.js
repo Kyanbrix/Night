@@ -2043,8 +2043,8 @@ client.on('messageCreate', async message => {
         .setAccentColor(0x1abc9c)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
+            toSmallCaps(`# CLAN: `) + `${logoEmoji} ` + toSmallCaps(`${cleanClanName}\n\n`) +
             toSmallCaps(
-              `# CLAN: ${logoEmoji} ${cleanClanName}\n\n` +
               `LEADER: ${leaderName}\n` +
               `TOTAL POINTS: ${totalPoints.toLocaleString()}\n` +
               `RENAME USES LEFT: ${remainingRenames}/3\n\n` +
