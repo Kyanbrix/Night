@@ -2048,6 +2048,15 @@ client.on('messageCreate', async message => {
       if (!chibi) return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}collections for correct IDs.`));
 
       const chibiUniqueId = chibi.chibiId || chibi.id;
+
+      // Prevent duplicate chibi equipping across team slots
+      if (user.team.includes(chibiUniqueId)) {
+        const existingSlot = user.team.indexOf(chibiUniqueId) + 1;
+        if (existingSlot !== slot) {
+          return message.reply(toSmallCaps(`❌ This Chibi is already equipped in Team Slot ${existingSlot}! You cannot equip the same Chibi in multiple slots.`));
+        }
+      }
+
       const wasEmpty = !user.team[slot - 1];
       user.team[slot - 1] = chibiUniqueId;
       if (slot === 1) user.equippedChibi = chibiUniqueId;
