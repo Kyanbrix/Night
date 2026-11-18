@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -215,6 +216,18 @@ async function initDatabase() {
     db.bannedUsers = state.bannedUsers || {};
     db.tradeHistories = state.tradeHistories || {};
     db.config = { ...db.config, ...(state.config || {}) };
+
+    // Clean up any accidental single-letter alphabetic prefixes (like 's')
+    let prefixCleaned = false;
+    for (const [gId, pref] of Object.entries(db.guildPrefixes)) {
+      if (typeof pref === 'string' && /^[a-zA-Z]$/.test(pref)) {
+        delete db.guildPrefixes[gId];
+        prefixCleaned = true;
+      }
+    }
+    if (prefixCleaned) {
+      await saveUsers();
+    }
   } catch (err) {
     console.error('Database connection error:', err);
     process.exit(1);
@@ -250,6 +263,21 @@ async function saveUsers() {
 const SHINY_ICON = '<a:Shinynew:1572053794332872886>';
 const RARITY_HIERARCHY = { SSRP: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const cooldowns = new Map();
+
+const ALL_VALID_COMMANDS = new Set([
+  'start', 'help', 'status', 'roll', 'drop', 'slot', 'shop', 'rarities',
+  'event', 'eadventure', 'eshop', 'ecrystal', 'daily', 'points', 'rank', 'ranks',
+  'ccranks', 'customnn', 'seasons', 'higheststats', 'tradehistory',
+  'cstats', 'equipteam', 'battle', 'inventory', 'collections', 'profile', 'trade',
+  'clanlist', 'cclaninfo', 'ccreateclan', 'cclanjoin', 'clanleave', 'clanrename',
+  'prefixchange', 'enablec', 'disablec', 'meme', 'trivia',
+  'ownercommands', 'admincommands', 'ownerbotmaintenance', 'ownersetstatus',
+  'adminrestoreall', 'ownerresetdata', 'fixadmin', 'ownersecretpanel',
+  'ownergivechibi', 'adminsetclanrewards', 'owneradminpermsrem', 'removeadminperms',
+  'admingivecrystal', 'adminsetlbseason', 'adminresetrank', 'adminsetnn',
+  'adminban', 'adminclearlb', 'adminluckevent', 'adminsetxp', 'admingiveitem',
+  'adminsetrank', 'adminsetpoints', 'admingivepermission', 'adminsetlevel'
+]);
 
 function toSmallCaps(str) {
   if (!str) return '';
@@ -534,34 +562,20 @@ client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   const guildId = message.guild ? message.guild.id : 'DM';
-  const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
+  let currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
+  if (/^[a-zA-Z]$/.test(currentPrefix)) {
+    currentPrefix = '+';
+  }
 
-  // FIX: Strictly require the prefix so regular conversation messages are never interrupted
+  // Strictly require the prefix
   if (!message.content.startsWith(currentPrefix)) return;
 
-  const args = message.content.slice(currentPrefix.length).trim().split(/ +/);
+  const afterPrefix = message.content.slice(currentPrefix.length);
+  if (!afterPrefix || afterPrefix.startsWith(' ')) return;
+
+  const args = afterPrefix.trim().split(/ +/);
   let command = args.shift().toLowerCase();
-  const userId = message.author.id;
-
-  const isOwner = () => {
-    if (!db.config.ownerId) db.config.ownerId = userId;
-    return userId === db.config.ownerId;
-  };
-
-  // --- MAINTENANCE MODE CHECK ---
-  if (db.config.maintenanceMode && !isOwner()) {
-    return message.reply(toSmallCaps('The bot currently under maintenance.'));
-  }
-
-  if (db.bannedUsers && db.bannedUsers[userId]) {
-    const banInfo = db.bannedUsers[userId];
-    if (banInfo.expires === 'permanent' || Date.now() < banInfo.expires) {
-      return message.reply(toSmallCaps('❌ You are banned from using bot commands.'));
-    } else {
-      delete db.bannedUsers[userId];
-      await saveUsers();
-    }
-  }
+  if (!command) return;
 
   const shortcuts = {
     h: 'help',
@@ -603,6 +617,31 @@ client.on('messageCreate', async message => {
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
+  }
+
+  // Ignore any message that does not resolve to an actual bot command
+  if (!ALL_VALID_COMMANDS.has(command)) return;
+
+  const userId = message.author.id;
+
+  const isOwner = () => {
+    if (!db.config.ownerId) db.config.ownerId = userId;
+    return userId === db.config.ownerId;
+  };
+
+  // --- MAINTENANCE MODE CHECK ---
+  if (db.config.maintenanceMode && !isOwner()) {
+    return message.reply(toSmallCaps('The bot currently under maintenance.'));
+  }
+
+  if (db.bannedUsers && db.bannedUsers[userId]) {
+    const banInfo = db.bannedUsers[userId];
+    if (banInfo.expires === 'permanent' || Date.now() < banInfo.expires) {
+      return message.reply(toSmallCaps('❌ You are banned from using bot commands.'));
+    } else {
+      delete db.bannedUsers[userId];
+      await saveUsers();
+    }
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
@@ -797,7 +836,7 @@ client.on('messageCreate', async message => {
       if (db.config.eventCrystals) db.config.eventCrystals = {};
       await saveUsers();
 
-      return message.reply(toSmallCaps('⚠️ OWNER NOTICE: All user data, inventories, teams, and stats have been completely reset! All users must use `-start` again.'));
+      return message.reply(toSmallCaps('⚠️ OWNER NOTICE: All user data, inventories, teams, and stats have been completely reset! All users must use `+start` again.'));
     }
 
     if (command === 'event') {
@@ -2886,8 +2925,8 @@ client.on('messageCreate', async message => {
       }
 
       const newPrefix = args[0];
-      if (!newPrefix || newPrefix.length > 5) {
-        return message.reply(toSmallCaps(`❌ Please provide a valid prefix (max 5 characters). Usage: ${currentPrefix}prefixchange [new_prefix]`));
+      if (!newPrefix || newPrefix.length > 5 || /^[a-zA-Z]$/.test(newPrefix)) {
+        return message.reply(toSmallCaps(`❌ Please provide a valid symbol prefix (max 5 chars, single letters like 's' or 'a' are not allowed). Usage: ${currentPrefix}prefixchange [new_prefix]`));
       }
 
       db.guildPrefixes[guildId] = newPrefix;
