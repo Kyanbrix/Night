@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -38,7 +37,6 @@ function loadGameData() {
 
 const gameData = loadGameData();
 
-// MongoDB Schema & Model for Global Game State
 const GameStateSchema = new mongoose.Schema({
   _id: { type: String, default: 'main_state' },
   users: { type: Object, default: {} },
@@ -532,6 +530,7 @@ client.on('messageCreate', async message => {
   const guildId = message.guild ? message.guild.id : 'DM';
   const currentPrefix = (db.guildPrefixes && db.guildPrefixes[guildId]) || '+';
 
+  // FIX: Strictly require the prefix so regular conversation messages are never interrupted
   if (!message.content.startsWith(currentPrefix)) return;
 
   const args = message.content.slice(currentPrefix.length).trim().split(/ +/);
@@ -653,8 +652,6 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`❌ You must type ${currentPrefix}start before using any bot commands!`));
     }
 
-    // --- REWORKED ADMIN & OWNER COMMAND PANELS ---
-
     const isAdmin = () => {
       return isOwner() || user.permissions === true;
     };
@@ -771,8 +768,6 @@ client.on('messageCreate', async message => {
 
       return message.reply(toSmallCaps('⚠️ OWNER NOTICE: All user data, inventories, teams, and stats have been completely reset! All users must use `-start` again.'));
     }
-
-    // --- BETA EVENT SYSTEM COMMANDS ---
 
     if (command === 'event') {
       if (!db.config.eventActive) {
@@ -1004,7 +999,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // RARITIES COMMAND (+rarities / +rar)
     if (command === 'rarities') {
       const raritiesInfo =
         `${rarityIconsMap['SSRP'] || '🌟'} **Super Special Rare Plus (SSRP - Beta Event)**\n` +
@@ -2071,7 +2065,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR ---
+    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR (FIXED THUMBNAIL CONSTRUCTOR) ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -2111,7 +2105,6 @@ client.on('messageCreate', async message => {
         }
       }
 
-      // Calculate collection rarity counts
       const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
       if (targetUserData.inventory && targetUserData.inventory.chibis) {
         targetUserData.inventory.chibis.forEach(c => {
@@ -2173,7 +2166,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection)
         )
         .setThumbnailAccessory(
-          new ThumbnailBuilder().setUrl(avatarUrl)
+          new ThumbnailBuilder({ url: avatarUrl })
         );
 
       const container = new ContainerBuilder()
