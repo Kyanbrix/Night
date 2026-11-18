@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -2065,7 +2066,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR (FIXED THUMBNAIL CONSTRUCTOR) ---
+    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR (FIXED THUMBNAIL BUILDER setURL) ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -2166,7 +2167,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection)
         )
         .setThumbnailAccessory(
-          new ThumbnailBuilder({ url: avatarUrl })
+          new ThumbnailBuilder().setURL(avatarUrl)
         );
 
       const container = new ContainerBuilder()
