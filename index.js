@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -60,6 +59,9 @@ const GameStateSchema = new mongoose.Schema({
       seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
       clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
       maintenanceMode: false,
+      testers: [],
+      featuresPublished: true,
+      pendingUpdatesCount: 0,
       clanRewards: {
         1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
         2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
@@ -105,6 +107,9 @@ let db = {
     seasonExpires: Date.now() + (30 * 24 * 60 * 60 * 1000),
     clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
     maintenanceMode: false,
+    testers: [],
+    featuresPublished: true,
+    pendingUpdatesCount: 0,
     clanRewards: {
       1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
       2: { qty: 3, rarity: 'SRR', chibiEmoji: '🔥' },
@@ -217,7 +222,6 @@ async function initDatabase() {
     db.tradeHistories = state.tradeHistories || {};
     db.config = { ...db.config, ...(state.config || {}) };
 
-    // Clean up any accidental single-letter alphabetic prefixes (like 's')
     let prefixCleaned = false;
     for (const [gId, pref] of Object.entries(db.guildPrefixes)) {
       if (typeof pref === 'string' && /^[a-zA-Z]$/.test(pref)) {
@@ -276,8 +280,19 @@ const ALL_VALID_COMMANDS = new Set([
   'ownergivechibi', 'adminsetclanrewards', 'owneradminpermsrem', 'removeadminperms',
   'admingivecrystal', 'adminsetlbseason', 'adminresetrank', 'adminsetnn',
   'adminban', 'adminclearlb', 'adminluckevent', 'adminsetxp', 'admingiveitem',
-  'adminsetrank', 'adminsetpoints', 'admingivepermission', 'adminsetlevel'
+  'adminsetrank', 'adminsetpoints', 'admingivepermission', 'adminsetlevel',
+  'testerpanel', 'addtester', 'removetester', 'pubnewupd', 'testerfeature'
 ]);
+
+const TESTER_ONLY_COMMANDS = new Set([
+  'testerfeature'
+]);
+
+function isTester(userId) {
+  if (!db.config.ownerId) db.config.ownerId = userId;
+  if (userId === db.config.ownerId) return true;
+  return db.config.testers && db.config.testers.includes(userId);
+}
 
 function toSmallCaps(str) {
   if (!str) return '';
@@ -567,7 +582,6 @@ client.on('messageCreate', async message => {
     currentPrefix = '+';
   }
 
-  // Strictly require the prefix
   if (!message.content.startsWith(currentPrefix)) return;
 
   const afterPrefix = message.content.slice(currentPrefix.length);
@@ -619,7 +633,6 @@ client.on('messageCreate', async message => {
     command = shortcuts[command];
   }
 
-  // Ignore any message that does not resolve to an actual bot command
   if (!ALL_VALID_COMMANDS.has(command)) return;
 
   const userId = message.author.id;
@@ -629,7 +642,12 @@ client.on('messageCreate', async message => {
     return userId === db.config.ownerId;
   };
 
-  // --- MAINTENANCE MODE CHECK ---
+  if (TESTER_ONLY_COMMANDS.has(command)) {
+    if (!isTester(userId)) {
+      return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+    }
+  }
+
   if (db.config.maintenanceMode && !isOwner()) {
     return message.reply(toSmallCaps('The bot currently under maintenance.'));
   }
@@ -645,7 +663,7 @@ client.on('messageCreate', async message => {
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall', 'ownersetstatus'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall', 'ownersetstatus', 'testerpanel', 'addtester', 'removetester', 'pubnewupd'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -704,6 +722,94 @@ client.on('messageCreate', async message => {
       return isOwner() || user.permissions === true;
     };
 
+    if (command === 'addtester') {
+      if (!isOwner() && !user.permissions) {
+        return message.reply(toSmallCaps('❌ Only bot owners or admins can manage testers!'));
+      }
+      const target = message.mentions.users.first();
+      if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}addtester [@user]`));
+
+      if (!db.config.testers) db.config.testers = [];
+      if (!db.config.testers.includes(target.id)) {
+        db.config.testers.push(target.id);
+        db.config.pendingUpdatesCount = (db.config.pendingUpdatesCount || 0) + 1;
+        db.config.featuresPublished = false;
+        await saveUsers();
+      }
+      return message.reply(toSmallCaps(`✅ Successfully added <@${target.id}> to the Beta Tester roster!`));
+    }
+
+    if (command === 'removetester') {
+      if (!isOwner() && !user.permissions) {
+        return message.reply(toSmallCaps('❌ Only bot owners or admins can manage testers!'));
+      }
+      const target = message.mentions.users.first();
+      if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}removetester [@user]`));
+
+      if (db.config.testers) {
+        db.config.testers = db.config.testers.filter(id => id !== target.id);
+        await saveUsers();
+      }
+      return message.reply(toSmallCaps(`❌ Successfully removed <@${target.id}> from the Beta Tester roster.`));
+    }
+
+    if (command === 'testerpanel') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ You do not have access to the tester panel.'));
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🧪 Exclusive Beta Tester Panel\n\n` +
+              `Welcome to the testing grounds! Here are your active preview controls & sandbox tools:\n` +
+              `• \`${currentPrefix}testerfeature\` — Test unreleased experimental mechanics\n` +
+              `• Status: **TESTER BUILD ACTIVE** 🔬\n\n` +
+              `*Thank you for helping test and refine Chibi RPG features before public release!*`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'pubnewupd') {
+      if (!isOwner() && !user.permissions) {
+        return message.reply(toSmallCaps('❌ Only the bot owner or admins can publish updates!'));
+      }
+
+      const pendingCount = db.config.pendingUpdatesCount || 0;
+      if (db.config.featuresPublished === true && pendingCount === 0) {
+        return message.reply(toSmallCaps('ℹ️ There is no new code or updates to publish right now. Everything is already fully up-to-date and live for public production!'));
+      }
+
+      db.config.featuresPublished = true;
+      db.config.pendingUpdatesCount = 0;
+      await saveUsers();
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🚀 New Updates Published Successfully!\n\n` +
+              `All recent tester features and updates have been automatically pushed to public production.\n` +
+              `• Status: **LIVE FOR ALL USERS** 🟢\n` +
+              `• Published by: <@${userId}>`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'testerfeature') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ Restricted to testers.'));
+      }
+      return message.reply(toSmallCaps('🧪 Experimental Sandbox Feature: Working as intended!'));
+    }
+
     if (command === 'ownercommands' || command === 'oc') {
       if (!isOwner()) {
         return message.reply(toSmallCaps('❌ Only the primary bot owner can access owner commands!'));
@@ -716,6 +822,9 @@ client.on('messageCreate', async message => {
               `# 👑 Owner Control Center\n\n` +
               `• \`${currentPrefix}ownerbotmaintenance\` — Toggle bot maintenance mode\n` +
               `• \`${currentPrefix}ownersetstatus [@user] [status]\` — Set custom user game/activity status\n` +
+              `• \`${currentPrefix}addtester [@user]\` — Add beta tester\n` +
+              `• \`${currentPrefix}removetester [@user]\` — Remove beta tester\n` +
+              `• \`${currentPrefix}pubnewupd\` — Publish new updates to public production\n` +
               `• \`${currentPrefix}ownerresetdata\` — Wipe all user data and reset everyone\n` +
               `• \`${currentPrefix}ownersecretpanel\` — View secret system statistics\n` +
               `• \`${currentPrefix}owneradminpermsrem\` — Revoke admin permissions from all users\n` +
@@ -2136,7 +2245,6 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- PROFILE COMMAND FORMATTED EXACTLY AS REQUESTED ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
