@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -318,6 +317,7 @@ function ensureUser(userId) {
   if (!db.users[userId]) {
     db.users[userId] = {
       started: false,
+      joinedDate: new Date().toLocaleDateString(),
       dice: 10,
       points: 0,
       rank: '<:unranked:1571314276071907519>',
@@ -335,13 +335,18 @@ function ensureUser(userId) {
       userLevel: 1,
       userExp: 0,
       lastDrop: 0,
+      todayDrops: 0,
       lastDaily: 0,
       streak: 0,
-      permissions: false
+      permissions: false,
+      customStatus: null
     };
     updateUserRank(db.users[userId]);
     saveUsers();
   } else {
+    if (!db.users[userId].joinedDate) {
+      db.users[userId].joinedDate = new Date().toLocaleDateString();
+    }
     updateUserRank(db.users[userId]);
     updatePeakRank(db.users[userId]);
   }
@@ -592,14 +597,16 @@ client.on('messageCreate', async message => {
     eadventure: 'eadventure',
     ea: 'eadventure',
     ecrystal: 'ecrystal',
-    ec: 'ecrystal'
+    ec: 'ecrystal',
+    ownersetstatus: 'ownersetstatus',
+    oss: 'ownersetstatus'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall'];
+  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall', 'ownersetstatus'];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -640,6 +647,7 @@ client.on('messageCreate', async message => {
     if (command === 'start') {
       if (user.started) return message.reply(toSmallCaps('⚠️ You have already started your Chibi RPG journey!'));
       user.started = true;
+      user.joinedDate = new Date().toLocaleDateString();
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
       if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
@@ -668,6 +676,7 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 👑 Owner Control Center\n\n` +
               `• \`${currentPrefix}ownerbotmaintenance\` — Toggle bot maintenance mode\n` +
+              `• \`${currentPrefix}ownersetstatus [@user] [status]\` — Set custom user game/activity status\n` +
               `• \`${currentPrefix}ownerresetdata\` — Wipe all user data and reset everyone\n` +
               `• \`${currentPrefix}ownersecretpanel\` — View secret system statistics\n` +
               `• \`${currentPrefix}owneradminpermsrem\` — Revoke admin permissions from all users\n` +
@@ -717,6 +726,24 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`🛠️ Maintenance mode successfully updated: ${statusText}`));
     }
 
+    if (command === 'ownersetstatus') {
+      if (!isOwner()) {
+        return message.reply(toSmallCaps('❌ Only the bot owner can use ownersetstatus!'));
+      }
+      const target = message.mentions.users.first();
+      const statusText = args.slice(1).join(' ');
+      if (!target || !statusText) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}ownersetstatus [@user] [status text]\nExample: ${currentPrefix}ownersetstatus @user VALORANT`));
+      }
+      ensureUser(target.id);
+      db.users[target.id].customStatus = {
+        text: statusText,
+        timestamp: Date.now()
+      };
+      await saveUsers();
+      return message.reply(toSmallCaps(`✅ Successfully set custom status for <@${target.id}> to **${statusText}**!`));
+    }
+
     if (command === 'adminrestoreall') {
       if (!isAdmin()) {
         return message.reply(toSmallCaps('❌ Only administrators can restore all user data!'));
@@ -740,6 +767,7 @@ client.on('messageCreate', async message => {
       for (const uId of Object.keys(db.users)) {
         db.users[uId] = {
           started: false,
+          joinedDate: new Date().toLocaleDateString(),
           dice: 10,
           points: 0,
           rank: '<:unranked:1571314276071907519>',
@@ -757,9 +785,11 @@ client.on('messageCreate', async message => {
           userLevel: 1,
           userExp: 0,
           lastDrop: 0,
+          todayDrops: 0,
           lastDaily: 0,
           streak: 0,
-          permissions: (uId === db.config.ownerId ? true : false)
+          permissions: (uId === db.config.ownerId ? true : false),
+          customStatus: null
         };
       }
       db.clans = {};
@@ -1434,6 +1464,7 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`⏳ Please wait ${timeLeft} more seconds before claiming your next Chibi Drop!`));
       }
       user.lastDrop = currentMs;
+      user.todayDrops = (user.todayDrops || 0) + 1;
 
       const totalDropWeight = gameData.dropTable.reduce((sum, d) => sum + d.weight, 0);
       let randD = Math.random() * totalDropWeight;
@@ -2066,7 +2097,7 @@ client.on('messageCreate', async message => {
       return;
     }
 
-    // --- ENHANCED DASHBOARD STYLE PROFILE COMMAND WITH USER AVATAR (FIXED THUMBNAIL BUILDER setURL) ---
+    // --- PROFILE COMMAND FORMATTED EXACTLY AS REQUESTED ---
     if (command === 'profile') {
       const targetUserMention = message.mentions.users.first();
       const targetUserId = targetUserMention ? targetUserMention.id : userId;
@@ -2126,9 +2157,7 @@ client.on('messageCreate', async message => {
       const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
 
-      const displayName = targetUserData.customNickname || targetMember.username;
-
-      let clanDisplayStr = 'None';
+      let clanDisplayStr = 'NONE';
       if (targetUserData.clan && db.clans[targetUserData.clan]) {
         const cObj = db.clans[targetUserData.clan];
         const cleanName = targetUserData.clan.replace(/\*/g, '');
@@ -2136,30 +2165,45 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : toSmallCaps('None');
-      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `\`(${targetUserData.bestRoll})\`` : '';
+      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : 'NONE';
+      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `1 IN ${targetUserData.bestRoll}` : 'NONE';
+      const joinedDateStr = targetUserData.joinedDate || 'N/A';
+      const displayName = targetUserData.customNickname || targetMember.username;
 
-      const joinedDateStr = targetMember.joinedAt ? targetMember.joinedAt.toLocaleDateString() : (targetMember.createdAt ? targetMember.createdAt.toLocaleDateString() : 'N/A');
+      let customStatusDisplay = '';
+      if (targetUserData.customStatus && targetUserData.customStatus.text) {
+        const elapsedMs = Date.now() - targetUserData.customStatus.timestamp;
+        const totalSecs = Math.floor(elapsedMs / 1000);
+        const hrs = Math.floor(totalSecs / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+        const timeFormatted = hrs > 0 
+          ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}` 
+          : `${mins}:${String(secs).padStart(2, '0')}`;
+        
+        customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
+      }
 
-      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  Joined ${joinedDateStr}\n\n`);
+      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
       
       const statsSection = toSmallCaps(
-        `## 📊 STATS\n` +
-        `DROPS: **${totalChibis}**                 TODAY'S DROPS: **0 / 200**          DICE: **${targetUserData.dice} 🎲**\n` +
-        `POINTS: **${targetUserData.points.toLocaleString()}**            GLOBAL RANK: **${leaderboardPos}**       STREAK: **${targetUserData.streak || 0}D**\n` +
-        `LEVEL: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})   CLAN: **${clanDisplayStr}**\n\n`
+        `## 📊 STATS\n\n` +
+        `RANKS: `
+      ) + `${targetUserData.rank}` + toSmallCaps(`  |  🎲: **${targetUserData.dice || 0}**\n`) +
+      toSmallCaps(
+        `POINTS: **${targetUserData.points.toLocaleString()}**  |  GLOBAL RANK: **${leaderboardPos}**\n` +
+        `STREAK: **${targetUserData.streak || 0}D**  |  CLAN: **${clanDisplayStr}**\n` +
+        `LEVEL: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})\n\n`
       );
 
       const collectionSection = toSmallCaps(
-        `## 📦 COLLECTION RARITY BREAKDOWN\n` +
-        `${rarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**         ` +
-        `${rarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**         ` +
-        `${rarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n` +
-        `${rarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**           ` +
-        `${rarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**             ` +
-        `${rarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**\n` +
-        `${rarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**\n\n` +
-        `🎲 **BEST ROLL:** ${bestRollIconPart} ${bestRollOddsPart}`
+        `## 📦 COLLECTIONS\n\n` +
+        `${rarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**  |  ${rarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**\n` +
+        `${rarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**  |  ${rarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**\n` +
+        `${rarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**\n` +
+        `${rarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**\n` +
+        `${rarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n\n` +
+        `🎲 **BEST ROLL:** ${bestRollIconPart} & ${bestRollOddsPart}`
       );
 
       const section = new SectionBuilder()
