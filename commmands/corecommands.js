@@ -1,4 +1,3 @@
-
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,6 +8,7 @@ const {
   SeparatorBuilder,
   SectionBuilder,
   ThumbnailBuilder,
+  AttachmentBuilder,
   MessageFlags
 } = require('discord.js');
 const mongoose = require('mongoose');
@@ -22,7 +22,10 @@ const {
 } = require('../core/constants');
 const { gameData, db, saveUsers } = require('../core/database');
 const {
+  PROFILE_BG_PRESETS,
   isTester,
+  hasSupporterAndNitroBadge,
+  parseProfileBgInput,
   toSmallCaps,
   getRarityIconMap,
   updateUserRank,
@@ -35,10 +38,13 @@ const {
   parseOddsNumber
 } = require('../core/helpers');
 
+const CUSTOMIZER_URL = 'https://janexx-gbb.github.io/Night/';
+
 const CORE_CMDS = [
   'start', 'rarities', 'customnn', 'seasons', 'higheststats', 'help', 'status',
   'slot', 'daily', 'roll', 'drop', 'inventory', 'collections', 'shop',
-  'rank', 'points', 'ranks', 'ccranks', 'tradehistory', 'trade', 'profile'
+  'rank', 'points', 'ranks', 'ccranks', 'tradehistory', 'trade', 'profile',
+  'profilebg'
 ];
 
 async function execute(ctx) {
@@ -165,6 +171,68 @@ async function execute(ctx) {
     return message.reply(toSmallCaps(`✅ Successfully updated your custom nickname to ${newNickname}!`));
   }
 
+  if (command === 'profilebg') {
+    const syncedBadges = await evaluateAndSyncUserBadges(userId, user, message.guild);
+    if (!hasSupporterAndNitroBadge(user, syncedBadges)) {
+      return message.reply(
+        toSmallCaps(
+          '❌ Custom GIF profile backgrounds are exclusively for users who have **both** the **Supporter** and **Nitro** badges!\n' +
+          `Preview & customize here: ${CUSTOMIZER_URL}`
+        )
+      );
+    }
+
+    const subArg = (args[0] || '').trim();
+    if (!subArg) {
+      const presetLines = Object.entries(PROFILE_BG_PRESETS)
+        .map(([key, preset]) => `• \`${key}\` — ${preset.label}`)
+        .join('\n');
+      const currentBgLabel = user.profileBg?.url
+        ? `${user.profileBg.label} (${user.profileBg.url})`
+        : 'None';
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🖼️ Custom GIF Profile Background\n\n` +
+              `Status: Unlocked (Supporter + Nitro Badges Verified)\n` +
+              `Current Background: ${currentBgLabel}\n` +
+              `Customizer Link: ${CUSTOMIZER_URL}\n\n` +
+              `Commands:\n` +
+              `• \`${currentPrefix}profilebg [preset]\`\n` +
+              `• \`${currentPrefix}profilebg [https://...gif]\`\n` +
+              `• \`${currentPrefix}profilebg reset\`\n\n` +
+              `Available Presets:\n`
+            ) + presetLines
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (['reset', 'clear', 'none', 'remove'].includes(subArg.toLowerCase())) {
+      user.profileBg = null;
+      await saveUsers();
+      return message.reply(toSmallCaps('✅ Your custom GIF profile background has been cleared.'));
+    }
+
+    const parsedBg = parseProfileBgInput(subArg);
+    if (!parsedBg) {
+      return message.reply(
+        toSmallCaps(
+          `❌ Invalid GIF background! Use a preset (\`${Object.keys(PROFILE_BG_PRESETS).join(', ')}\`) or a valid \`https://\` \`.gif\` URL from ${CUSTOMIZER_URL}`
+        )
+      );
+    }
+
+    user.profileBg = parsedBg;
+    await saveUsers();
+    return message.reply(
+      toSmallCaps(`✅ Profile GIF background set to **${parsedBg.label}**! Use \`${currentPrefix}profile\` to view it.`)
+    );
+  }
+
   if (command === 'seasons') {
     const currentSeasonNum = db.config.seasonNumber || 1;
     const currentSeasonData = SEASON_LIST[currentSeasonNum] || { name: `Season ${currentSeasonNum}`, start: 'Active' };
@@ -246,6 +314,7 @@ async function execute(ctx) {
       `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
       `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
       `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
+      `\`${currentPrefix}profilebg\` — Set custom GIF profile background (Supporter + Nitro)\n` +
       `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
       `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
       `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
@@ -1326,14 +1395,30 @@ async function execute(ctx) {
 
     const joinedDateStr = targetUserData.joinedDate || 'N/A';
     const displayName = targetUserData.customNickname || targetMember.username;
+    const syncedTargetBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
+    const canRenderGifBg =
+      hasSupporterAndNitroBadge(targetUserData, syncedTargetBadges) &&
+      Boolean(targetUserData.profileBg?.url);
+
+    let gifAttachment = null;
+    if (canRenderGifBg) {
+      try {
+        gifAttachment = new AttachmentBuilder(targetUserData.profileBg.url, { name: 'profile-background.gif' });
+      } catch {
+        gifAttachment = null;
+      }
+    }
+
+    const gifBgDisplayLine = canRenderGifBg
+      ? toSmallCaps(`\n🖼️ **GIF Background:** ${targetUserData.profileBg.label}\n`) + `${targetUserData.profileBg.url}\n`
+      : '';
 
     // Only testers / unreleased-beta viewers see the Beta Profile UI
     if (callerHasBetaView && isTester(userId)) {
-      const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
       await saveUsers();
 
-      const badgeIconsRow = syncedBadges.length > 0
-        ? syncedBadges.map(bKey => BADGE_CATALOG[bKey]?.icon).filter(Boolean).join(' ')
+      const badgeIconsRow = syncedTargetBadges.length > 0
+        ? syncedTargetBadges.map(bKey => BADGE_CATALOG[bKey]?.icon).filter(Boolean).join(' ')
         : '*None*';
 
       const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
@@ -1357,7 +1442,8 @@ async function execute(ctx) {
         `${BETA_EMOJIS.USERS} **@${displayName}**\n` +
         toSmallCaps(`[${joinedDateStr}]\n\n`) +
         `${BETA_EMOJIS.TOTAL_BADGE} ` + toSmallCaps('User Badges\n') +
-        `${badgeIconsRow}\n\n`;
+        `${badgeIconsRow}\n` +
+        gifBgDisplayLine + '\n';
 
       const boxedStats =
         '```\n' +
@@ -1396,7 +1482,11 @@ async function execute(ctx) {
         .setAccentColor(0x1abc9c)
         .addSectionComponents(section);
 
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      const payload = { components: [container], flags: MessageFlags.IsComponentsV2 };
+      if (gifAttachment) payload.files = [gifAttachment];
+      return message.reply(payload).catch(() =>
+        message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 })
+      );
     }
 
     const mainRarityIconsMap = getRarityIconMap(false);
@@ -1427,7 +1517,7 @@ async function execute(ctx) {
       customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
     }
 
-    const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
+    const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + gifBgDisplayLine + '\n';
 
     const statsSection = toSmallCaps(
       '## 📊 STATS\n\n' +
@@ -1461,7 +1551,11 @@ async function execute(ctx) {
       .setAccentColor(0x36393f)
       .addSectionComponents(section);
 
-    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    const payload = { components: [container], flags: MessageFlags.IsComponentsV2 };
+    if (gifAttachment) payload.files = [gifAttachment];
+    return message.reply(payload).catch(() =>
+      message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    );
   }
 
   return false;
