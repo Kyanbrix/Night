@@ -22,7 +22,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -36,6 +37,123 @@ function loadGameData() {
 }
 
 const gameData = loadGameData();
+
+const BADGE_CATALOG = {
+  // Discord Category
+  partner: {
+    key: 'partner',
+    category: 'Discord Category',
+    name: 'Partner Badge',
+    icon: '<:Partner_badge:1572633331244474369>',
+    description: 'Owning by partnership'
+  },
+  staff: {
+    key: 'staff',
+    category: 'Discord Category',
+    name: 'Staff Badge',
+    icon: '<:Staff_badge:1572633388622549063>',
+    description: 'You must admin or mod to have this'
+  },
+  moderator: {
+    key: 'moderator',
+    category: 'Discord Category',
+    name: 'Moderator Badge',
+    icon: '<:Moderator_badge:1572633450081558618>',
+    description: 'You must moderator to have this'
+  },
+  developer: {
+    key: 'developer',
+    category: 'Discord Category',
+    name: 'Developer Badge',
+    icon: '<:Developer:1572779245242159284>',
+    description: 'Creator of the bot'
+  },
+  bughunter: {
+    key: 'bughunter',
+    category: 'Discord Category',
+    name: 'Bug Hunter Badge',
+    icon: '<:Bughunter:1572779201126469824>',
+    description: 'Catching Too many bugs'
+  },
+  support: {
+    key: 'support',
+    category: 'Discord Category',
+    name: 'Beta Supporter Badge',
+    icon: '<a:Support_badge:1572634032712188077>',
+    description: 'Giving this by support the server since beta'
+  },
+  booster: {
+    key: 'booster',
+    category: 'Discord Category',
+    name: 'Server Booster Badge',
+    icon: '<a:Booster_badge:1572634086034505768>',
+    description: 'Boosting the server in discord'
+  },
+  nitro: {
+    key: 'nitro',
+    category: 'Discord Category',
+    name: 'Nitro Badge',
+    icon: '<a:Nitro_badge:1572634168037220453>',
+    description: 'Must owned a nitro, this badge have many perks'
+  },
+
+  // Event & Stats Category
+  collections: {
+    key: 'collections',
+    category: 'Event & Stats Category',
+    name: 'Complete Collections Badge',
+    icon: '<a:Collections:1572768891547947078>',
+    description: 'Complete all collections'
+  },
+  lvl100: {
+    key: 'lvl100',
+    category: 'Event & Stats Category',
+    name: 'Level 100 Badge',
+    icon: '<:Lvl100_badge:1572634228074614965>',
+    description: 'Obtained reaching lvl 100'
+  },
+  xmas2026: {
+    key: 'xmas2026',
+    category: 'Event & Stats Category',
+    name: 'Xmas 2026 Badge',
+    icon: '<a:Snow_badge:1572633513042387016>',
+    description: 'Obtainable during xmas event 2026'
+  },
+  halloween2026: {
+    key: 'halloween2026',
+    category: 'Event & Stats Category',
+    name: 'Halloween 2026 Badge',
+    icon: '<a:Pumpkins:1572780141246152724>',
+    description: 'Obtainable during halloween event 2026'
+  }
+};
+
+const BETA_EMOJIS = {
+  USERS: '<:Users:1572761957340287066>',
+  TOTAL_BADGE: '<:Totalbadge:1572774284273909801>',
+  STATS: '<:Stats:1572761987736408145>',
+  DICE: '<:Dice:1572769311414820937>',
+  CASH: '<:Cash:1572769444025999420>',
+  STREAK: '<:Streak:1572769479803277403>',
+  EXP: '<:Expp:1572769510170038282>',
+  RANK: '<:Rank:1572771446801965076>',
+  TROPHY_PTS: '<:Trophypts:1572763419382124544>',
+  GLOBAL: '<:Global:1572766388727185488>',
+  CLAN_BADGE: '<a:Clanbadge:1572769261032575147>',
+  INV: '<:Inv:1572769543238062210>',
+  COLLECTIONS: '<a:Collections:1572768891547947078>',
+  HP: '<:Hp:1572769347061940356>',
+  ATK: '<:Swordx:1572769375318970368>',
+  DEF: '<:Def:1572769405841055784>',
+  RARITIES: {
+    C: '<:Newcommon:1572758041843998902>',
+    U: '<:Newuncommon:1572758105412997210>',
+    R: '<:Newrare:1572759318510571560>',
+    SR: '<:NewSR:1572759359258107996>',
+    UTR: '<:NewUTR:1572759426266566699>',
+    SSRP: '<a:NewSSRP:1572759498198745248>'
+  }
+};
 
 const GameStateSchema = new mongoose.Schema({
   _id: { type: String, default: 'main_state' },
@@ -60,7 +178,7 @@ const GameStateSchema = new mongoose.Schema({
       clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
       maintenanceMode: false,
       testers: [],
-      featuresPublished: true,
+      featuresPublished: false,
       pendingUpdatesCount: 0,
       clanRewards: {
         1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
@@ -108,7 +226,7 @@ let db = {
     clanSeasonExpires: Date.now() + (7 * 24 * 60 * 60 * 1000),
     maintenanceMode: false,
     testers: [],
-    featuresPublished: true,
+    featuresPublished: false,
     pendingUpdatesCount: 0,
     clanRewards: {
       1: { qty: 5, rarity: 'UTR', chibiEmoji: '🌟' },
@@ -281,17 +399,22 @@ const ALL_VALID_COMMANDS = new Set([
   'admingivecrystal', 'adminsetlbseason', 'adminresetrank', 'adminsetnn',
   'adminban', 'adminclearlb', 'adminluckevent', 'adminsetxp', 'admingiveitem',
   'adminsetrank', 'adminsetpoints', 'admingivepermission', 'adminsetlevel',
-  'testerpanel', 'addtester', 'removetester', 'pubnewupd', 'testerfeature'
+  'testerpanel', 'addtester', 'removetester', 'pubnewupd', 'testerfeature',
+  'testerfeatures', 'tf', 'admingivebadges', 'agb'
 ]);
 
 const TESTER_ONLY_COMMANDS = new Set([
-  'testerfeature'
+  'testerfeature', 'testerfeatures', 'tf'
 ]);
 
 function isTester(userId) {
   if (!db.config.ownerId) db.config.ownerId = userId;
   if (userId === db.config.ownerId) return true;
-  return db.config.testers && db.config.testers.includes(userId);
+  return Array.isArray(db.config.testers) && db.config.testers.includes(userId);
+}
+
+function hasBetaExperience(userId) {
+  return Boolean(db.config.featuresPublished) || isTester(userId);
 }
 
 function toSmallCaps(str) {
@@ -314,10 +437,14 @@ function toSmallCaps(str) {
   }).join('');
 }
 
-function getRarityIconMap() {
-  const map = { SSRP: '<a:Ssrp:1572096279545126985>' };
+function getRarityIconMap(useBetaEmojis = false) {
+  const map = { SSRP: useBetaEmojis ? BETA_EMOJIS.RARITIES.SSRP : '<a:Ssrp:1572096279545126985>' };
   gameData.rarities.forEach(r => {
-    map[r.key] = r.emoji;
+    if (useBetaEmojis && BETA_EMOJIS.RARITIES[r.key]) {
+      map[r.key] = BETA_EMOJIS.RARITIES[r.key];
+    } else {
+      map[r.key] = r.emoji;
+    }
   });
   return map;
 }
@@ -356,6 +483,69 @@ function updatePeakRank(user) {
   }
 }
 
+async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = null) {
+  if (!Array.isArray(targetUserData.badges)) {
+    targetUserData.badges = [];
+  }
+
+  const badgeSet = new Set(targetUserData.badges);
+
+  // Automatic requirement badges
+  if ((targetUserData.userLevel || 1) >= 100) {
+    badgeSet.add('lvl100');
+  }
+
+  const allUniqueCatalogChibis = new Set((gameData.chibis || []).map(c => c.name));
+  const ownedUniqueChibis = new Set((targetUserData.inventory?.chibis || []).map(c => c.name));
+  if (allUniqueCatalogChibis.size > 0 && allUniqueCatalogChibis.size === ownedUniqueChibis.size) {
+    badgeSet.add('collections');
+  }
+
+  if (targetUserId === db.config.ownerId) {
+    badgeSet.add('developer');
+    badgeSet.add('staff');
+  }
+
+  if (targetUserData.permissions === true) {
+    badgeSet.add('staff');
+  }
+
+  if (Array.isArray(db.config.testers) && db.config.testers.includes(targetUserId)) {
+    badgeSet.add('support');
+  }
+
+  const nowDate = new Date();
+  const month = nowDate.getUTCMonth() + 1;
+  const year = nowDate.getUTCFullYear();
+  if (year === 2026 && month === 12) {
+    badgeSet.add('xmas2026');
+  }
+  if (year === 2026 && month === 10) {
+    badgeSet.add('halloween2026');
+  }
+
+  if (guild) {
+    try {
+      const member = await guild.members.fetch(targetUserId).catch(() => null);
+      if (member) {
+        if (member.premiumSinceTimestamp) {
+          badgeSet.add('booster');
+          badgeSet.add('nitro');
+        }
+        if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+          badgeSet.add('staff');
+        }
+        if (member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+          badgeSet.add('moderator');
+        }
+      }
+    } catch {}
+  }
+
+  targetUserData.badges = Array.from(badgeSet).filter(k => Boolean(BADGE_CATALOG[k]));
+  return targetUserData.badges;
+}
+
 function ensureUser(userId) {
   if (!db.users[userId]) {
     db.users[userId] = {
@@ -382,13 +572,17 @@ function ensureUser(userId) {
       lastDaily: 0,
       streak: 0,
       permissions: false,
-      customStatus: null
+      customStatus: null,
+      badges: []
     };
     updateUserRank(db.users[userId]);
     saveUsers();
   } else {
     if (!db.users[userId].joinedDate) {
       db.users[userId].joinedDate = new Date().toLocaleDateString();
+    }
+    if (!Array.isArray(db.users[userId].badges)) {
+      db.users[userId].badges = [];
     }
     updateUserRank(db.users[userId]);
     updatePeakRank(db.users[userId]);
@@ -479,7 +673,7 @@ const TRIVIA_BANK = [
 client.once('ready', async () => {
   await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
-  
+
   if (!db.config.mainGuildId && client.guilds.cache.size > 0) {
     const firstGuild = client.guilds.cache.first();
     db.config.mainGuildId = firstGuild.id;
@@ -625,9 +819,10 @@ client.on('messageCreate', async message => {
     eadventure: 'eadventure',
     ea: 'eadventure',
     ecrystal: 'ecrystal',
-    ec: 'ecrystal',
     ownersetstatus: 'ownersetstatus',
-    oss: 'ownersetstatus'
+    oss: 'ownersetstatus',
+    tf: 'testerfeatures',
+    agb: 'admingivebadges'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
@@ -663,7 +858,13 @@ client.on('messageCreate', async message => {
   }
 
   const restrictedChannels = db.channelRestrictions[guildId] || [];
-  const exemptCommands = ['enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc', 'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl', 'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance', 'adminrestoreall', 'ownersetstatus', 'testerpanel', 'addtester', 'removetester', 'pubnewupd'];
+  const exemptCommands = [
+    'enablec', 'disablec', 'prefixchange', 'pc', 'admincommands', 'ac', 'oc',
+    'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl',
+    'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance',
+    'adminrestoreall', 'ownersetstatus', 'testerpanel', 'addtester', 'removetester',
+    'pubnewupd', 'testerfeatures', 'tf', 'admingivebadges', 'agb'
+  ];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
   }
@@ -686,7 +887,8 @@ client.on('messageCreate', async message => {
 
   ensureUser(userId);
   const user = db.users[userId];
-  const rarityIconsMap = getRarityIconMap();
+  const callerHasBetaView = hasBetaExperience(userId);
+  const rarityIconsMap = getRarityIconMap(callerHasBetaView);
 
   try {
     const currentMs = Date.now();
@@ -710,6 +912,7 @@ client.on('messageCreate', async message => {
       if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
       updateUserRank(user);
       updatePeakRank(user);
+      await evaluateAndSyncUserBadges(userId, user, message.guild);
       await saveUsers();
       return message.reply(toSmallCaps('🎉 Welcome to Chibi RPG RNG! You have been awarded 20x Dice 🎲 and your profile is initialized.'));
     }
@@ -729,11 +932,12 @@ client.on('messageCreate', async message => {
       const target = message.mentions.users.first();
       if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}addtester [@user]`));
 
+      ensureUser(target.id);
       if (!db.config.testers) db.config.testers = [];
       if (!db.config.testers.includes(target.id)) {
         db.config.testers.push(target.id);
         db.config.pendingUpdatesCount = (db.config.pendingUpdatesCount || 0) + 1;
-        db.config.featuresPublished = false;
+        await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
         await saveUsers();
       }
       return message.reply(toSmallCaps(`✅ Successfully added <@${target.id}> to the Beta Tester roster!`));
@@ -765,13 +969,99 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 🧪 Exclusive Beta Tester Panel\n\n` +
               `Welcome to the testing grounds! Here are your active preview controls & sandbox tools:\n` +
+              `• \`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — View all features active on beta users\n` +
               `• \`${currentPrefix}testerfeature\` — Test unreleased experimental mechanics\n` +
+              `• \`${currentPrefix}profile\` (\`${currentPrefix}p\`) — Revamped Beta Profile + Badges System\n` +
               `• Status: **TESTER BUILD ACTIVE** 🔬\n\n` +
               `*Thank you for helping test and refine Chibi RPG features before public release!*`
             )
           )
         );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'testerfeatures') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              `# 🧪 Active Beta Tester Features List\n\n` +
+              `1. **Revamped Beta Profile (\`${currentPrefix}p\` / \`${currentPrefix}profile\`)**\n` +
+              `   • Header with \`<:Users:1572761957340287066> @Username\` & join date\n` +
+              `   • \`<:Totalbadge:1572774284273909801> User Badges\` row (\`[Badge Icon] [Badge Icon]\`) with auto-earned & owner-granted badges\n` +
+              `   • Boxed \`USER STATS | RANK STATS\` panel\n` +
+              `   • \`<:Inv:1572769543238062210> Collections Rarities\` using updated rarity emojis\n` +
+              `2. **Badge System & Owner Grant Command (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
+              `   • Discord Category & Event/Stats Category badges\n` +
+              `   • Automatic unlocks for Level 100, full collections, & event periods\n` +
+              `3. **Beta Emoji Pack**\n` +
+              `   • Updated collection, dice, HP, ATK, DEF, and rarity icons\n\n` +
+              `*Note: Main users without beta access continue seeing standard main views until published.*`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (command === 'admingivebadges') {
+      if (!isOwner() && !user.permissions) {
+        return message.reply(toSmallCaps('❌ Only the bot owner or admins can use this command!'));
+      }
+
+      const target = message.mentions.users.first();
+      const badgeKeyArg = args[1] ? args[1].toLowerCase() : null;
+
+      if (!target || !badgeKeyArg) {
+        const discordLines = Object.values(BADGE_CATALOG)
+          .filter(b => b.category === 'Discord Category')
+          .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`)
+          .join('\n');
+
+        const eventLines = Object.values(BADGE_CATALOG)
+          .filter(b => b.category === 'Event & Stats Category')
+          .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`)
+          .join('\n');
+
+        const container = new ContainerBuilder()
+          .setAccentColor(0x9b59b6)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              toSmallCaps(
+                `# 🏅 Available Badges Catalog (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)\n\n` +
+                `**Usage:** \`${currentPrefix}admingivebadges [@user] [badge_key]\`\n\n` +
+                `**Discord Category:**\n`
+              ) + discordLines +
+              toSmallCaps(`\n\n**Event & Stats Category:**\n`) + eventLines
+            )
+          );
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      }
+
+      const badgeDef = BADGE_CATALOG[badgeKeyArg];
+      if (!badgeDef) {
+        return message.reply(toSmallCaps(`❌ Unknown badge key \`${badgeKeyArg}\`! Type \`${currentPrefix}agb\` with no arguments to see all valid badge keys.`));
+      }
+
+      ensureUser(target.id);
+      const targetData = db.users[target.id];
+      if (!Array.isArray(targetData.badges)) targetData.badges = [];
+
+      let actionText = '';
+      if (targetData.badges.includes(badgeDef.key)) {
+        targetData.badges = targetData.badges.filter(k => k !== badgeDef.key);
+        actionText = `Removed ${badgeDef.icon} **${badgeDef.name}** from <@${target.id}>.`;
+      } else {
+        targetData.badges.push(badgeDef.key);
+        actionText = `Granted ${badgeDef.icon} **${badgeDef.name}** to <@${target.id}>!`;
+      }
+
+      await saveUsers();
+      return message.reply(toSmallCaps(`✅ ${actionText}`));
     }
 
     if (command === 'pubnewupd') {
@@ -824,6 +1114,9 @@ client.on('messageCreate', async message => {
               `• \`${currentPrefix}ownersetstatus [@user] [status]\` — Set custom user game/activity status\n` +
               `• \`${currentPrefix}addtester [@user]\` — Add beta tester\n` +
               `• \`${currentPrefix}removetester [@user]\` — Remove beta tester\n` +
+              `• \`${currentPrefix}testerpanel\` — Open beta tester panel\n` +
+              `• \`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — List beta features\n` +
+              `• \`${currentPrefix}admingivebadges [@user] [key]\` (\`${currentPrefix}agb\`) — Manage user badges\n` +
               `• \`${currentPrefix}pubnewupd\` — Publish new updates to public production\n` +
               `• \`${currentPrefix}ownerresetdata\` — Wipe all user data and reset everyone\n` +
               `• \`${currentPrefix}ownersecretpanel\` — View secret system statistics\n` +
@@ -848,6 +1141,7 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 🛡️ Administrator Operations Panel\n\n` +
               `• \`${currentPrefix}adminrestoreall\` — Restore and sync all user data profiles\n` +
+              `• \`${currentPrefix}admingivebadges [@user] [key]\` (\`${currentPrefix}agb\`) — View/grant/remove badges\n` +
               `• \`${currentPrefix}admingivecrystal [@user] [qty]\` — Grant Event Crystals\n` +
               `• \`${currentPrefix}adminsetlbseason [num]\` — Set active leaderboard season\n` +
               `• \`${currentPrefix}adminresetrank\` — Reset all points and ranks\n` +
@@ -901,6 +1195,7 @@ client.on('messageCreate', async message => {
         ensureUser(uId);
         updateUserRank(db.users[uId]);
         updatePeakRank(db.users[uId]);
+        await evaluateAndSyncUserBadges(uId, db.users[uId], message.guild);
         restoredCount++;
       }
       await saveUsers();
@@ -937,7 +1232,8 @@ client.on('messageCreate', async message => {
           lastDaily: 0,
           streak: 0,
           permissions: (uId === db.config.ownerId ? true : false),
-          customStatus: null
+          customStatus: null,
+          badges: []
         };
       }
       db.clans = {};
@@ -954,7 +1250,7 @@ client.on('messageCreate', async message => {
       }
       const crystals = db.config.eventCrystals?.[userId] || 0;
       const eventDescription = 'Welcome to the official Chibi RPG Beta Event! Embark on thrilling adventures, challenge mysterious wandering NPCs across the realm, battle rival players in the arena, and collect exclusive rare event chibis using event crystals to claim supreme glory and build the ultimate collection!';
-      
+
       const container = new ContainerBuilder()
         .setAccentColor(0x9b59b6)
         .addTextDisplayComponents(
@@ -988,7 +1284,7 @@ client.on('messageCreate', async message => {
     if (command === 'eadventure') {
       if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
       const randomNpc = EVENT_NPCS[Math.floor(Math.random() * EVENT_NPCS.length)];
-      
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('accept_npc_fight').setLabel(toSmallCaps('Fight NPC ⚔️')).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('decline_npc_fight').setLabel(toSmallCaps('Run Away 🏃')).setStyle(ButtonStyle.Secondary)
@@ -1072,7 +1368,12 @@ client.on('messageCreate', async message => {
           }
 
           const awardedExp = addExpAndLevelUp(user, userTeam.find(Boolean), 350);
+          await evaluateAndSyncUserBadges(userId, user, message.guild);
           await saveUsers();
+
+          const hpIcon = callerHasBetaView ? BETA_EMOJIS.HP : '❤️';
+          const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '⚔️';
+          const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
 
           const resultContainer = new ContainerBuilder()
             .setAccentColor(isUserWinner ? 0x2ecc71 : 0xe74c3c)
@@ -1082,8 +1383,8 @@ client.on('messageCreate', async message => {
                   `# ⚔️ ADVENTURE BATTLE RESULT\n\n` +
                   `OPPONENT: ${randomNpc.icon} ${randomNpc.name}\n` +
                   `NPC CHIBI: ${npcRandomChibi.emoji} ${npcRandomChibi.name}\n` +
-                  `NPC STATS -> ⚔️ ATK: ${npcAtk} | ❤️ HP: ${npcHp}\n` +
-                  `🛡️ DEF: ${npcDef}\n\n` +
+                  `NPC STATS -> ${atkIcon} ATK: ${npcAtk} | ${hpIcon} HP: ${npcHp}\n` +
+                  `${defIcon} DEF: ${npcDef}\n\n` +
                   `${isUserWinner ? '🏆 VICTORY! YOU DEFEATED THE NPC!' : '💔 DEFEATED BY THE NPC!'}\n` +
                   `💎 CRYSTALS EARNED: +${rewardCrystal} ${EVENT_ICONS.CRYSTAL}\n` +
                   `🎁 NPC DROP: ${npcDropText}\n` +
@@ -1139,7 +1440,7 @@ client.on('messageCreate', async message => {
         );
 
       const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
-      
+
       const collector = shopMsg.createMessageComponentCollector({ time: 60000 });
       collector.on('collect', async i => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
@@ -1171,6 +1472,7 @@ client.on('messageCreate', async message => {
             date: new Date().toLocaleDateString()
           });
 
+          await evaluateAndSyncUserBadges(userId, user, message.guild);
           await saveUsers();
           return i.followUp({ content: toSmallCaps(`✅ Successfully purchased ${item.emoji} **${item.name}**! It has been added directly to your collections with the Event badge ${EVENT_ICONS.EVENT_BADGE}.`), ephemeral: true });
         }
@@ -1289,7 +1591,15 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'help') {
+      const betaHelpSection = isTester(userId)
+        ? toSmallCaps('🧪 **Beta Tester Exclusive Commands**\n') +
+          `\`${currentPrefix}testerpanel\` — Open Beta Tester Panel\n` +
+          `\`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — List active beta features\n` +
+          `\`${currentPrefix}admingivebadges\` (\`${currentPrefix}agb\`) — View/grant badges\n\n`
+        : '';
+
       const helpText =
+        betaHelpSection +
         toSmallCaps('🎲 **Rolling, Drops & Games**\n') +
         `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) — Roll Chibis\n` +
         `\`${currentPrefix}drop\` (${currentPrefix}d) — Claim free dice every 10s\n` +
@@ -1581,14 +1891,16 @@ client.on('messageCreate', async message => {
       }
 
       updateUserRank(user);
+      await evaluateAndSyncUserBadges(userId, user, message.guild);
       await saveUsers();
 
+      const diceIcon = callerHasBetaView ? BETA_EMOJIS.DICE : '🎲';
       const luckNotice = activeLuckMultiplier > 1.0 ? toSmallCaps(`\n⚡ Active Luck Boost: ${activeLuckMultiplier}x`) : '';
       const container = new ContainerBuilder()
         .setAccentColor(0x57f287)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            toSmallCaps('# 🎲 Chibi Roll Results\n\n') +
+            toSmallCaps(`# ${diceIcon} Chibi Roll Results\n\n`) +
             resultsSummary
               .map(
                 r =>
@@ -1598,7 +1910,7 @@ client.on('messageCreate', async message => {
               )
               .join('\n') +
             toSmallCaps(`\n\n✨ Gained +${totalExpGained} EXP!`) + luckNotice +
-            toSmallCaps(`\n🎲 Remaining Dice: ${user.dice}`)
+            toSmallCaps(`\n${diceIcon} Remaining Dice: ${user.dice}`)
           )
         );
 
@@ -1629,7 +1941,8 @@ client.on('messageCreate', async message => {
       updateUserRank(user);
       await saveUsers();
 
-      return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** 🎲! Total dice: ${user.dice}`));
+      const diceIcon = callerHasBetaView ? BETA_EMOJIS.DICE : '🎲';
+      return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** ${diceIcon}! Total dice: ${user.dice}`));
     }
 
     if (command === 'inventory') {
@@ -1639,6 +1952,7 @@ client.on('messageCreate', async message => {
       const sprays = user.inventory.items.spray || 0;
       const clovers = user.inventory.items.clover || 0;
       const displayName = user.customNickname || message.author.username;
+      const diceIcon = callerHasBetaView ? BETA_EMOJIS.DICE : '🎲';
 
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
@@ -1646,7 +1960,7 @@ client.on('messageCreate', async message => {
           new TextDisplayBuilder().setContent(
             toSmallCaps(
               `# 🎒 ${displayName}'s Inventory\n\n` +
-              `🎲 Dice: ${user.dice || 0}\n` +
+              `${diceIcon} Dice: ${user.dice || 0}\n` +
               `🧴 Spray Boosts: ${sprays} Uses\n` +
               `🍀 Clover Boosts: ${clovers} Uses\n\n` +
               `*Note: Chibis are stored in your collections (${currentPrefix}collections).*`
@@ -1713,12 +2027,13 @@ client.on('messageCreate', async message => {
           .join('\n') || toSmallCaps('Collection page empty.');
 
         const displayName = user.customNickname || message.author.username;
+        const colIcon = callerHasBetaView ? BETA_EMOJIS.COLLECTIONS : '📖';
         const container = new ContainerBuilder()
           .setAccentColor(0x9b59b6)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
               toSmallCaps(
-                `# 📖 ${displayName}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\n` +
+                `# ${colIcon} ${displayName}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\n` +
                 `Sort: ${sortBy === 'rarity' ? 'Rarity' : 'Alphabetical'}\n\n`
               ) + formatted +
               toSmallCaps(`\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`)
@@ -1794,7 +2109,7 @@ client.on('messageCreate', async message => {
       collector.on('collect', async i => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
-        
+
         if (!user.inventory.items) {
           user.inventory.items = { spray: 0, clover: 0 };
         }
@@ -1827,6 +2142,10 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('❌ You have no chibis in your inventory!'));
       }
 
+      const hpIcon = callerHasBetaView ? BETA_EMOJIS.HP : '❤️';
+      const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '🗡️';
+      const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
+
       const teamSlots = user.team || [null, null, null];
       const teamLines = teamSlots.map((chibiId, index) => {
         if (!chibiId) {
@@ -1854,7 +2173,7 @@ client.on('messageCreate', async message => {
         return (
           `**[${index + 1}]** \`[${shortId}]\` ${rarityIconsMap[chibi.rarity] || '🌟'} ${chibi.emoji} **${chibi.name}**${shinyIconPart}${badgeIcon}\n` +
           `Lvl ${chibi.level} [\`${chibi.exp}/${maxExp}\`]\n` +
-          `❤️ HP: \`${hpVal}\` | 🛡️ DEF: \`${defVal}\` | 🗡️ ATK: \`${atkVal}\`\n`
+          `${hpIcon} HP: \`${hpVal}\` | ${defIcon} DEF: \`${defVal}\` | ${atkIcon} ATK: \`${atkVal}\`\n`
         );
       });
 
@@ -1877,7 +2196,7 @@ client.on('messageCreate', async message => {
       await saveUsers();
       return message.reply(toSmallCaps(`🏆 Your current rank icon: `) + `${user.rank}`);
     }
-    
+
     if (command === 'points') {
       updateUserRank(user);
       await saveUsers();
@@ -2067,6 +2386,7 @@ client.on('messageCreate', async message => {
         expMsg = toSmallCaps(`\n✨ Team slot bonus: +${awardedExp} EXP awarded to you and **${chibi.name}**!`);
       }
       updateUserRank(user);
+      await evaluateAndSyncUserBadges(userId, user, message.guild);
       await saveUsers();
 
       return message.reply(toSmallCaps(`✅ Successfully equipped `) + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
@@ -2096,7 +2416,7 @@ client.on('messageCreate', async message => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== opponent.id) return i.followUp({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
         handled = true;
-        
+
         if (i.customId === 'accept_battle') {
           const p1User = user;
           const p2User = db.users[opponent.id];
@@ -2166,10 +2486,16 @@ client.on('messageCreate', async message => {
 
           updateUserRank(p1User);
           updateUserRank(p2User);
+          await evaluateAndSyncUserBadges(userId, p1User, message.guild);
+          await evaluateAndSyncUserBadges(opponent.id, p2User, message.guild);
           await saveUsers();
 
           const p1Name = user.customNickname || message.author.username;
           const p2Name = db.users[opponent.id].customNickname || opponent.username;
+
+          const hpIcon = callerHasBetaView ? BETA_EMOJIS.HP : '❤️';
+          const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '🗡️';
+          const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
 
           const renderTeamLineWithStats = (team, isWinnerTeam) => {
             return team.map((c, idx) => {
@@ -2181,7 +2507,7 @@ client.on('messageCreate', async message => {
               const atk = statCfg.atk + c.level * statCfg.atkPer;
               const def = statCfg.def + c.level * statCfg.defPer;
               const remainingHp = isWinnerTeam ? hp : 0;
-              return toSmallCaps(`**[${idx + 1}]** `) + `${rIcon}` + ` ${c.emoji} **${c.name}** ${sIcon}` + toSmallCaps(` (Lvl ${c.level}) — ❤️ HP: \`${remainingHp}\` | 🗡️ ATK: \`${atk}\` | 🛡️ DEF: \`${def}\``);
+              return toSmallCaps(`**[${idx + 1}]** `) + `${rIcon}` + ` ${c.emoji} **${c.name}** ${sIcon}` + toSmallCaps(` (Lvl ${c.level}) — ${hpIcon} HP: \`${remainingHp}\` | ${atkIcon} ATK: \`${atk}\` | ${defIcon} DEF: \`${def}\``);
             }).join('\n');
           };
 
@@ -2239,12 +2565,13 @@ client.on('messageCreate', async message => {
           const awardedPoints = Math.floor(Math.random() * 4) + 17;
           user.points += awardedPoints;
           const awardedExp = addExpAndLevelUp(user, null, 450);
-          
+
           const triviaCrystals = Math.floor(Math.random() * 6) + 5;
           if (!db.config.eventCrystals) db.config.eventCrystals = {};
           db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + triviaCrystals;
 
           updateUserRank(user);
+          await evaluateAndSyncUserBadges(userId, user, message.guild);
           await saveUsers();
           m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
         } else {
@@ -2293,17 +2620,6 @@ client.on('messageCreate', async message => {
         }
       }
 
-      const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
-      if (targetUserData.inventory && targetUserData.inventory.chibis) {
-        targetUserData.inventory.chibis.forEach(c => {
-          if (rarityCounts[c.rarity] !== undefined) {
-            rarityCounts[c.rarity]++;
-          }
-        });
-      }
-
-      const totalChibis = targetUserData.inventory.chibis.length;
-      const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
       const targetMember = targetUserMention || message.author;
       const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
 
@@ -2321,10 +2637,94 @@ client.on('messageCreate', async message => {
         clanDisplayStr = `${logoEmoji} ${cleanName}`;
       }
 
-      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : 'NONE';
-      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `1 IN ${targetUserData.bestRoll}` : 'NONE';
       const joinedDateStr = targetUserData.joinedDate || 'N/A';
       const displayName = targetUserData.customNickname || targetMember.username;
+
+      // BETA TESTER EXCLUSIVE REVAMPED PROFILE VIEW
+      if (isTester(userId)) {
+        const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
+        await saveUsers();
+
+        const badgeIconsRow = syncedBadges.length > 0
+          ? syncedBadges.map(bKey => BADGE_CATALOG[bKey]?.icon).filter(Boolean).join(' ')
+          : '*None*';
+
+        const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+        if (targetUserData.inventory && targetUserData.inventory.chibis) {
+          targetUserData.inventory.chibis.forEach(c => {
+            if (rarityCounts[c.rarity] !== undefined) {
+              rarityCounts[c.rarity]++;
+            }
+          });
+        }
+
+        const cIcon = BETA_EMOJIS.RARITIES.C;
+        const uIcon = BETA_EMOJIS.RARITIES.U;
+        const rIcon = BETA_EMOJIS.RARITIES.R;
+        const srIcon = BETA_EMOJIS.RARITIES.SR;
+        const srrIcon = rarityIconsMap['SRR'] || '📦';
+        const utrIcon = BETA_EMOJIS.RARITIES.UTR;
+        const ssrpIcon = BETA_EMOJIS.RARITIES.SSRP;
+
+        const betaHeader =
+          `${BETA_EMOJIS.USERS} **@${displayName}**\n` +
+          toSmallCaps(`[${joinedDateStr}]\n\n`) +
+          `${BETA_EMOJIS.TOTAL_BADGE} ` + toSmallCaps(`User Badges\n`) +
+          `${badgeIconsRow}\n\n`;
+
+        const boxedStats =
+          `\`\`\`\n` +
+          `USER STATS | RANK STATS\n` +
+          `\`\`\`\n` +
+          `${BETA_EMOJIS.STATS} ` + toSmallCaps(`User Status\n`) +
+          `${BETA_EMOJIS.DICE} ` + toSmallCaps(`Dice: **${(targetUserData.dice || 0).toLocaleString()}**  |  `) +
+          `${BETA_EMOJIS.CASH} ` + toSmallCaps(`Cash: **${(targetUserData.points || 0).toLocaleString()}**  |  `) +
+          `${BETA_EMOJIS.STREAK} ` + toSmallCaps(`Streak: **${targetUserData.streak || 0}D**  |  `) +
+          `${BETA_EMOJIS.EXP} ` + toSmallCaps(`Lvl: **${targetUserData.userLevel || 1}**\n\n`) +
+          `${BETA_EMOJIS.RANK} ` + toSmallCaps(`Rank Stats\n`) +
+          `${BETA_EMOJIS.RANK} ` + toSmallCaps(`Rank: `) + `${targetUserData.rank}\n` +
+          `${BETA_EMOJIS.TROPHY_PTS} ` + toSmallCaps(`Points: **${(targetUserData.points || 0).toLocaleString()}**\n`) +
+          `${BETA_EMOJIS.GLOBAL} ` + toSmallCaps(`Leaderboard: **${leaderboardPos}**\n`) +
+          `${BETA_EMOJIS.CLAN_BADGE} ` + toSmallCaps(`Clan: **${clanDisplayStr}**\n\n`);
+
+        const betaCollections =
+          `${BETA_EMOJIS.INV} ` + toSmallCaps(`Collections Rarities\n`) +
+          `${cIcon} ` + toSmallCaps(`Common: **${rarityCounts.C}**\n`) +
+          `${uIcon} ` + toSmallCaps(`Uncommon: **${rarityCounts.U}**\n`) +
+          `${rIcon} ` + toSmallCaps(`Rare: **${rarityCounts.R}**\n`) +
+          `${srIcon} ` + toSmallCaps(`SR: **${rarityCounts.SR}**\n`) +
+          `${srrIcon} ` + toSmallCaps(`SRR: **${rarityCounts.SRR}**\n`) +
+          `${utrIcon} ` + toSmallCaps(`UTR: **${rarityCounts.UTR}**\n`) +
+          `${ssrpIcon} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**`);
+
+        const section = new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(betaHeader + boxedStats + betaCollections)
+          )
+          .setThumbnailAccessory(
+            new ThumbnailBuilder().setURL(avatarUrl)
+          );
+
+        const container = new ContainerBuilder()
+          .setAccentColor(0x1abc9c)
+          .addSectionComponents(section);
+
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      }
+
+      // STANDARD MAIN PROFILE VIEW FOR NON-TESTERS
+      const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+      if (targetUserData.inventory && targetUserData.inventory.chibis) {
+        targetUserData.inventory.chibis.forEach(c => {
+          if (rarityCounts[c.rarity] !== undefined) {
+            rarityCounts[c.rarity]++;
+          }
+        });
+      }
+
+      const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
+      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : 'NONE';
+      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `1 IN ${targetUserData.bestRoll}` : 'NONE';
 
       let customStatusDisplay = '';
       if (targetUserData.customStatus && targetUserData.customStatus.text) {
@@ -2333,15 +2733,15 @@ client.on('messageCreate', async message => {
         const hrs = Math.floor(totalSecs / 3600);
         const mins = Math.floor((totalSecs % 3600) / 60);
         const secs = totalSecs % 60;
-        const timeFormatted = hrs > 0 
-          ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}` 
+        const timeFormatted = hrs > 0
+          ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
           : `${mins}:${String(secs).padStart(2, '0')}`;
-        
+
         customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
       }
 
       const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
-      
+
       const statsSection = toSmallCaps(
         `## 📊 STATS\n\n` +
         `RANKS: `
@@ -2727,7 +3127,7 @@ client.on('messageCreate', async message => {
 
             const p1Txt = getOfferText(p1Offer);
             const p2Txt = getOfferText(p2Offer);
-            
+
             return {
               color: 0xf1c40f,
               title: toSmallCaps('🤝 Active Trade Session'),
@@ -2779,7 +3179,7 @@ client.on('messageCreate', async message => {
               const msgs = await ti.channel.awaitMessages({ filter: m => m.author.id === ti.user.id, max: 1, time: 20000 }).catch(() => null);
               const m = msgs?.first();
               if (!m) return;
-              
+
               const amt = parseInt(m.content);
               const uObj = db.users[ti.user.id];
               await m.delete().catch(() => {});
@@ -2821,7 +3221,7 @@ client.on('messageCreate', async message => {
 
               const selectFilter = int => int.user.id === ti.user.id && int.customId === 'trade_select_chibi';
               const selection = await ti.channel.awaitMessageComponent({ filter: selectFilter, time: 25000 }).catch(() => null);
-              
+
               if (!selection) return;
               if (!selection.deferred && !selection.replied) await selection.deferUpdate().catch(() => {});
 
@@ -2882,6 +3282,8 @@ client.on('messageCreate', async message => {
 
               updateUserRank(u1);
               updateUserRank(u2);
+              await evaluateAndSyncUserBadges(userId, u1, message.guild);
+              await evaluateAndSyncUserBadges(target.id, u2, message.guild);
               await saveUsers();
               tradeCollector.stop();
 
@@ -2914,6 +3316,7 @@ client.on('messageCreate', async message => {
         db.config.mainGuildId = message.guild.id;
       }
       user.permissions = true;
+      await evaluateAndSyncUserBadges(userId, user, message.guild);
       await saveUsers();
       return message.reply(toSmallCaps(`🛡️ Admin override successful! You are now set as the Bot Owner & Admin, and this server (${message.guild ? message.guild.name : 'DM'}) is locked as the Main Server.`));
     }
@@ -2991,6 +3394,7 @@ client.on('messageCreate', async message => {
         exp: 0,
         date: new Date().toLocaleDateString()
       });
+      await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
       await saveUsers();
 
       return promptMsg.edit({
@@ -3234,7 +3638,7 @@ client.on('messageCreate', async message => {
         if (itemType === 'dice') db.users[target.id].dice += quantity;
         else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
         else if (itemType === 'clover') db.users[target.id].inventory.items.clover += quantity;
-        
+
         updateUserRank(db.users[target.id]);
         await saveUsers();
 
@@ -3270,6 +3674,7 @@ client.on('messageCreate', async message => {
         if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivepermission [@user]`));
         ensureUser(target.id);
         db.users[target.id].permissions = true;
+        await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
         await saveUsers();
         return message.reply(toSmallCaps(`🛡️ Admin permissions granted to <@${target.id}>.`));
       }
@@ -3283,6 +3688,7 @@ client.on('messageCreate', async message => {
         ensureUser(target.id);
         db.users[target.id].userLevel = lvl;
         db.users[target.id].userExp = 0;
+        await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
         await saveUsers();
         return message.reply(toSmallCaps(`🛡️ Admin set user level for <@${target.id}> to Level ${lvl}.`));
       }
