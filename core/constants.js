@@ -1,4 +1,3 @@
-
 const BADGE_CATALOG = {
   // Discord Category
   partner: {
@@ -211,7 +210,7 @@ const RARITY_HIERARCHY = { SSRP: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 const ALL_VALID_COMMANDS = new Set([
   'start', 'help', 'status', 'roll', 'drop', 'slot', 'shop', 'rarities',
   'event', 'eadventure', 'eshop', 'ecrystal', 'daily', 'points', 'rank', 'ranks',
-  'ccranks', 'customnn', 'seasons', 'higheststats', 'tradehistory',
+  'ccranks', 'customnn', 'profilebg', 'seasons', 'higheststats', 'tradehistory',
   'cstats', 'equipteam', 'battle', 'inventory', 'collections', 'profile', 'trade',
   'clanlist', 'cclaninfo', 'ccreateclan', 'cclanjoin', 'clanleave', 'clanrename',
   'cpromote', 'cp', 'cannounce', 'kick', 'cmail', 'ceditdesc', 'ced',
