@@ -62,7 +62,16 @@ const {
   parseOddsNumber
 } = require('./core/helpers');
 
-const isValidProfileBgUrl = (rawUrl) => {
+const PROFILE_BG_PRESETS = {
+  'neon-night': { label: 'Neon Anime Night', previewUrl: null },
+  'neon-anime-night': { label: 'Neon Anime Night', previewUrl: null },
+  'sakura-rain': { label: 'Sakura Rain', previewUrl: null },
+  'celestial-galaxy': { label: 'Celestial Galaxy', previewUrl: null },
+  'cyber-grid': { label: 'Cyber Grid', previewUrl: null },
+  'cozy-cafe': { label: 'Cozy Cafe', previewUrl: null }
+};
+
+const isValidHttpProfileBgUrl = (rawUrl) => {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== 'https:') return false;
@@ -74,6 +83,56 @@ const isValidProfileBgUrl = (rawUrl) => {
   } catch {
     return false;
   }
+};
+
+const parseProfileBgInput = (rawValue) => {
+  const token = String(rawValue || '').split('|')[0].trim();
+  if (!token) return null;
+
+  if (token.toLowerCase().startsWith('preset:')) {
+    const presetKey = token.slice('preset:'.length).trim().toLowerCase();
+    const presetObj = PROFILE_BG_PRESETS[presetKey];
+    if (!presetObj) return null;
+    return {
+      stored: `preset:${presetKey}`,
+      kind: 'preset',
+      label: presetObj.label,
+      url: presetObj.previewUrl
+    };
+  }
+
+  if (isValidHttpProfileBgUrl(token)) {
+    return {
+      stored: token,
+      kind: 'url',
+      label: 'Custom GIF',
+      url: token
+    };
+  }
+
+  return null;
+};
+
+const resolveStoredProfileBg = (storedBg) => {
+  if (!storedBg || typeof storedBg !== 'string') return null;
+  const trimmed = storedBg.trim();
+  if (trimmed.toLowerCase().startsWith('preset:')) {
+    const presetKey = trimmed.slice('preset:'.length).trim().toLowerCase();
+    const presetObj = PROFILE_BG_PRESETS[presetKey];
+    return {
+      kind: 'preset',
+      label: presetObj ? presetObj.label : presetKey,
+      url: presetObj ? presetObj.previewUrl : null
+    };
+  }
+  if (isValidHttpProfileBgUrl(trimmed)) {
+    return {
+      kind: 'url',
+      label: 'Custom GIF',
+      url: trimmed
+    };
+  }
+  return null;
 };
 
 const client = new Client({
@@ -1063,7 +1122,7 @@ client.on('messageCreate', async message => {
       const input = args.join(' ').trim();
       if (!input) {
         return message.reply(
-          toSmallCaps(`❌ Usage: ${currentPrefix}profilebg [https://image-url] (or \`${currentPrefix}profilebg clear\` to remove)`)
+          toSmallCaps(`❌ Usage: ${currentPrefix}profilebg [preset:neon-anime-night | https://image-url] (or \`${currentPrefix}profilebg clear\` to remove)`)
         );
       }
 
@@ -1073,16 +1132,17 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('✅ Cleared your custom profile background!'));
       }
 
-      const urlPart = input.split('|')[0].trim();
-      if (!isValidProfileBgUrl(urlPart)) {
+      const parsedBg = parseProfileBgInput(input);
+      if (!parsedBg) {
         return message.reply(
-          toSmallCaps('❌ Please provide a valid `https://` direct image or GIF URL (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, or Giphy/Tenor/Discord CDN).')
+          toSmallCaps('❌ Please provide a valid `preset:<name>` from the customizer or an `https://` direct image/GIF URL (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, or Giphy/Tenor/Discord CDN).')
         );
       }
 
-      user.profileBg = urlPart;
+      user.profileBg = parsedBg.stored;
       await saveUsers();
-      return message.reply(toSmallCaps('✅ Successfully updated your custom profile background!'));
+      const confirmationLabel = parsedBg.kind === 'preset' ? `Preset: ${parsedBg.label}` : 'Custom GIF URL';
+      return message.reply(toSmallCaps(`✅ Successfully updated your profile background (${confirmationLabel})!`));
     }
 
     const getDisplayName = async (uId) => {
@@ -2280,7 +2340,7 @@ client.on('messageCreate', async message => {
 
       const targetMember = targetUserMention || message.author;
       const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
-      const hasCustomBg = Boolean(targetUserData.profileBg && isValidProfileBgUrl(targetUserData.profileBg));
+      const resolvedBg = resolveStoredProfileBg(targetUserData.profileBg);
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -2324,6 +2384,10 @@ client.on('messageCreate', async message => {
         const utrIcon = BETA_EMOJIS.RARITIES.UTR;
         const ssrpIcon = BETA_EMOJIS.RARITIES.SSRP;
 
+        const bgFooterLine = resolvedBg
+          ? toSmallCaps(`\n\n🎞️ Backdrop: **${resolvedBg.label}** (GIF Active)`)
+          : '';
+
         const betaHeader =
           `${BETA_EMOJIS.USERS} **@${displayName}**\n` +
           toSmallCaps(`[${joinedDateStr}]\n\n`) +
@@ -2353,7 +2417,8 @@ client.on('messageCreate', async message => {
           `${srIcon} ` + toSmallCaps(`SR: **${rarityCounts.SR}**\n`) +
           `${srrIcon} ` + toSmallCaps(`SRR: **${rarityCounts.SRR}**\n`) +
           `${utrIcon} ` + toSmallCaps(`UTR: **${rarityCounts.UTR}**\n`) +
-          `${ssrpIcon} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**`);
+          `${ssrpIcon} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**`) +
+          bgFooterLine;
 
         const section = new SectionBuilder()
           .addTextDisplayComponents(
@@ -2367,10 +2432,10 @@ client.on('messageCreate', async message => {
           .setAccentColor(0x1abc9c)
           .addSectionComponents(section);
 
-        if (hasCustomBg) {
+        if (resolvedBg && resolvedBg.url) {
           container.addMediaGalleryComponents(
             new MediaGalleryBuilder().addItems(
-              new MediaGalleryItemBuilder().setURL(targetUserData.profileBg)
+              new MediaGalleryItemBuilder().setURL(resolvedBg.url)
             )
           );
         }
@@ -2406,6 +2471,10 @@ client.on('messageCreate', async message => {
         customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
       }
 
+      const bgFooterLine = resolvedBg
+        ? toSmallCaps(`\n\n🎞️ **BACKDROP:** ${resolvedBg.label}`)
+        : '';
+
       const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
 
       const statsSection = toSmallCaps(
@@ -2426,7 +2495,7 @@ client.on('messageCreate', async message => {
         `${mainRarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**\n` +
         `${mainRarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n\n` +
         `🎲 **BEST ROLL:** ${bestRollIconPart} & ${bestRollOddsPart}`
-      );
+      ) + bgFooterLine;
 
       const section = new SectionBuilder()
         .addTextDisplayComponents(
@@ -2440,10 +2509,10 @@ client.on('messageCreate', async message => {
         .setAccentColor(0x36393f)
         .addSectionComponents(section);
 
-      if (hasCustomBg) {
+      if (resolvedBg && resolvedBg.url) {
         container.addMediaGalleryComponents(
           new MediaGalleryBuilder().addItems(
-            new MediaGalleryItemBuilder().setURL(targetUserData.profileBg)
+            new MediaGalleryItemBuilder().setURL(resolvedBg.url)
           )
         );
       }
