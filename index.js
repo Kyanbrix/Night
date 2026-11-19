@@ -148,6 +148,7 @@ const BETA_EMOJIS = {
   CRR_TROPHY: '<:Crrtrophy:1572796318869618738>',
   END_SEASON: '<:Endseason:1572796368718925959>',
   C_LEADER: '<a:Cleader:1572763472729477384>',
+  CLAN_DESC: '<:Clandesc:1572806342736085052>',
   START_BTN: '<:Start:1572796405033214043>',
   RANKS_POS: {
     1: '<:1st:1572796499979403334>',
@@ -319,6 +320,18 @@ function getClanLogoDisplay(logoId) {
   return CLAN_LOGOS[String(logoId)] || CLAN_LOGOS['1'];
 }
 
+function getClanLogoImageUrl(logoId) {
+  const emojiStr = getClanLogoDisplay(logoId);
+  const match = emojiStr.match(/^<(a)?:\w+:(\d+)>$/);
+  if (!match) {
+    return 'https://cdn.discordapp.com/emojis/1572057180704604261.gif?size=256';
+  }
+  const isAnimated = Boolean(match[1]);
+  const id = match[2];
+  const ext = isAnimated ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/emojis/${id}.${ext}?size=256`;
+}
+
 function getClanLogoListText() {
   return Object.entries(CLAN_LOGOS)
     .map(([id, emoji]) => `[${id}] - ${emoji}`)
@@ -434,7 +447,7 @@ const ALL_VALID_COMMANDS = new Set([
   'ccranks', 'customnn', 'seasons', 'higheststats', 'tradehistory',
   'cstats', 'equipteam', 'battle', 'inventory', 'collections', 'profile', 'trade',
   'clanlist', 'cclaninfo', 'ccreateclan', 'cclanjoin', 'clanleave', 'clanrename',
-  'cpromote', 'cp', 'cannounce', 'kick', 'cmail',
+  'cpromote', 'cp', 'cannounce', 'kick', 'cmail', 'ceditdesc', 'ced',
   'prefixchange', 'enablec', 'disablec', 'meme', 'trivia',
   'ownercommands', 'admincommands', 'ownerbotmaintenance', 'ownersetstatus',
   'adminrestoreall', 'ownerresetdata', 'fixadmin', 'ownersecretpanel',
@@ -447,7 +460,7 @@ const ALL_VALID_COMMANDS = new Set([
 ]);
 
 const TESTER_ONLY_COMMANDS = new Set([
-  'testerfeature', 'testerfeatures', 'tf', 'cpromote', 'cp', 'cannounce', 'kick', 'cmail'
+  'testerfeature', 'testerfeatures', 'tf', 'cpromote', 'cp', 'cannounce', 'kick', 'cmail', 'ceditdesc', 'ced'
 ]);
 
 function isTester(userId) {
@@ -881,7 +894,8 @@ client.on('messageCreate', async message => {
     oss: 'ownersetstatus',
     tf: 'testerfeatures',
     agb: 'admingivebadges',
-    cp: 'cpromote'
+    cp: 'cpromote',
+    ced: 'ceditdesc'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
@@ -923,7 +937,7 @@ client.on('messageCreate', async message => {
     'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance',
     'adminrestoreall', 'ownersetstatus', 'testerpanel', 'addtester', 'removetester',
     'pubnewupd', 'testerfeatures', 'tf', 'admingivebadges', 'agb',
-    'cpromote', 'cp', 'cannounce', 'kick', 'cmail'
+    'cpromote', 'cp', 'cannounce', 'kick', 'cmail', 'ceditdesc', 'ced'
   ];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
@@ -1083,7 +1097,7 @@ client.on('messageCreate', async message => {
               `• \`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — View all features active on beta users\n` +
               `• \`${currentPrefix}testerfeature\` — Test unreleased experimental mechanics\n` +
               `• \`${currentPrefix}profile\` (\`${currentPrefix}p\`) — Revamped Beta Profile + Badges System\n` +
-              `• \`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) / \`${currentPrefix}kick\` / \`${currentPrefix}cannounce\` / \`${currentPrefix}cmail\` — Beta Clan Suite\n` +
+              `• \`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) / \`${currentPrefix}kick\` / \`${currentPrefix}cannounce\` / \`${currentPrefix}cmail\` / \`${currentPrefix}ceditdesc\` — Beta Clan Suite\n` +
               `• Status: **TESTER BUILD ACTIVE** 🔬\n\n` +
               `*Thank you for helping test and refine Chibi RPG features before public release!*`
             )
@@ -1107,8 +1121,8 @@ client.on('messageCreate', async message => {
               `   • Clean User Status (Dice, Cash = 0, Streak, Level), Rank Stats, Badges & Collections Rarities\n` +
               `2. **Revamped Leaderboards (\`${currentPrefix}ranks\` & \`${currentPrefix}ccranks\` / \`${currentPrefix}ccr\`)**\n` +
               `   • Clean Global & Clan leaderboards with season end timers & automatic clan rewards\n` +
-              `3. **Beta Clan Commands (\`${currentPrefix}cclaninfo\`, \`${currentPrefix}cpromote\`/\`${currentPrefix}cp\`, \`${currentPrefix}kick\`, \`${currentPrefix}cannounce\`, \`${currentPrefix}cmail\`)**\n` +
-              `   • Role hierarchy (Co-Leader, Officer, Deputy), member kicks, clan announcements & mail inbox\n` +
+              `3. **Beta Clan Commands (\`${currentPrefix}cclaninfo\`, \`${currentPrefix}cpromote\`/\`${currentPrefix}cp\`, \`${currentPrefix}kick\`, \`${currentPrefix}cannounce\`, \`${currentPrefix}cmail\`, \`${currentPrefix}ceditdesc\`)**\n` +
+              `   • Role hierarchy (Co-Leader, Officer, Deputy), member kicks, clan announcements, description & mail inbox\n` +
               `4. **Interactive Start Button (\`${currentPrefix}start\`)**\n` +
               `   • Pressable ${BETA_EMOJIS.START_BTN} Start button awarding **x50 Dice**\n` +
               `5. **Badge System & Owner Grant (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
@@ -1711,6 +1725,7 @@ client.on('messageCreate', async message => {
           `\`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) [@user] — Promote clan member\n` +
           `\`${currentPrefix}kick\` [@user] [reason] — Kick member from clan\n` +
           `\`${currentPrefix}cannounce\` [msg] — Announce to clan mail\n` +
+          `\`${currentPrefix}ceditdesc\` (\`${currentPrefix}ced\`) [desc] — Edit clan description\n` +
           `\`${currentPrefix}cmail\` — View clan mail inbox\n\n`
         : '';
 
@@ -2383,7 +2398,7 @@ client.on('messageCreate', async message => {
                 `${BETA_EMOJIS.CRR_TROPHY} ` +
                 toSmallCaps(`**Chibi Global Leaderboard [${seasonMeta.name}]**\n`) +
                 `${BETA_EMOJIS.END_SEASON}: ` +
-                toSmallCaps(`${seasonTimerStr} *(Page ${page + 1}/${totalPages})*\n\n`) +
+                toSmallCaps(`${seasonTimerStr} (Page ${page + 1}/${totalPages})\n\n`) +
                 pageBody +
                 toSmallCaps(`\n\n____________________\n\n`) +
                 `${BETA_EMOJIS.USERS} ` +
@@ -3101,6 +3116,7 @@ client.on('messageCreate', async message => {
         viceLeader: null,
         members: [userId],
         roles: { [userId]: 'Leader' },
+        description: '',
         logoId: logoArg,
         renameCount: 0
       };
@@ -3241,6 +3257,37 @@ client.on('messageCreate', async message => {
         `✅ Successfully updated clan! Name: **${newNameArg}**, Logo: ${chosenLogoEmoji}\n` +
         `*(Renames/Updates used: ${currentRenameCount + 1}/3)*`
       ));
+    }
+
+    if (command === 'ceditdesc') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not in a clan!'));
+      }
+
+      const clanObj = db.clans[user.clan];
+      const actorRole = getClanMemberRole(clanObj, userId);
+      const actorTier = CLAN_ROLE_HIERARCHY[actorRole] || 0;
+
+      if (actorTier < CLAN_ROLE_HIERARCHY['Co-Leader']) {
+        return message.reply(toSmallCaps('❌ Only the Clan Leader or Co-Leader can edit the clan description!'));
+      }
+
+      const newDesc = args.join(' ').trim();
+      if (!newDesc) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}ceditdesc [description text] (or \`clear\` to reset)`));
+      }
+      if (newDesc.length > 160) {
+        return message.reply(toSmallCaps('❌ Clan description cannot exceed 160 characters!'));
+      }
+
+      clanObj.description = newDesc.toLowerCase() === 'clear' ? '' : newDesc;
+      await saveUsers();
+
+      const displayDesc = clanObj.description ? clanObj.description : 'No Description of the clan';
+      return message.reply(toSmallCaps(`✅ Updated clan description for **${clanObj.name}**:\n`) + `${BETA_EMOJIS.CLAN_DESC}: ` + toSmallCaps(displayDesc));
     }
 
     if (command === 'cpromote') {
@@ -3473,6 +3520,9 @@ client.on('messageCreate', async message => {
           .sort((a, b) => b.pts - a.pts);
         const clanRankIdx = clanTotals.findIndex(c => c.cName === user.clan);
         const globalRankStatus = clanRankIdx !== -1 ? `#${clanRankIdx + 1}` : 'Unranked';
+        const clanDescText = clan.description && clan.description.trim().length > 0
+          ? clan.description.trim()
+          : 'No Description of the clan';
 
         const memberLines = await Promise.all(
           clan.members.map(async (mId, idx) => {
@@ -3480,21 +3530,28 @@ client.on('messageCreate', async message => {
             if (mUser) updateUserRank(mUser);
             const mUsername = await getDisplayName(mId);
             const pos = getClanMemberRole(clan, mId);
-            return toSmallCaps(`**${idx + 1}.** @${mUsername} | ${pos} | ${(mUser?.points || 0).toLocaleString()}`);
+            return toSmallCaps(`**${idx + 1}.** @${mUsername} | ${pos} | ${BETA_EMOJIS.TROPHY_PTS}: ${(mUser?.points || 0).toLocaleString()}`);
           })
         );
 
-        const container = new ContainerBuilder()
-          .setAccentColor(0x1abc9c)
+        const section = new SectionBuilder()
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              toSmallCaps(`Clan : ${cleanClanName}      `) + `${logoEmoji}\n\n` +
+              toSmallCaps(`**CLAN : ${cleanClanName}**\n\n`) +
               `${BETA_EMOJIS.C_LEADER}: ` + toSmallCaps(`${leaderName}\n`) +
               `${BETA_EMOJIS.TROPHY_PTS}: ` + toSmallCaps(`${totalPoints.toLocaleString()}\n`) +
-              `${BETA_EMOJIS.GLOBAL}: ` + toSmallCaps(`${globalRankStatus}\n\n`) +
+              `${BETA_EMOJIS.GLOBAL}: ` + toSmallCaps(`${globalRankStatus}\n`) +
+              `${BETA_EMOJIS.CLAN_DESC}: ` + toSmallCaps(`${clanDescText}\n\n`) +
               memberLines.join('\n')
             )
+          )
+          .setThumbnailAccessory(
+            new ThumbnailBuilder().setURL(getClanLogoImageUrl(clan.logoId))
           );
+
+        const container = new ContainerBuilder()
+          .setAccentColor(0x1abc9c)
+          .addSectionComponents(section);
 
         return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
