@@ -145,6 +145,15 @@ const BETA_EMOJIS = {
   HP: '<:Hp:1572769347061940356>',
   ATK: '<:Swordx:1572769375318970368>',
   DEF: '<:Def:1572769405841055784>',
+  CRR_TROPHY: '<:Crrtrophy:1572796318869618738>',
+  END_SEASON: '<:Endseason:1572796368718925959>',
+  C_LEADER: '<a:Cleader:1572763472729477384>',
+  START_BTN: '<:Start:1572796405033214043>',
+  RANKS_POS: {
+    1: '<:1st:1572796499979403334>',
+    2: '<:2nd:1572796465355690104>',
+    3: '<:3rd:1572796434867159161>'
+  },
   RARITIES: {
     C: '<:Newcommon:1572758041843998902>',
     U: '<:Newuncommon:1572758105412997210>',
@@ -153,6 +162,14 @@ const BETA_EMOJIS = {
     UTR: '<:NewUTR:1572759426266566699>',
     SSRP: '<a:NewSSRP:1572759498198745248>'
   }
+};
+
+const CLAN_ROLE_HIERARCHY = {
+  Leader: 4,
+  'Co-Leader': 3,
+  Officer: 2,
+  Deputy: 1,
+  Member: 0
 };
 
 const GameStateSchema = new mongoose.Schema({
@@ -308,6 +325,31 @@ function getClanLogoListText() {
     .join('\n');
 }
 
+function getClanMemberRole(clanObj, memberId) {
+  if (!clanObj) return 'Member';
+  if (clanObj.leader === memberId) return 'Leader';
+  if (clanObj.roles && clanObj.roles[memberId]) return clanObj.roles[memberId];
+  if (clanObj.viceLeader === memberId) return 'Co-Leader';
+  return 'Member';
+}
+
+function pushClanMail(userId, mailItem) {
+  ensureUser(userId);
+  if (!Array.isArray(db.users[userId].clanMail)) {
+    db.users[userId].clanMail = [];
+  }
+  db.users[userId].clanMail.unshift({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    title: mailItem.title || 'Clan Notice',
+    body: mailItem.body || '',
+    category: mailItem.category || 'Status',
+    timestamp: Date.now()
+  });
+  if (db.users[userId].clanMail.length > 25) {
+    db.users[userId].clanMail = db.users[userId].clanMail.slice(0, 25);
+  }
+}
+
 const SEASON_LIST = {
   1: { name: 'Season 1 - Beta Phrase', start: 'November 1, 2026 - 12:00 AM' },
   2: { name: 'Season 2 - Alpha Xmas', start: 'December 1, 2026 - 12:00 AM' },
@@ -392,6 +434,7 @@ const ALL_VALID_COMMANDS = new Set([
   'ccranks', 'customnn', 'seasons', 'higheststats', 'tradehistory',
   'cstats', 'equipteam', 'battle', 'inventory', 'collections', 'profile', 'trade',
   'clanlist', 'cclaninfo', 'ccreateclan', 'cclanjoin', 'clanleave', 'clanrename',
+  'cpromote', 'cp', 'cannounce', 'kick', 'cmail',
   'prefixchange', 'enablec', 'disablec', 'meme', 'trivia',
   'ownercommands', 'admincommands', 'ownerbotmaintenance', 'ownersetstatus',
   'adminrestoreall', 'ownerresetdata', 'fixadmin', 'ownersecretpanel',
@@ -404,7 +447,7 @@ const ALL_VALID_COMMANDS = new Set([
 ]);
 
 const TESTER_ONLY_COMMANDS = new Set([
-  'testerfeature', 'testerfeatures', 'tf'
+  'testerfeature', 'testerfeatures', 'tf', 'cpromote', 'cp', 'cannounce', 'kick', 'cmail'
 ]);
 
 function isTester(userId) {
@@ -490,7 +533,6 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
 
   const badgeSet = new Set(targetUserData.badges);
 
-  // Automatic requirement badges
   if ((targetUserData.userLevel || 1) >= 100) {
     badgeSet.add('lvl100');
   }
@@ -573,7 +615,8 @@ function ensureUser(userId) {
       streak: 0,
       permissions: false,
       customStatus: null,
-      badges: []
+      badges: [],
+      clanMail: []
     };
     updateUserRank(db.users[userId]);
     saveUsers();
@@ -583,6 +626,9 @@ function ensureUser(userId) {
     }
     if (!Array.isArray(db.users[userId].badges)) {
       db.users[userId].badges = [];
+    }
+    if (!Array.isArray(db.users[userId].clanMail)) {
+      db.users[userId].clanMail = [];
     }
     updateUserRank(db.users[userId]);
     updatePeakRank(db.users[userId]);
@@ -729,25 +775,37 @@ client.once('ready', async () => {
           ensureUser(mId);
           const mUser = db.users[mId];
           if (rewardCfg) {
-            const generatedId = new mongoose.Types.ObjectId().toString();
-            mUser.inventory.chibis.push({
-              id: generatedId,
-              chibiId: generatedId,
-              name: sampleChibi.name,
-              rarity: rewardCfg.rarity,
-              emoji: sampleChibi.emoji,
-              isShiny: false,
-              level: 1,
-              exp: 0,
-              date: new Date().toLocaleDateString()
+            for (let q = 0; q < (rewardCfg.qty || 1); q++) {
+              const generatedId = new mongoose.Types.ObjectId().toString();
+              mUser.inventory.chibis.push({
+                id: generatedId,
+                chibiId: generatedId,
+                name: sampleChibi.name,
+                rarity: rewardCfg.rarity,
+                emoji: sampleChibi.emoji,
+                isShiny: false,
+                level: 1,
+                exp: 0,
+                date: new Date().toLocaleDateString()
+              });
+            }
+            pushClanMail(mId, {
+              title: `Clan Season Reward (#${rank})`,
+              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! You received ${rewardCfg.qty}x ${rewardCfg.rarity} ${sampleChibi.emoji} ${sampleChibi.name}.`,
+              category: 'Rewards'
             });
           } else {
             mUser.dice += 100;
+            pushClanMail(mId, {
+              title: `Clan Season Consolation (#${rank})`,
+              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! You received 100x 🎲 Dice.`,
+              category: 'Rewards'
+            });
           }
         }
       }
 
-      db.config.clanSeasonExpires = now + (7 * 24 * 60 * 60 * 1000);
+      db.config.clanSeasonExpires = now + (30 * 24 * 60 * 60 * 1000);
       await saveUsers();
       console.log(`Clan season expired! Rewards distributed automatically.`);
     }
@@ -822,7 +880,8 @@ client.on('messageCreate', async message => {
     ownersetstatus: 'ownersetstatus',
     oss: 'ownersetstatus',
     tf: 'testerfeatures',
-    agb: 'admingivebadges'
+    agb: 'admingivebadges',
+    cp: 'cpromote'
   };
   if (shortcuts[command]) {
     command = shortcuts[command];
@@ -863,7 +922,8 @@ client.on('messageCreate', async message => {
     'ownercommands', 'ownerresetdata', 'help', 'status', 'fixadmin', 'ownercl',
     'owneradminpermsrem', 'ownersecretpanel', 'event', 'ownerbotmaintenance',
     'adminrestoreall', 'ownersetstatus', 'testerpanel', 'addtester', 'removetester',
-    'pubnewupd', 'testerfeatures', 'tf', 'admingivebadges', 'agb'
+    'pubnewupd', 'testerfeatures', 'tf', 'admingivebadges', 'agb',
+    'cpromote', 'cp', 'cannounce', 'kick', 'cmail'
   ];
   if (restrictedChannels.length > 0 && restrictedChannels.includes(message.channel.id) && !exemptCommands.includes(command)) {
     return;
@@ -905,6 +965,57 @@ client.on('messageCreate', async message => {
 
     if (command === 'start') {
       if (user.started) return message.reply(toSmallCaps('⚠️ You have already started your Chibi RPG journey!'));
+
+      if (isTester(userId)) {
+        const startRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('beta_start_journey_btn')
+            .setEmoji('1572796405033214043')
+            .setLabel(toSmallCaps('Start Journey'))
+            .setStyle(ButtonStyle.Success)
+        );
+
+        const startPromptMsg = await message.reply({
+          content: toSmallCaps(`${BETA_EMOJIS.START_BTN} **Welcome to Chibi RPG RNG!**\nPress the Start button below to initialize your profile and claim your starter bundle.`),
+          components: [startRow]
+        });
+
+        const startCollector = startPromptMsg.createMessageComponentCollector({ time: 30000, max: 1 });
+        let pressed = false;
+
+        startCollector.on('collect', async i => {
+          if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+          if (i.user.id !== userId) {
+            return i.followUp({ content: toSmallCaps('❌ Only the command user can press this Start button!'), ephemeral: true });
+          }
+          pressed = true;
+          user.started = true;
+          user.joinedDate = new Date().toLocaleDateString();
+          user.dice += 50;
+          if (!db.config.ownerId) db.config.ownerId = userId;
+          if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
+          updateUserRank(user);
+          updatePeakRank(user);
+          await evaluateAndSyncUserBadges(userId, user, message.guild);
+          await saveUsers();
+
+          await startPromptMsg.edit({
+            content: toSmallCaps(`🎉 **Journey Initialized!** You have been awarded **x50 Dice** ${BETA_EMOJIS.DICE} and your Chibi RPG profile is now active.`),
+            components: []
+          }).catch(() => {});
+        });
+
+        startCollector.on('end', async () => {
+          if (!pressed && !user.started) {
+            await startPromptMsg.edit({
+              content: toSmallCaps(`⏳ Start button expired. Type \`${currentPrefix}start\` again to begin.`),
+              components: []
+            }).catch(() => {});
+          }
+        });
+        return;
+      }
+
       user.started = true;
       user.joinedDate = new Date().toLocaleDateString();
       user.dice += 20;
@@ -972,6 +1083,7 @@ client.on('messageCreate', async message => {
               `• \`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — View all features active on beta users\n` +
               `• \`${currentPrefix}testerfeature\` — Test unreleased experimental mechanics\n` +
               `• \`${currentPrefix}profile\` (\`${currentPrefix}p\`) — Revamped Beta Profile + Badges System\n` +
+              `• \`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) / \`${currentPrefix}kick\` / \`${currentPrefix}cannounce\` / \`${currentPrefix}cmail\` — Beta Clan Suite\n` +
               `• Status: **TESTER BUILD ACTIVE** 🔬\n\n` +
               `*Thank you for helping test and refine Chibi RPG features before public release!*`
             )
@@ -992,16 +1104,15 @@ client.on('messageCreate', async message => {
             toSmallCaps(
               `# 🧪 Active Beta Tester Features List\n\n` +
               `1. **Revamped Beta Profile (\`${currentPrefix}p\` / \`${currentPrefix}profile\`)**\n` +
-              `   • Header with \`<:Users:1572761957340287066> @Username\` & join date\n` +
-              `   • \`<:Totalbadge:1572774284273909801> User Badges\` row (\`[Badge Icon] [Badge Icon]\`) with auto-earned & owner-granted badges\n` +
-              `   • Boxed \`USER STATS | RANK STATS\` panel\n` +
-              `   • \`<:Inv:1572769543238062210> Collections Rarities\` using updated rarity emojis\n` +
-              `2. **Badge System & Owner Grant Command (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
-              `   • Discord Category & Event/Stats Category badges\n` +
-              `   • Automatic unlocks for Level 100, full collections, & event periods\n` +
-              `3. **Beta Emoji Pack**\n` +
-              `   • Updated collection, dice, HP, ATK, DEF, and rarity icons\n\n` +
-              `*Note: Main users without beta access continue seeing standard main views until published.*`
+              `   • Clean User Status (Dice, Cash = 0, Streak, Level), Rank Stats, Badges & Collections Rarities\n` +
+              `2. **Revamped Leaderboards (\`${currentPrefix}ranks\` & \`${currentPrefix}ccranks\` / \`${currentPrefix}ccr\`)**\n` +
+              `   • Clean Global & Clan leaderboards with season end timers & automatic clan rewards\n` +
+              `3. **Beta Clan Commands (\`${currentPrefix}cclaninfo\`, \`${currentPrefix}cpromote\`/\`${currentPrefix}cp\`, \`${currentPrefix}kick\`, \`${currentPrefix}cannounce\`, \`${currentPrefix}cmail\`)**\n` +
+              `   • Role hierarchy (Co-Leader, Officer, Deputy), member kicks, clan announcements & mail inbox\n` +
+              `4. **Interactive Start Button (\`${currentPrefix}start\`)**\n` +
+              `   • Pressable ${BETA_EMOJIS.START_BTN} Start button awarding **x50 Dice**\n` +
+              `5. **Badge System & Owner Grant (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
+              `   • Discord & Event/Stats badges with automatic requirement unlocks`
             )
           )
         );
@@ -1233,7 +1344,8 @@ client.on('messageCreate', async message => {
           streak: 0,
           permissions: (uId === db.config.ownerId ? true : false),
           customStatus: null,
-          badges: []
+          badges: [],
+          clanMail: []
         };
       }
       db.clans = {};
@@ -1595,7 +1707,11 @@ client.on('messageCreate', async message => {
         ? toSmallCaps('🧪 **Beta Tester Exclusive Commands**\n') +
           `\`${currentPrefix}testerpanel\` — Open Beta Tester Panel\n` +
           `\`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — List active beta features\n` +
-          `\`${currentPrefix}admingivebadges\` (\`${currentPrefix}agb\`) — View/grant badges\n\n`
+          `\`${currentPrefix}admingivebadges\` (\`${currentPrefix}agb\`) — View/grant badges\n` +
+          `\`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) [@user] — Promote clan member\n` +
+          `\`${currentPrefix}kick\` [@user] [reason] — Kick member from clan\n` +
+          `\`${currentPrefix}cannounce\` [msg] — Announce to clan mail\n` +
+          `\`${currentPrefix}cmail\` — View clan mail inbox\n\n`
         : '';
 
       const helpText =
@@ -2215,14 +2331,91 @@ client.on('messageCreate', async message => {
       let currentPage = 0;
       const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
 
-      const timeRemainingMs = Math.max(0, (db.config.seasonExpires || Date.now()) - Date.now());
-      const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
       const seasonNum = db.config.seasonNumber || 1;
+      const seasonMeta = SEASON_LIST[seasonNum] || { name: `Season ${seasonNum}` };
+      const maxSeasonMs = 30 * 24 * 60 * 60 * 1000;
+      const timeRemainingMs = Math.min(maxSeasonMs, Math.max(0, (db.config.seasonExpires || (Date.now() + maxSeasonMs)) - Date.now()));
+      const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
 
       const userGlobalIndex = allSortedUsers.findIndex(u => u.uId === userId);
       const userRankPos = userGlobalIndex !== -1 ? userGlobalIndex + 1 : 'Unranked';
       const userPointsDisplay = user.points || 0;
       const userRankIcon = user.rank || '<:unranked:1571314276071907519>';
+
+      if (isTester(userId)) {
+        const buildBetaRanksPageContent = async (page) => {
+          const start = page * itemsPerPage;
+          const pageUsers = allSortedUsers.slice(start, start + itemsPerPage);
+
+          const lines = await Promise.all(pageUsers.map(async (u, idx) => {
+            const username = await getDisplayName(u.uId);
+            let clanSubLine = '';
+            if (u.clan && db.clans[u.clan]) {
+              const clanObj = db.clans[u.clan];
+              const cleanClanName = u.clan.replace(/\*/g, '');
+              const logoEmoji = getClanLogoDisplay(clanObj.logoId);
+              clanSubLine = `\n   ${logoEmoji} ` + toSmallCaps(cleanClanName);
+            }
+            return (
+              toSmallCaps(`**${start + idx + 1}.** @${username} | `) +
+              `${u.rank}` +
+              toSmallCaps(` | ${BETA_EMOJIS.TROPHY_PTS} ${(u.points || 0).toLocaleString()}`) +
+              clanSubLine
+            );
+          }));
+
+          return lines.join('\n\n') || toSmallCaps('No players on the leaderboard yet.');
+        };
+
+        const getRanksRow = (page) => {
+          return new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('rank_prev').setLabel(toSmallCaps('◀ Previous')).setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId('rank_next').setLabel(toSmallCaps('Next ▶')).setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+          );
+        };
+
+        const renderBetaRanksContainer = async (page) => {
+          const pageBody = await buildBetaRanksPageContent(page);
+          return new ContainerBuilder()
+            .setAccentColor(0xf1c40f)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `${BETA_EMOJIS.CRR_TROPHY} ` +
+                toSmallCaps(`**Chibi Global Leaderboard [${seasonMeta.name}]**\n`) +
+                `${BETA_EMOJIS.END_SEASON}: ` +
+                toSmallCaps(`${seasonTimerStr} *(Page ${page + 1}/${totalPages})*\n\n`) +
+                pageBody +
+                toSmallCaps(`\n\n____________________\n\n`) +
+                `${BETA_EMOJIS.USERS} ` +
+                toSmallCaps(`Your rank: `) +
+                `${userRankIcon}` +
+                toSmallCaps(` | ${BETA_EMOJIS.TROPHY_PTS} ${userPointsDisplay.toLocaleString()} (#${userRankPos})`)
+              )
+            );
+        };
+
+        const initialContainer = await renderBetaRanksContainer(currentPage);
+        const ranksMsg = await message.reply({
+          components: [initialContainer, getRanksRow(currentPage)],
+          flags: MessageFlags.IsComponentsV2
+        });
+
+        const ranksCollector = ranksMsg.createMessageComponentCollector({ time: 120000 });
+        ranksCollector.on('collect', async i => {
+          if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+          if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your leaderboard session!'), ephemeral: true });
+
+          if (i.customId === 'rank_prev' && currentPage > 0) currentPage--;
+          if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
+
+          const updatedContainer = await renderBetaRanksContainer(currentPage);
+          await ranksMsg.edit({
+            components: [updatedContainer, getRanksRow(currentPage)],
+            flags: MessageFlags.IsComponentsV2
+          }).catch(() => {});
+        });
+        return;
+      }
 
       const buildRanksPageContent = async (page) => {
         const start = page * itemsPerPage;
@@ -2299,7 +2492,8 @@ client.on('messageCreate', async message => {
         return { name, clan, totalPoints };
       }).sort((a, b) => b.totalPoints - a.totalPoints);
 
-      const timeRemainingMs = Math.max(0, (db.config.clanSeasonExpires || Date.now()) - Date.now());
+      const maxClanSeasonMs = 30 * 24 * 60 * 60 * 1000;
+      const timeRemainingMs = Math.min(maxClanSeasonMs, Math.max(0, (db.config.clanSeasonExpires || (Date.now() + maxClanSeasonMs)) - Date.now()));
       const clanTimerStr = formatTimeRemaining(timeRemainingMs);
 
       const rewards = db.config.clanRewards || {};
@@ -2330,6 +2524,28 @@ client.on('messageCreate', async message => {
         const cleanName = user.clan.replace(/\*/g, '');
         const logoEmoji = getClanLogoDisplay(uClanObj.logoId);
         userClanLine = toSmallCaps(`${uClanRank}. ${logoEmoji} ${cleanName} | Leader: **${leaderName}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`);
+      }
+
+      if (isTester(userId)) {
+        const container = new ContainerBuilder()
+          .setAccentColor(0x9b59b6)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `${BETA_EMOJIS.GLOBAL} ` +
+              toSmallCaps(`**Top 10 Global Clan Leaderboard**\n`) +
+              `${BETA_EMOJIS.END_SEASON}: ` +
+              toSmallCaps(`${clanTimerStr}\n\n`) +
+              `${BETA_EMOJIS.RANKS_POS[1]}: ${formatReward(1)}\n` +
+              `${BETA_EMOJIS.RANKS_POS[2]}: ${formatReward(2)}\n` +
+              `${BETA_EMOJIS.RANKS_POS[3]}: ${formatReward(3)}\n\n` +
+              toSmallCaps(`-----------------------------------\n\n`) +
+              (top10Lines.join('\n') || toSmallCaps('No clans registered yet.')) +
+              toSmallCaps(`\n\n-----------------------------------\n**Your Clan Status:**\n`) +
+              userClanLine
+            )
+          );
+
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
 
       const container = new ContainerBuilder()
@@ -2368,7 +2584,6 @@ client.on('messageCreate', async message => {
 
       const chibiUniqueId = chibi.chibiId || chibi.id;
 
-      // Prevent duplicate chibi equipping across team slots
       if (user.team.includes(chibiUniqueId)) {
         const existingSlot = user.team.indexOf(chibiUniqueId) + 1;
         if (existingSlot !== slot) {
@@ -2640,7 +2855,6 @@ client.on('messageCreate', async message => {
       const joinedDateStr = targetUserData.joinedDate || 'N/A';
       const displayName = targetUserData.customNickname || targetMember.username;
 
-      // BETA TESTER EXCLUSIVE REVAMPED PROFILE VIEW
       if (isTester(userId)) {
         const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
         await saveUsers();
@@ -2677,10 +2891,10 @@ client.on('messageCreate', async message => {
           `USER STATS | RANK STATS\n` +
           `\`\`\`\n` +
           `${BETA_EMOJIS.STATS} ` + toSmallCaps(`User Status\n`) +
-          `${BETA_EMOJIS.DICE} ` + toSmallCaps(`Dice: **${(targetUserData.dice || 0).toLocaleString()}**  |  `) +
-          `${BETA_EMOJIS.CASH} ` + toSmallCaps(`Cash: **${(targetUserData.points || 0).toLocaleString()}**  |  `) +
-          `${BETA_EMOJIS.STREAK} ` + toSmallCaps(`Streak: **${targetUserData.streak || 0}D**  |  `) +
-          `${BETA_EMOJIS.EXP} ` + toSmallCaps(`Lvl: **${targetUserData.userLevel || 1}**\n\n`) +
+          `${BETA_EMOJIS.DICE} ` + toSmallCaps(`Dice: **${(targetUserData.dice || 0).toLocaleString()}**\n`) +
+          `${BETA_EMOJIS.CASH} ` + toSmallCaps(`Cash: **0**\n`) +
+          `${BETA_EMOJIS.STREAK} ` + toSmallCaps(`Streak: **${targetUserData.streak || 0}D**\n`) +
+          `${BETA_EMOJIS.EXP} ` + toSmallCaps(`Level: **${targetUserData.userLevel || 1}**\n\n`) +
           `${BETA_EMOJIS.RANK} ` + toSmallCaps(`Rank Stats\n`) +
           `${BETA_EMOJIS.RANK} ` + toSmallCaps(`Rank: `) + `${targetUserData.rank}\n` +
           `${BETA_EMOJIS.TROPHY_PTS} ` + toSmallCaps(`Points: **${(targetUserData.points || 0).toLocaleString()}**\n`) +
@@ -2712,7 +2926,6 @@ client.on('messageCreate', async message => {
         return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
 
-      // STANDARD MAIN PROFILE VIEW FOR NON-TESTERS
       const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
       if (targetUserData.inventory && targetUserData.inventory.chibis) {
         targetUserData.inventory.chibis.forEach(c => {
@@ -2887,6 +3100,7 @@ client.on('messageCreate', async message => {
         leader: userId,
         viceLeader: null,
         members: [userId],
+        roles: { [userId]: 'Leader' },
         logoId: logoArg,
         renameCount: 0
       };
@@ -2902,8 +3116,15 @@ client.on('messageCreate', async message => {
       const clanName = args.join(' ').replace(/\*/g, '');
       if (!db.clans[clanName]) return message.reply(toSmallCaps('❌ Clan does not exist!'));
       if (db.clans[clanName].members.includes(userId)) return message.reply(toSmallCaps('⚠️ You are already in this clan!'));
+      if (!db.clans[clanName].roles) db.clans[clanName].roles = {};
       db.clans[clanName].members.push(userId);
+      db.clans[clanName].roles[userId] = 'Member';
       user.clan = clanName;
+      pushClanMail(userId, {
+        title: `Joined Clan ${clanName}`,
+        body: `Welcome to **${clanName}**! Use \`${currentPrefix}cclaninfo\` to view members and \`${currentPrefix}cmail\` for clan notices.`,
+        category: 'Status'
+      });
       await saveUsers();
       return message.reply(toSmallCaps(`✅ Successfully joined clan ${clanName}!`));
     }
@@ -2940,6 +3161,7 @@ client.on('messageCreate', async message => {
           const targetClan = db.clans[clanName];
           if (targetClan) {
             targetClan.members = targetClan.members.filter(id => id !== userId);
+            if (targetClan.roles) delete targetClan.roles[userId];
             if (targetClan.members.length === 0) {
               delete db.clans[clanName];
             }
@@ -3021,24 +3243,272 @@ client.on('messageCreate', async message => {
       ));
     }
 
+    if (command === 'cpromote') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not in a clan!'));
+      }
+
+      const clanObj = db.clans[user.clan];
+      const actorRole = getClanMemberRole(clanObj, userId);
+      const actorTier = CLAN_ROLE_HIERARCHY[actorRole] || 0;
+
+      if (actorTier < CLAN_ROLE_HIERARCHY['Officer']) {
+        return message.reply(toSmallCaps('❌ Only the Clan Leader, Co-Leader, or Officer can promote members!'));
+      }
+
+      const target = message.mentions.users.first();
+      if (!target) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}cpromote [@user] (or \`${currentPrefix}cp [@user]\`)`));
+      }
+      if (!clanObj.members.includes(target.id)) {
+        return message.reply(toSmallCaps('❌ That user is not a member of your clan!'));
+      }
+      if (target.id === clanObj.leader) {
+        return message.reply(toSmallCaps('❌ You cannot change the Clan Leader role!'));
+      }
+
+      const currentTargetRole = getClanMemberRole(clanObj, target.id);
+      const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('cpromote_select_role')
+          .setPlaceholder(toSmallCaps('Select which position to promote to'))
+          .addOptions([
+            {
+              label: 'Co-Leader',
+              description: 'Can kick members below Co-Leader (Officer & Deputy)',
+              value: 'Co-Leader'
+            },
+            {
+              label: 'Officer',
+              description: 'Can kick members below Officer (Deputy & Member)',
+              value: 'Officer'
+            },
+            {
+              label: 'Deputy',
+              description: 'Official clan member rank',
+              value: 'Deputy'
+            }
+          ])
+      );
+
+      const promptMsg = await message.reply({
+        content: toSmallCaps(`🎖️ **Clan Promotion UI**\nTarget: <@${target.id}> (Current: **${currentTargetRole}**)\nChoose which position you want to assign below:`),
+        components: [row]
+      });
+
+      const collector = promptMsg.createMessageComponentCollector({ time: 25000, max: 1 });
+      collector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) {
+          return i.followUp({ content: toSmallCaps('❌ Only the command sender can select the position!'), ephemeral: true });
+        }
+
+        const chosenRole = i.values[0];
+        const chosenTier = CLAN_ROLE_HIERARCHY[chosenRole] || 0;
+
+        if (actorRole !== 'Leader' && chosenTier >= actorTier) {
+          return i.followUp({ content: toSmallCaps('❌ You cannot assign a position equal to or higher than your own rank!'), ephemeral: true });
+        }
+
+        if (!clanObj.roles) clanObj.roles = {};
+        clanObj.roles[target.id] = chosenRole;
+        clanObj.viceLeader = chosenRole === 'Co-Leader' ? target.id : (clanObj.viceLeader === target.id ? null : clanObj.viceLeader);
+
+        pushClanMail(target.id, {
+          title: `Clan Promotion in ${clanObj.name}`,
+          body: `You have been assigned the position **${chosenRole}** in **${clanObj.name}**!`,
+          category: 'Status'
+        });
+
+        await saveUsers();
+        await promptMsg.edit({
+          content: toSmallCaps(`✅ <@${target.id}> has been set to **${chosenRole}** in clan **${clanObj.name}**!`),
+          components: []
+        }).catch(() => {});
+      });
+      return;
+    }
+
+    if (command === 'kick') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not in a clan!'));
+      }
+
+      const clanObj = db.clans[user.clan];
+      const actorRole = getClanMemberRole(clanObj, userId);
+      const actorTier = CLAN_ROLE_HIERARCHY[actorRole] || 0;
+
+      if (actorTier < CLAN_ROLE_HIERARCHY['Officer']) {
+        return message.reply(toSmallCaps('❌ Only the Clan Leader, Co-Leader, or Officer can kick clan members!'));
+      }
+
+      const target = message.mentions.users.first();
+      const reason = args.slice(1).join(' ') || 'No reason provided';
+
+      if (!target) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}kick [@user] [reason]`));
+      }
+      if (target.id === userId) {
+        return message.reply(toSmallCaps('❌ You cannot kick yourself!'));
+      }
+      if (!clanObj.members.includes(target.id)) {
+        return message.reply(toSmallCaps('❌ That user is not in your clan!'));
+      }
+      if (target.id === clanObj.leader) {
+        return message.reply(toSmallCaps('❌ You cannot kick the Clan Leader!'));
+      }
+
+      const targetRole = getClanMemberRole(clanObj, target.id);
+      const targetTier = CLAN_ROLE_HIERARCHY[targetRole] || 0;
+
+      if (actorRole !== 'Leader' && targetTier >= actorTier) {
+        return message.reply(toSmallCaps(`❌ Your position (**${actorRole}**) cannot kick **${targetRole}**! You can only kick members below your rank.`));
+      }
+
+      const clanName = clanObj.name;
+      clanObj.members = clanObj.members.filter(id => id !== target.id);
+      if (clanObj.roles) delete clanObj.roles[target.id];
+      if (clanObj.viceLeader === target.id) clanObj.viceLeader = null;
+
+      if (db.users[target.id]) {
+        db.users[target.id].clan = null;
+      }
+
+      pushClanMail(target.id, {
+        title: `Removed from Clan ${clanName}`,
+        body: `You were kicked from **${clanName}** by <@${userId}>.\n**Reason:** ${reason}`,
+        category: 'Kick Notice'
+      });
+
+      await saveUsers();
+      return message.reply(toSmallCaps(`👢 Kicked <@${target.id}> from **${clanName}**! Reason: **${reason}**`));
+    }
+
+    if (command === 'cannounce') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+      if (!user.clan || !db.clans[user.clan]) {
+        return message.reply(toSmallCaps('❌ You are not in a clan!'));
+      }
+
+      const clanObj = db.clans[user.clan];
+      const actorRole = getClanMemberRole(clanObj, userId);
+      const actorTier = CLAN_ROLE_HIERARCHY[actorRole] || 0;
+
+      if (actorTier < CLAN_ROLE_HIERARCHY['Officer']) {
+        return message.reply(toSmallCaps('❌ Only the Clan Leader, Co-Leader, or Officer can post clan announcements!'));
+      }
+
+      const announcementText = args.join(' ').trim();
+      if (!announcementText) {
+        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}cannounce [message]`));
+      }
+
+      for (const mId of clanObj.members) {
+        pushClanMail(mId, {
+          title: `Announcement from ${clanObj.name}`,
+          body: `${announcementText}\n*(Sent by <@${userId}> • ${actorRole})*`,
+          category: 'Announcement'
+        });
+      }
+
+      await saveUsers();
+      return message.reply(toSmallCaps(`📢 Clan announcement sent to **${clanObj.members.length}** member(s)! Members can read it via \`${currentPrefix}cmail\`.`));
+    }
+
+    if (command === 'cmail') {
+      if (!isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This command is restricted to authorized beta testers only!'));
+      }
+
+      const mails = Array.isArray(user.clanMail) ? user.clanMail : [];
+      if (mails.length === 0) {
+        const container = new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              toSmallCaps(`# 📬 Clan Mail Inbox\n\n*No clan mail yet. Announcements, season rewards, and clan status notices will appear here.*`)
+            )
+          );
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      }
+
+      const mailText = mails.slice(0, 6).map((m, idx) => {
+        const dateStr = new Date(m.timestamp).toLocaleDateString();
+        return toSmallCaps(`**[${idx + 1}] [${m.category}] ${m.title}** *(${dateStr})*\n${m.body}`);
+      }).join('\n\n-----------------------------------\n\n');
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(`# 📬 Clan Mail Inbox (${mails.length})\n\n`) + mailText
+          )
+        );
+
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
     if (command === 'cclaninfo') {
       if (!user.clan || !db.clans[user.clan]) return message.reply(toSmallCaps('❌ You are not in a clan!'));
       const clan = db.clans[user.clan];
       const totalPoints = clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
       const cleanClanName = clan.name.replace(/\*/g, '');
       const logoEmoji = getClanLogoDisplay(clan.logoId);
+      const leaderName = await getDisplayName(clan.leader);
+
+      if (isTester(userId)) {
+        const clanTotals = Object.entries(db.clans)
+          .map(([cName, cData]) => ({
+            cName,
+            pts: cData.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0)
+          }))
+          .sort((a, b) => b.pts - a.pts);
+        const clanRankIdx = clanTotals.findIndex(c => c.cName === user.clan);
+        const globalRankStatus = clanRankIdx !== -1 ? `#${clanRankIdx + 1}` : 'Unranked';
+
+        const memberLines = await Promise.all(
+          clan.members.map(async (mId, idx) => {
+            const mUser = db.users[mId];
+            if (mUser) updateUserRank(mUser);
+            const mUsername = await getDisplayName(mId);
+            const pos = getClanMemberRole(clan, mId);
+            return toSmallCaps(`**${idx + 1}.** @${mUsername} | ${pos} | ${(mUser?.points || 0).toLocaleString()}`);
+          })
+        );
+
+        const container = new ContainerBuilder()
+          .setAccentColor(0x1abc9c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              toSmallCaps(`Clan : ${cleanClanName}      `) + `${logoEmoji}\n\n` +
+              `${BETA_EMOJIS.C_LEADER}: ` + toSmallCaps(`${leaderName}\n`) +
+              `${BETA_EMOJIS.TROPHY_PTS}: ` + toSmallCaps(`${totalPoints.toLocaleString()}\n`) +
+              `${BETA_EMOJIS.GLOBAL}: ` + toSmallCaps(`${globalRankStatus}\n\n`) +
+              memberLines.join('\n')
+            )
+          );
+
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      }
 
       const memberLines = await Promise.all(
         clan.members.map(async (mId, idx) => {
           const mUser = db.users[mId];
           if (mUser) updateUserRank(mUser);
           const mUsername = await getDisplayName(mId);
-          const role = mId === clan.leader ? 'Leader' : mId === clan.viceLeader ? 'Vice-Leader' : 'Member';
+          const role = getClanMemberRole(clan, mId);
           return toSmallCaps(`${idx + 1}. ${mUsername} [${role}] `) + `${mUser?.rank || '<:unranked:1571314276071907519>'}` + toSmallCaps(` | Points: ${mUser?.points || 0}`);
         })
       );
 
-      const leaderName = await getDisplayName(clan.leader);
       const remainingRenames = 3 - (clan.renameCount || 0);
 
       const container = new ContainerBuilder()
