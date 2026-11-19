@@ -8,6 +8,8 @@ const {
   SeparatorBuilder,
   SectionBuilder,
   ThumbnailBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   MessageFlags
 } = require('discord.js');
 const mongoose = require('mongoose');
@@ -27,6 +29,7 @@ const {
   updateUserRank,
   updatePeakRank,
   evaluateAndSyncUserBadges,
+  isValidProfileBgUrl,
   ensureUser,
   getClanLogoDisplay,
   formatTimeRemaining,
@@ -35,10 +38,25 @@ const {
 } = require('../core/helpers');
 
 const CORE_CMDS = [
-  'start', 'rarities', 'customnn', 'seasons', 'higheststats', 'help', 'status',
+  'start', 'rarities', 'customnn', 'profilebg', 'seasons', 'higheststats', 'help', 'status',
   'slot', 'daily', 'roll', 'drop', 'inventory', 'collections', 'shop',
   'rank', 'points', 'ranks', 'ccranks', 'tradehistory', 'trade', 'profile'
 ];
+
+function parseHexColor(rawHex) {
+  if (!rawHex || typeof rawHex !== 'string') return null;
+  const cleaned = rawHex.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return null;
+  return parseInt(cleaned, 16);
+}
+
+function parseBadgeFlagValue(rawVal) {
+  if (!rawVal) return null;
+  const v = rawVal.trim().toLowerCase();
+  if (['on', 'true', '1', 'yes', 'enable', 'enabled'].includes(v)) return true;
+  if (['off', 'false', '0', 'no', 'disable', 'disabled'].includes(v)) return false;
+  return null;
+}
 
 async function execute(ctx) {
   const {
@@ -164,6 +182,118 @@ async function execute(ctx) {
     return message.reply(toSmallCaps(`✅ Successfully updated your custom nickname to ${newNickname}!`));
   }
 
+  if (command === 'profilebg') {
+    if (!Array.isArray(user.badges)) {
+      user.badges = [];
+    }
+
+    if (!args || args.length === 0) {
+      const currentBg = user.profileBg || 'None (Default)';
+      const currentColor = typeof user.profileAccentColor === 'number'
+        ? `#${user.profileAccentColor.toString(16).padStart(6, '0')}`
+        : 'Default';
+
+      const container = new ContainerBuilder()
+        .setAccentColor(user.profileAccentColor || 0x5865f2)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(
+              '# 🎨 Chibi RPG Profile GIF Customizer\n\n' +
+              `Current Backdrop: ${currentBg}\n` +
+              `Accent Color: ${currentColor}\n\n` +
+              `Usage:\n` +
+              `• ${currentPrefix}profilebg <https://...gif> | [nickname] | [supporter:on|off] | [nitro:on|off] | [color:#hex]\n` +
+              `• ${currentPrefix}profilebg reset`
+            )
+          )
+        );
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    if (args[0].toLowerCase() === 'reset') {
+      user.profileBg = null;
+      user.profileAccentColor = null;
+      await saveUsers();
+      return message.reply(toSmallCaps('✅ Your custom profile GIF backdrop and accent color have been reset!'));
+    }
+
+    const rawInput = args.join(' ').trim();
+    const parts = rawInput.split('|').map(p => p.trim()).filter(Boolean);
+    const attachment = message.attachments && message.attachments.size > 0
+      ? message.attachments.first()
+      : null;
+
+    let bgCandidate = parts[0] || '';
+    let startIdx = 0;
+
+    if (isValidProfileBgUrl(bgCandidate)) {
+      startIdx = 1;
+    } else if (attachment && isValidProfileBgUrl(attachment.url)) {
+      bgCandidate = attachment.url;
+      startIdx = 0;
+    } else {
+      return message.reply(
+        toSmallCaps(`❌ Invalid GIF/image URL or attachment. Provide a valid https:// .gif (or Giphy/Tenor) URL, or use ${currentPrefix}profilebg reset.`)
+      );
+    }
+
+    const badgeSet = new Set(user.badges);
+    let updatedNickname = null;
+    let updatedColor = user.profileAccentColor;
+
+    for (let i = startIdx; i < parts.length; i++) {
+      const seg = parts[i];
+      const badgeMatch = seg.match(/^(supporter|nitro)\s*:\s*(.+)$/i);
+      const colorMatch = seg.match(/^(?:color|accent)\s*:\s*#?([0-9a-fA-F]{6})$/i);
+
+      if (badgeMatch) {
+        const key = badgeMatch[1].toLowerCase();
+        const parsedBool = parseBadgeFlagValue(badgeMatch[2]);
+        if (parsedBool !== null && BADGE_CATALOG[key]) {
+          if (parsedBool) badgeSet.add(key);
+          else badgeSet.delete(key);
+        }
+      } else if (colorMatch) {
+        updatedColor = parseHexColor(colorMatch[1]);
+      } else if (!updatedNickname) {
+        updatedNickname = seg.slice(0, 12);
+      }
+    }
+
+    user.profileBg = bgCandidate;
+    if (updatedNickname) {
+      user.customNickname = updatedNickname;
+    }
+    if (typeof updatedColor === 'number') {
+      user.profileAccentColor = updatedColor;
+    }
+    user.badges = Array.from(badgeSet).filter(k => Boolean(BADGE_CATALOG[k]));
+
+    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await saveUsers();
+
+    const summaryLines = [
+      toSmallCaps('# ✅ Profile GIF Backdrop Updated!'),
+      toSmallCaps(`🖼️ Backdrop: ${user.profileBg}`),
+      toSmallCaps(`🏷️ Nickname: ${user.customNickname || message.author.username}`),
+      toSmallCaps(`💛 Supporter Badge: ${user.badges.includes('supporter') ? 'ON' : 'OFF'}`),
+      toSmallCaps(`💎 Nitro Badge: ${user.badges.includes('nitro') ? 'ON' : 'OFF'}`)
+    ];
+
+    const container = new ContainerBuilder()
+      .setAccentColor(user.profileAccentColor || 0x23a55a)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(summaryLines.join('\n'))
+      )
+      .addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems(
+          new MediaGalleryItemBuilder().setURL(user.profileBg)
+        )
+      );
+
+    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+  }
+
   if (command === 'seasons') {
     const currentSeasonNum = db.config.seasonNumber || 1;
     const currentSeasonData = SEASON_LIST[currentSeasonNum] || { name: `Season ${currentSeasonNum}`, start: 'Active' };
@@ -171,7 +301,7 @@ async function execute(ctx) {
     const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
 
     const seasonLines = Object.entries(SEASON_LIST).map(([num, s]) => {
-      const activeMarker = parseInt(num) === currentSeasonNum ? ' 🟢 (Active)' : '';
+      const activeMarker = parseInt(num, 10) === currentSeasonNum ? ' 🟢 (Active)' : '';
       return toSmallCaps(`• ${s.name}${activeMarker}\n  Begin In: ${s.start}`);
     }).join('\n\n');
 
@@ -245,6 +375,7 @@ async function execute(ctx) {
       `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
       `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
       `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
+      `\`${currentPrefix}profilebg\` — Customize profile GIF backdrop\n` +
       `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
       `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
       `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
@@ -300,7 +431,7 @@ async function execute(ctx) {
   }
 
   if (command === 'slot') {
-    const bet = parseInt(args[0]);
+    const bet = parseInt(args[0], 10);
     if (isNaN(bet) || bet <= 0) {
       return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}slot [bet_amount] (e.g. ${currentPrefix}slot 5)`));
     }
@@ -409,7 +540,7 @@ async function execute(ctx) {
   }
 
   if (command === 'roll') {
-    const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
+    const qty = Math.min(parseInt(args[0], 10) || 1, gameData.settings.maxRollQuantity);
     const boost = args[1] ? args[1].toLowerCase() : null;
 
     if (qty < 1) return message.reply(toSmallCaps('❌ Quantity must be at least 1.'));
@@ -1148,7 +1279,7 @@ async function execute(ctx) {
             const m = msgs?.first();
             if (!m) return;
 
-            const amt = parseInt(m.content);
+            const amt = parseInt(m.content, 10);
             const uObj = db.users[ti.user.id];
             await m.delete().catch(() => {});
 
@@ -1308,6 +1439,10 @@ async function execute(ctx) {
 
     const targetMember = targetUserMention || message.author;
     const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
+    const hasCustomBg = isValidProfileBgUrl(targetUserData.profileBg);
+    const customAccent = typeof targetUserData.profileAccentColor === 'number'
+      ? targetUserData.profileAccentColor
+      : null;
 
     const allSortedUsers = Object.entries(db.users)
       .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -1351,9 +1486,14 @@ async function execute(ctx) {
       const utrIcon = BETA_EMOJIS.RARITIES.UTR;
       const ssrpIcon = BETA_EMOJIS.RARITIES.SSRP;
 
+      const bgLine = hasCustomBg
+        ? `🖼️ ` + toSmallCaps('Backdrop: ') + `[GIF Backdrop](${targetUserData.profileBg.trim()})\n\n`
+        : '';
+
       const betaHeader =
         `${BETA_EMOJIS.USERS} **@${displayName}**\n` +
         toSmallCaps(`[${joinedDateStr}]\n\n`) +
+        bgLine +
         `${BETA_EMOJIS.TOTAL_BADGE} ` + toSmallCaps('User Badges\n') +
         `${badgeIconsRow}\n\n`;
 
@@ -1391,8 +1531,16 @@ async function execute(ctx) {
         );
 
       const container = new ContainerBuilder()
-        .setAccentColor(0x1abc9c)
+        .setAccentColor(customAccent || 0x1abc9c)
         .addSectionComponents(section);
+
+      if (hasCustomBg) {
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(targetUserData.profileBg.trim())
+          )
+        );
+      }
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -1425,7 +1573,11 @@ async function execute(ctx) {
       customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
     }
 
-    const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
+    const bgHeaderLine = hasCustomBg
+      ? toSmallCaps('🖼️ BACKDROP: ') + `[GIF Backdrop](${targetUserData.profileBg.trim()})\n`
+      : '';
+
+    const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + bgHeaderLine + customStatusDisplay + '\n';
 
     const statsSection = toSmallCaps(
       '## 📊 STATS\n\n' +
@@ -1456,8 +1608,16 @@ async function execute(ctx) {
       );
 
     const container = new ContainerBuilder()
-      .setAccentColor(0x36393f)
+      .setAccentColor(customAccent || 0x36393f)
       .addSectionComponents(section);
+
+    if (hasCustomBg) {
+      container.addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems(
+          new MediaGalleryItemBuilder().setURL(targetUserData.profileBg.trim())
+        )
+      );
+    }
 
     return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   }
