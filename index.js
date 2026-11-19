@@ -338,4 +338,4 @@ client.on('messageCreate', async message => {
 
 initDatabase().then(() => {
   client.login(process.env.DISCORD_TOKEN);
-});
+}); 
