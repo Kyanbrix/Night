@@ -1326,7 +1326,6 @@ async function execute(ctx) {
     const joinedDateStr = targetUserData.joinedDate || 'N/A';
     const displayName = targetUserData.customNickname || targetMember.username;
 
-    // Only testers / unreleased-beta viewers see the Beta Profile UI
     if (callerHasBetaView && isTester(userId)) {
       const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
       await saveUsers();
