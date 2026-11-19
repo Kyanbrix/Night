@@ -144,6 +144,23 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
   return targetUserData.badges;
 }
 
+function isValidProfileBgUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== 'https:') return false;
+    return (
+      /\.(gif|png|jpe?g|webp)(\?.*)?$/i.test(parsed.pathname) ||
+      parsed.hostname.includes('giphy.com') ||
+      parsed.hostname.includes('tenor.com') ||
+      parsed.hostname.includes('discordapp.com') ||
+      parsed.hostname.includes('discordapp.net')
+    );
+  } catch {
+    return false;
+  }
+}
+
 function ensureUser(userId) {
   if (!db.users[userId]) {
     db.users[userId] = {
@@ -154,6 +171,8 @@ function ensureUser(userId) {
       rank: '<:unranked:1571314276071907519>',
       clan: null,
       customNickname: null,
+      profileBg: null,
+      profileAccentColor: null,
       highestSeasonRank: '<:unranked:1571314276071907519>',
       highestSeasonPoints: 0,
       inventory: { chibis: [], items: { spray: 0, clover: 0 } },
@@ -185,6 +204,12 @@ function ensureUser(userId) {
     }
     if (!Array.isArray(db.users[userId].clanMail)) {
       db.users[userId].clanMail = [];
+    }
+    if (typeof db.users[userId].profileBg !== 'string') {
+      db.users[userId].profileBg = null;
+    }
+    if (typeof db.users[userId].profileAccentColor !== 'number') {
+      db.users[userId].profileAccentColor = null;
     }
     updateUserRank(db.users[userId]);
     updatePeakRank(db.users[userId]);
@@ -317,6 +342,7 @@ module.exports = {
   updateUserRank,
   updatePeakRank,
   evaluateAndSyncUserBadges,
+  isValidProfileBgUrl,
   ensureUser,
   getClanLogoDisplay,
   getClanLogoImageUrl,
