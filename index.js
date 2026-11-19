@@ -473,7 +473,11 @@ function isTester(userId) {
 }
 
 function hasBetaExperience(userId) {
-  return Boolean(db.config.featuresPublished) || isTester(userId);
+  return isTester(userId) || Boolean(db.config.featuresPublished);
+}
+
+function canSeeUnreleasedBeta(userId) {
+  return isTester(userId);
 }
 
 function toSmallCaps(str) {
@@ -962,7 +966,7 @@ client.on('messageCreate', async message => {
 
   ensureUser(userId);
   const user = db.users[userId];
-  const callerHasBetaView = hasBetaExperience(userId);
+  const callerHasBetaView = canSeeUnreleasedBeta(userId) || Boolean(db.config.featuresPublished);
   const rarityIconsMap = getRarityIconMap(callerHasBetaView);
 
   try {
@@ -1200,23 +1204,70 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('ℹ️ There is no new code or updates to publish right now. Everything is already fully up-to-date and live for public production!'));
       }
 
-      db.config.featuresPublished = true;
-      db.config.pendingUpdatesCount = 0;
-      await saveUsers();
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('pubnewupd_confirm_yes')
+          .setLabel(toSmallCaps('Yes'))
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('pubnewupd_confirm_no')
+          .setLabel(toSmallCaps('No'))
+          .setStyle(ButtonStyle.Danger)
+      );
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(
-              `# 🚀 New Updates Published Successfully!\n\n` +
-              `All recent tester features and updates have been automatically pushed to public production.\n` +
-              `• Status: **LIVE FOR ALL USERS** 🟢\n` +
-              `• Published by: <@${userId}>`
-            )
-          )
-        );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      const confirmMsg = await message.reply({
+        content: toSmallCaps(`⚠️ **Publish Confirmation**\nAre you sure you want to publish new updates to public production?`),
+        components: [confirmRow]
+      });
+
+      const pubCollector = confirmMsg.createMessageComponentCollector({ time: 20000, max: 1 });
+      let decided = false;
+
+      pubCollector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) {
+          return i.followUp({ content: toSmallCaps('❌ Only the command sender can confirm publishing updates!'), ephemeral: true });
+        }
+        decided = true;
+
+        if (i.customId === 'pubnewupd_confirm_no') {
+          await confirmMsg.edit({
+            content: toSmallCaps('❌ Update publishing cancelled. Unreleased features remain exclusive to beta testers.'),
+            components: []
+          }).catch(() => {});
+          return;
+        }
+
+        if (i.customId === 'pubnewupd_confirm_yes') {
+          db.config.featuresPublished = true;
+          db.config.pendingUpdatesCount = 0;
+          await saveUsers();
+
+          const container = new ContainerBuilder()
+            .setAccentColor(0x2ecc71)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                toSmallCaps(
+                  `# 🚀 New Updates Published Successfully!\n\n` +
+                  `All recent tester features and updates have been automatically pushed to public production.\n` +
+                  `• Status: **LIVE FOR ALL USERS** 🟢\n` +
+                  `• Published by: <@${userId}>`
+                )
+              )
+            );
+          await confirmMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
+      });
+
+      pubCollector.on('end', async () => {
+        if (!decided) {
+          await confirmMsg.edit({
+            content: toSmallCaps('⏳ Publish confirmation timed out.'),
+            components: []
+          }).catch(() => {});
+        }
+      });
+      return;
     }
 
     if (command === 'testerfeature') {
@@ -2358,7 +2409,7 @@ client.on('messageCreate', async message => {
       const userPointsDisplay = user.points || 0;
       const userRankIcon = user.rank || '<:unranked:1571314276071907519>';
 
-      if (isTester(userId)) {
+      if (callerHasBetaView) {
         const buildBetaRanksPageContent = async (page) => {
           const start = page * itemsPerPage;
           const pageUsers = allSortedUsers.slice(start, start + itemsPerPage);
@@ -2542,7 +2593,7 @@ client.on('messageCreate', async message => {
         userClanLine = toSmallCaps(`${uClanRank}. ${logoEmoji} ${cleanName} | Leader: **${leaderName}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`);
       }
 
-      if (isTester(userId)) {
+      if (callerHasBetaView) {
         const container = new ContainerBuilder()
           .setAccentColor(0x9b59b6)
           .addTextDisplayComponents(
@@ -2669,7 +2720,7 @@ client.on('messageCreate', async message => {
               const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
               const hp = statCfg.hp + c.level * statCfg.hpPer;
               const atk = statCfg.atk + c.level * statCfg.atkPer;
-              const def = statCfg.def + c.level * statCfg.defPer;
+              const def = statConfig.def + c.level * statCfg.defPer;
               totalPower += hp + atk * 3 + def * 2;
               return { hp, atk, def };
             });
@@ -2871,7 +2922,7 @@ client.on('messageCreate', async message => {
       const joinedDateStr = targetUserData.joinedDate || 'N/A';
       const displayName = targetUserData.customNickname || targetMember.username;
 
-      if (isTester(userId) && isTester(targetUserId)) {
+      if ((isTester(userId) && isTester(targetUserId)) || Boolean(db.config.featuresPublished)) {
         const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
         await saveUsers();
 
@@ -2942,6 +2993,7 @@ client.on('messageCreate', async message => {
         return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
 
+      const mainRarityIconsMap = getRarityIconMap(false);
       const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
       if (targetUserData.inventory && targetUserData.inventory.chibis) {
         targetUserData.inventory.chibis.forEach(c => {
@@ -2983,11 +3035,11 @@ client.on('messageCreate', async message => {
 
       const collectionSection = toSmallCaps(
         `## 📦 COLLECTIONS\n\n` +
-        `${rarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**  |  ${rarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**\n` +
-        `${rarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**  |  ${rarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**\n` +
-        `${rarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**\n` +
-        `${rarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**\n` +
-        `${rarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n\n` +
+        `${mainRarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**  |  ${mainRarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**\n` +
+        `${mainRarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**  |  ${mainRarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**\n` +
+        `${mainRarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**\n` +
+        `${mainRarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**\n` +
+        `${mainRarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n\n` +
         `🎲 **BEST ROLL:** ${bestRollIconPart} & ${bestRollOddsPart}`
       );
 
@@ -3611,7 +3663,7 @@ client.on('messageCreate', async message => {
       const logoEmoji = getClanLogoDisplay(clan.logoId);
       const leaderName = await getDisplayName(clan.leader);
 
-      if (isTester(userId)) {
+      if (callerHasBetaView) {
         const clanTotals = Object.entries(db.clans)
           .map(([cName, cData]) => ({
             cName,
