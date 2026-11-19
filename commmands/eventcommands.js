@@ -23,8 +23,6 @@ const {
 } = require('../core/helpers');
 
 const EVENT_CMDS = ['event', 'ecrystal', 'eadventure', 'eshop'];
-const EVENT_CHIBI_CUTOFF_MS = Date.parse('2026-12-03T00:00:00+08:00');
-const canObtainEventChibis = () => Date.now() < EVENT_CHIBI_CUTOFF_MS;
 
 async function execute(ctx) {
   const {
@@ -38,9 +36,6 @@ async function execute(ctx) {
       return message.reply(toSmallCaps('❌ The Beta Event is currently inactive!'));
     }
     const crystals = db.config.eventCrystals?.[userId] || 0;
-    const eventChibiStatus = canObtainEventChibis()
-      ? 'EVENT CHIBIS OBTAINABLE UNTIL DEC 3, 2026.'
-      : 'EVENT CHIBIS ARE NO LONGER OBTAINABLE (ENDED DEC 3, 2026).';
     const eventDescription = 'Welcome to the official Chibi RPG Beta Event! Embark on thrilling adventures, challenge mysterious wandering NPCs across the realm, battle rival players in the arena, and collect exclusive rare event chibis using event crystals to claim supreme glory and build the ultimate collection!';
 
     const container = new ContainerBuilder()
@@ -50,7 +45,6 @@ async function execute(ctx) {
           toSmallCaps(
             `# 📦 BETA EVENT HUB & INFORMATION\n\n` +
             `${EVENT_ICONS.TIPS} **DESCRIPTION:**\n${eventDescription}\n\n` +
-            `📌 **EVENT CHIBI STATUS:** ${eventChibiStatus}\n\n` +
             `-----------------------------------\n` +
             `🎯 **HOW TO PARTICIPATE:**\n` +
             `• TYPE \`${currentPrefix}eadventure\` (OR \`${currentPrefix}ca\`) TO EXPLORE AND BATTLE WANDERING EVENT NPCS.\n` +
@@ -137,9 +131,7 @@ async function execute(ctx) {
           rewardCrystal = 17;
           db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
 
-          if (!canObtainEventChibis()) {
-            npcDropText = 'EVENT CHIBIS UNOBTAINABLE (ENDED DEC 3, 2026)';
-          } else if (Math.random() * 100 <= 0.1) {
+          if (Math.random() * 100 <= 0.1) {
             const droppedEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
             const generatedId = new mongoose.Types.ObjectId().toString();
             if (!user.inventory.chibis) user.inventory.chibis = [];
@@ -161,7 +153,7 @@ async function execute(ctx) {
         } else {
           rewardCrystal = 8;
           db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
-          npcDropText = canObtainEventChibis() ? 'DEFEATED (NO DROP)' : 'DEFEATED (EVENT CHIBIS UNOBTAINABLE SINCE DEC 3, 2026)';
+          npcDropText = 'DEFEATED (NO DROP)';
         }
 
         const awardedExp = addExpAndLevelUp(user, userTeam.find(Boolean), 350);
@@ -205,13 +197,11 @@ async function execute(ctx) {
   if (command === 'eshop') {
     if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
     const crystals = db.config.eventCrystals?.[userId] || 0;
-    const obtainAllowed = canObtainEventChibis();
 
     const shopItems = Object.values(db.config.eventShop).sort((a, b) => a.cost - b.cost);
 
     const shopLines = shopItems.map((item, idx) => {
-      const statusTag = obtainAllowed ? '' : ' *(Unobtainable since Dec 3, 2026)*';
-      return toSmallCaps(`**[${idx + 1}]** ${item.emoji} **${item.name}** — **${item.cost.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}`) + statusTag;
+      return toSmallCaps(`**[${idx + 1}]** ${item.emoji} **${item.name}** — **${item.cost.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}`);
     }).join('\n');
 
     const options = shopItems.map(item => ({
@@ -221,8 +211,7 @@ async function execute(ctx) {
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId('eshop_buy_select')
-      .setPlaceholder(toSmallCaps(obtainAllowed ? 'Select an event chibi to purchase' : 'Event chibis unobtainable since Dec 3, 2026'))
-      .setDisabled(!obtainAllowed)
+      .setPlaceholder(toSmallCaps('Select an event chibi to purchase'))
       .addOptions(options);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -233,8 +222,7 @@ async function execute(ctx) {
         new TextDisplayBuilder().setContent(
           toSmallCaps(
             `# 💎 Beta Event Crystal Shop\n\n` +
-            `Your Crystal Balance: **${crystals.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}\n` +
-            `${obtainAllowed ? '' : '🚫 Event chibis became unobtainable starting December 3, 2026.\n'}\n` +
+            `Your Crystal Balance: **${crystals.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}\n\n` +
             `*Select from the dropdown menu below to exchange your crystals for exclusive SSRP event chibis!*:\n\n`
           ) + shopLines
         )
@@ -248,13 +236,6 @@ async function execute(ctx) {
       if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your eshop session!'), ephemeral: true });
 
       if (i.customId === 'eshop_buy_select') {
-        if (!canObtainEventChibis()) {
-          return i.followUp({
-            content: toSmallCaps('❌ Event chibis are unobtainable starting December 3, 2026!'),
-            ephemeral: true
-          });
-        }
-
         const selectedId = i.values[0];
         const item = db.config.eventShop[selectedId];
         const userCrystals = db.config.eventCrystals?.[userId] || 0;
