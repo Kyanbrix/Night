@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -11,6 +10,8 @@ const {
   SeparatorBuilder,
   SectionBuilder,
   ThumbnailBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   MessageFlags,
   PermissionsBitField
 } = require('discord.js');
@@ -60,6 +61,20 @@ const {
   addExpAndLevelUp,
   parseOddsNumber
 } = require('./core/helpers');
+
+const isValidProfileBgUrl = (rawUrl) => {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'https:') return false;
+    const cleanPath = parsed.pathname.toLowerCase();
+    const validExt = ['.gif', '.png', '.jpg', '.jpeg', '.webp'].some(ext => cleanPath.endsWith(ext));
+    const allowedHosts = ['giphy.com', 'tenor.com', 'discordapp.com', 'discordapp.net'];
+    const hostAllowed = allowedHosts.some(h => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`));
+    return validExt || hostAllowed;
+  } catch {
+    return false;
+  }
+};
 
 const client = new Client({
   intents: [
@@ -1042,6 +1057,32 @@ client.on('messageCreate', async message => {
       user.customNickname = newNickname;
       await saveUsers();
       return message.reply(toSmallCaps(`✅ Successfully updated your custom nickname to ${newNickname}!`));
+    }
+
+    if (command === 'profilebg') {
+      const input = args.join(' ').trim();
+      if (!input) {
+        return message.reply(
+          toSmallCaps(`❌ Usage: ${currentPrefix}profilebg [https://image-url] (or \`${currentPrefix}profilebg clear\` to remove)`)
+        );
+      }
+
+      if (input.toLowerCase() === 'clear') {
+        user.profileBg = null;
+        await saveUsers();
+        return message.reply(toSmallCaps('✅ Cleared your custom profile background!'));
+      }
+
+      const urlPart = input.split('|')[0].trim();
+      if (!isValidProfileBgUrl(urlPart)) {
+        return message.reply(
+          toSmallCaps('❌ Please provide a valid `https://` direct image or GIF URL (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, or Giphy/Tenor/Discord CDN).')
+        );
+      }
+
+      user.profileBg = urlPart;
+      await saveUsers();
+      return message.reply(toSmallCaps('✅ Successfully updated your custom profile background!'));
     }
 
     const getDisplayName = async (uId) => {
@@ -2239,6 +2280,7 @@ client.on('messageCreate', async message => {
 
       const targetMember = targetUserMention || message.author;
       const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
+      const hasCustomBg = Boolean(targetUserData.profileBg && isValidProfileBgUrl(targetUserData.profileBg));
 
       const allSortedUsers = Object.entries(db.users)
         .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
@@ -2325,6 +2367,14 @@ client.on('messageCreate', async message => {
           .setAccentColor(0x1abc9c)
           .addSectionComponents(section);
 
+        if (hasCustomBg) {
+          container.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+              new MediaGalleryItemBuilder().setURL(targetUserData.profileBg)
+            )
+          );
+        }
+
         return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
 
@@ -2389,6 +2439,14 @@ client.on('messageCreate', async message => {
       const container = new ContainerBuilder()
         .setAccentColor(0x36393f)
         .addSectionComponents(section);
+
+      if (hasCustomBg) {
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(targetUserData.profileBg)
+          )
+        );
+      }
 
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
