@@ -150,6 +150,7 @@ const BETA_EMOJIS = {
   C_LEADER: '<a:Cleader:1572763472729477384>',
   CLAN_DESC: '<:Clandesc:1572806342736085052>',
   START_BTN: '<:Start:1572796405033214043>',
+  CLAIM_BTN: '<:Claim:1572814245848940707>',
   RANKS_POS: {
     1: '<:1st:1572796499979403334>',
     2: '<:2nd:1572796465355690104>',
@@ -356,6 +357,8 @@ function pushClanMail(userId, mailItem) {
     title: mailItem.title || 'Clan Notice',
     body: mailItem.body || '',
     category: mailItem.category || 'Status',
+    reward: mailItem.reward || null,
+    claimed: Boolean(mailItem.claimed),
     timestamp: Date.now()
   });
   if (db.users[userId].clanMail.length > 25) {
@@ -788,31 +791,29 @@ client.once('ready', async () => {
           ensureUser(mId);
           const mUser = db.users[mId];
           if (rewardCfg) {
-            for (let q = 0; q < (rewardCfg.qty || 1); q++) {
-              const generatedId = new mongoose.Types.ObjectId().toString();
-              mUser.inventory.chibis.push({
-                id: generatedId,
-                chibiId: generatedId,
-                name: sampleChibi.name,
-                rarity: rewardCfg.rarity,
-                emoji: sampleChibi.emoji,
-                isShiny: false,
-                level: 1,
-                exp: 0,
-                date: new Date().toLocaleDateString()
-              });
-            }
             pushClanMail(mId, {
               title: `Clan Season Reward (#${rank})`,
-              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! You received ${rewardCfg.qty}x ${rewardCfg.rarity} ${sampleChibi.emoji} ${sampleChibi.name}.`,
-              category: 'Rewards'
+              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! Reward: ${rewardCfg.qty}x ${rewardCfg.rarity} ${sampleChibi.emoji} ${sampleChibi.name}.`,
+              category: 'Rewards',
+              claimed: false,
+              reward: {
+                type: 'chibi',
+                qty: rewardCfg.qty || 1,
+                rarity: rewardCfg.rarity || 'SR',
+                name: sampleChibi.name,
+                emoji: sampleChibi.emoji
+              }
             });
           } else {
-            mUser.dice += 100;
             pushClanMail(mId, {
               title: `Clan Season Consolation (#${rank})`,
-              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! You received 100x 🎲 Dice.`,
-              category: 'Rewards'
+              body: `Your clan **${clanEntry.name}** finished Rank #${rank}! Reward: 100x 🎲 Dice.`,
+              category: 'Rewards',
+              claimed: false,
+              reward: {
+                type: 'dice',
+                dice: 100
+              }
             });
           }
         }
@@ -820,7 +821,7 @@ client.once('ready', async () => {
 
       db.config.clanSeasonExpires = now + (30 * 24 * 60 * 60 * 1000);
       await saveUsers();
-      console.log(`Clan season expired! Rewards distributed automatically.`);
+      console.log(`Clan season expired! Rewards queued in clan mail.`);
     }
   }, 60000);
 });
@@ -2870,7 +2871,7 @@ client.on('messageCreate', async message => {
       const joinedDateStr = targetUserData.joinedDate || 'N/A';
       const displayName = targetUserData.customNickname || targetMember.username;
 
-      if (isTester(userId)) {
+      if (isTester(userId) && isTester(targetUserId)) {
         const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
         await saveUsers();
 
@@ -3476,6 +3477,14 @@ client.on('messageCreate', async message => {
       }
 
       const mails = Array.isArray(user.clanMail) ? user.clanMail : [];
+      const claimRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('cmail_claim_rewards_btn')
+          .setEmoji('1572814245848940707')
+          .setLabel(toSmallCaps('Claim'))
+          .setStyle(ButtonStyle.Success)
+      );
+
       if (mails.length === 0) {
         const container = new ContainerBuilder()
           .setAccentColor(0x3498db)
@@ -3484,23 +3493,114 @@ client.on('messageCreate', async message => {
               toSmallCaps(`# 📬 Clan Mail Inbox\n\n*No clan mail yet. Announcements, season rewards, and clan status notices will appear here.*`)
             )
           );
-        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+        const mailMsg = await message.reply({ components: [container, claimRow], flags: MessageFlags.IsComponentsV2 });
+
+        const mailCollector = mailMsg.createMessageComponentCollector({ time: 60000 });
+        mailCollector.on('collect', async i => {
+          if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+          if (i.user.id !== userId) {
+            return i.followUp({ content: toSmallCaps('❌ Not your clan mail inbox!'), ephemeral: true });
+          }
+          if (i.customId === 'cmail_claim_rewards_btn') {
+            return i.followUp({ content: 'There is no claimable rewards in the mail.', ephemeral: true });
+          }
+        });
+        return;
       }
 
-      const mailText = mails.slice(0, 6).map((m, idx) => {
-        const dateStr = new Date(m.timestamp).toLocaleDateString();
-        return toSmallCaps(`**[${idx + 1}] [${m.category}] ${m.title}** *(${dateStr})*\n${m.body}`);
-      }).join('\n\n-----------------------------------\n\n');
+      const renderMailContainer = () => {
+        const currentMails = Array.isArray(user.clanMail) ? user.clanMail : [];
+        const mailText = currentMails.slice(0, 6).map((m, idx) => {
+          const dateStr = new Date(m.timestamp).toLocaleDateString();
+          const rewardTag = m.reward
+            ? (m.claimed ? ' *(Claimed)*' : ' *(Claimable Reward)*')
+            : '';
+          return toSmallCaps(`**[${idx + 1}] [${m.category}] ${m.title}** *(${dateStr})*`) + rewardTag + `\n` + toSmallCaps(`${m.body}`);
+        }).join('\n\n-----------------------------------\n\n');
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x3498db)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            toSmallCaps(`# 📬 Clan Mail Inbox (${mails.length})\n\n`) + mailText
-          )
-        );
+        return new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              toSmallCaps(`# 📬 Clan Mail Inbox (${currentMails.length})\n\n`) + mailText
+            )
+          );
+      };
 
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      const mailMsg = await message.reply({
+        components: [renderMailContainer(), claimRow],
+        flags: MessageFlags.IsComponentsV2
+      });
+
+      const mailCollector = mailMsg.createMessageComponentCollector({ time: 60000 });
+      mailCollector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) {
+          return i.followUp({ content: toSmallCaps('❌ Not your clan mail inbox!'), ephemeral: true });
+        }
+
+        if (i.customId === 'cmail_claim_rewards_btn') {
+          const currentMails = Array.isArray(user.clanMail) ? user.clanMail : [];
+          const claimableMails = currentMails.filter(m => m && m.reward && !m.claimed);
+
+          if (claimableMails.length === 0) {
+            return i.followUp({ content: 'There is no claimable rewards in the mail.', ephemeral: true });
+          }
+
+          if (!user.inventory) user.inventory = { chibis: [], items: { spray: 0, clover: 0 } };
+          if (!Array.isArray(user.inventory.chibis)) user.inventory.chibis = [];
+
+          const claimedSummaries = [];
+          for (const mailEntry of claimableMails) {
+            const rw = mailEntry.reward;
+            if (rw.type === 'chibi') {
+              const qty = Math.max(1, parseInt(rw.qty, 10) || 1);
+              const rarity = rw.rarity || 'SR';
+              const sampleChibi = gameData.chibis.find(c => c.name === rw.name && c.rarity === rarity)
+                || gameData.chibis.find(c => c.rarity === rarity)
+                || gameData.chibis[0];
+              const chibiName = rw.name || sampleChibi.name;
+              const chibiEmoji = rw.emoji || sampleChibi.emoji;
+
+              for (let q = 0; q < qty; q++) {
+                const generatedId = new mongoose.Types.ObjectId().toString();
+                user.inventory.chibis.push({
+                  id: generatedId,
+                  chibiId: generatedId,
+                  name: chibiName,
+                  rarity,
+                  emoji: chibiEmoji,
+                  isShiny: false,
+                  level: 1,
+                  exp: 0,
+                  date: new Date().toLocaleDateString()
+                });
+              }
+              claimedSummaries.push(`${qty}x ${rarityIconsMap[rarity] || ''} ${chibiEmoji} ${chibiName}`);
+            } else if (rw.type === 'dice') {
+              const diceAmt = Math.max(1, parseInt(rw.dice, 10) || 0);
+              user.dice = (user.dice || 0) + diceAmt;
+              claimedSummaries.push(`${diceAmt}x ${BETA_EMOJIS.DICE} Dice`);
+            }
+            mailEntry.claimed = true;
+          }
+
+          updateUserRank(user);
+          await evaluateAndSyncUserBadges(userId, user, message.guild);
+          await saveUsers();
+
+          await mailMsg.edit({
+            components: [renderMailContainer(), claimRow],
+            flags: MessageFlags.IsComponentsV2
+          }).catch(() => {});
+
+          return i.followUp({
+            content: toSmallCaps(`✅ Claimed mail rewards: ${claimedSummaries.join(', ')}!`),
+            ephemeral: true
+          });
+        }
+      });
+      return;
     }
 
     if (command === 'cclaninfo') {
