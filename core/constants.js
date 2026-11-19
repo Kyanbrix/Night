@@ -1,3 +1,4 @@
+
 const BADGE_CATALOG = {
   // Discord Category
   partner: {
