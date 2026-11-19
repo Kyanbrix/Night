@@ -280,7 +280,8 @@ client.on('messageCreate', async message => {
   }
 
   const isAdmin = () => isOwner() || user.permissions === true;
-  const callerHasBetaView = canSeeUnreleasedBeta(userId) || Boolean(db.config.featuresPublished);
+  // Strictly restrict unreleased beta UI features to authorized testers / unreleased-beta viewers
+  const callerHasBetaView = isTester(userId) || canSeeUnreleasedBeta(userId);
   const rarityIconsMap = getRarityIconMap(callerHasBetaView);
 
   const getDisplayName = async (uId) => {
