@@ -1,92 +1,17 @@
 
 const BADGE_CATALOG = {
-  // Discord Category
-  partner: {
-    key: 'partner',
-    category: 'Discord Category',
-    name: 'Partner Badge',
-    icon: '<:Partner_badge:1572633331244474369>',
-    description: 'Owning by partnership'
-  },
-  staff: {
-    key: 'staff',
-    category: 'Discord Category',
-    name: 'Staff Badge',
-    icon: '<:Staff_badge:1572633388622549063>',
-    description: 'You must admin or mod to have this'
-  },
-  moderator: {
-    key: 'moderator',
-    category: 'Discord Category',
-    name: 'Moderator Badge',
-    icon: '<:Moderator_badge:1572633450081558618>',
-    description: 'You must moderator to have this'
-  },
-  developer: {
-    key: 'developer',
-    category: 'Discord Category',
-    name: 'Developer Badge',
-    icon: '<:Developer:1572779245242159284>',
-    description: 'Creator of the bot'
-  },
-  bughunter: {
-    key: 'bughunter',
-    category: 'Discord Category',
-    name: 'Bug Hunter Badge',
-    icon: '<:Bughunter:1572779201126469824>',
-    description: 'Catching Too many bugs'
-  },
-  support: {
-    key: 'support',
-    category: 'Discord Category',
-    name: 'Beta Supporter Badge',
-    icon: '<a:Support_badge:1572634032712188077>',
-    description: 'Giving this by support the server since beta'
-  },
-  booster: {
-    key: 'booster',
-    category: 'Discord Category',
-    name: 'Server Booster Badge',
-    icon: '<a:Booster_badge:1572634086034505768>',
-    description: 'Boosting the server in discord'
-  },
-  nitro: {
-    key: 'nitro',
-    category: 'Discord Category',
-    name: 'Nitro Badge',
-    icon: '<a:Nitro_badge:1572634168037220453>',
-    description: 'Must owned a nitro, this badge have many perks'
-  },
-
-  // Event & Stats Category
-  collections: {
-    key: 'collections',
-    category: 'Event & Stats Category',
-    name: 'Complete Collections Badge',
-    icon: '<a:Collections:1572768891547947078>',
-    description: 'Complete all collections'
-  },
-  lvl100: {
-    key: 'lvl100',
-    category: 'Event & Stats Category',
-    name: 'Level 100 Badge',
-    icon: '<:Lvl100_badge:1572634228074614965>',
-    description: 'Obtained reaching lvl 100'
-  },
-  xmas2026: {
-    key: 'xmas2026',
-    category: 'Event & Stats Category',
-    name: 'Xmas 2026 Badge',
-    icon: '<a:Snow_badge:1572633513042387016>',
-    description: 'Obtainable during xmas event 2026'
-  },
-  halloween2026: {
-    key: 'halloween2026',
-    category: 'Event & Stats Category',
-    name: 'Halloween 2026 Badge',
-    icon: '<a:Pumpkins:1572780141246152724>',
-    description: 'Obtainable during halloween event 2026'
-  }
+  partner: { key: 'partner', category: 'Discord Category', name: 'Partner Badge', icon: '<:Partner_badge:1572633331244474369>', description: 'Owning by partnership' },
+  staff: { key: 'staff', category: 'Discord Category', name: 'Staff Badge', icon: '<:Staff_badge:1572633388622549063>', description: 'You must admin or mod to have this' },
+  moderator: { key: 'moderator', category: 'Discord Category', name: 'Moderator Badge', icon: '<:Moderator_badge:1572633450081558618>', description: 'You must moderator to have this' },
+  developer: { key: 'developer', category: 'Discord Category', name: 'Developer Badge', icon: '<:Developer:1572779245242159284>', description: 'Creator of the bot' },
+  bughunter: { key: 'bughunter', category: 'Discord Category', name: 'Bug Hunter Badge', icon: '<:Bughunter:1572779201126469824>', description: 'Catching Too many bugs' },
+  support: { key: 'support', category: 'Discord Category', name: 'Beta Supporter Badge', icon: '<a:Support_badge:1572634032712188077>', description: 'Giving this by support the server since beta' },
+  booster: { key: 'booster', category: 'Discord Category', name: 'Server Booster Badge', icon: '<a:Booster_badge:1572634086034505768>', description: 'Boosting the server in discord' },
+  nitro: { key: 'nitro', category: 'Discord Category', name: 'Nitro Badge', icon: '<a:Nitro_badge:1572634168037220453>', description: 'Must owned a nitro, this badge have many perks' },
+  collections: { key: 'collections', category: 'Event & Stats Category', name: 'Complete Collections Badge', icon: '<a:Collections:1572768891547947078>', description: 'Complete all collections' },
+  lvl100: { key: 'lvl100', category: 'Event & Stats Category', name: 'Level 100 Badge', icon: '<:Lvl100_badge:1572634228074614965>', description: 'Obtained reaching lvl 100' },
+  xmas2026: { key: 'xmas2026', category: 'Event & Stats Category', name: 'Xmas 2026 Badge', icon: '<a:Snow_badge:1572633513042387016>', description: 'Obtainable during xmas event 2026' },
+  halloween2026: { key: 'halloween2026', category: 'Event & Stats Category', name: 'Halloween 2026 Badge', icon: '<a:Pumpkins:1572780141246152724>', description: 'Obtainable during halloween event 2026' }
 };
 
 const BETA_EMOJIS = {
@@ -112,11 +37,7 @@ const BETA_EMOJIS = {
   CLAN_DESC: '<:Clandesc:1572806342736085052>',
   START_BTN: '<:Start:1572796405033214043>',
   CLAIM_BTN: '<:Claim:1572814245848940707>',
-  RANKS_POS: {
-    1: '<:1st:1572796499979403334>',
-    2: '<:2nd:1572796465355690104>',
-    3: '<:3rd:1572796434867159161>'
-  },
+  RANKS_POS: { 1: '<:1st:1572796499979403334>', 2: '<:2nd:1572796465355690104>', 3: '<:3rd:1572796434867159161>' },
   RARITIES: {
     C: '<:Newcommon:1572758041843998902>',
     U: '<:Newuncommon:1572758105412997210>',
@@ -127,13 +48,7 @@ const BETA_EMOJIS = {
   }
 };
 
-const CLAN_ROLE_HIERARCHY = {
-  Leader: 4,
-  'Co-Leader': 3,
-  Officer: 2,
-  Deputy: 1,
-  Member: 0
-};
+const CLAN_ROLE_HIERARCHY = { Leader: 4, 'Co-Leader': 3, Officer: 2, Deputy: 1, Member: 0 };
 
 const CLAN_LOGOS = {
   '1': '<a:Clanlogo1:1572057180704604261>',
@@ -231,17 +146,7 @@ const TESTER_ONLY_COMMANDS = new Set([
 ]);
 
 module.exports = {
-  BADGE_CATALOG,
-  BETA_EMOJIS,
-  CLAN_ROLE_HIERARCHY,
-  CLAN_LOGOS,
-  EVENT_ICONS,
-  EVENT_NPCS,
-  EVENT_CHIBIS_POOL,
-  SEASON_LIST,
-  TRIVIA_BANK,
-  SHINY_ICON,
-  RARITY_HIERARCHY,
-  ALL_VALID_COMMANDS,
-  TESTER_ONLY_COMMANDS
+  BADGE_CATALOG, BETA_EMOJIS, CLAN_ROLE_HIERARCHY, CLAN_LOGOS, EVENT_ICONS,
+  EVENT_NPCS, EVENT_CHIBIS_POOL, SEASON_LIST, TRIVIA_BANK, SHINY_ICON,
+  RARITY_HIERARCHY, ALL_VALID_COMMANDS, TESTER_ONLY_COMMANDS
 };
