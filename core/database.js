@@ -58,44 +58,28 @@ const GameStateSchema = new mongoose.Schema({
   channelRestrictions: { type: Object, default: {} },
   bannedUsers: { type: Object, default: {} },
   tradeHistories: { type: Object, default: {} },
-  config: {
-    type: Object,
-    default: () => JSON.parse(JSON.stringify(DEFAULT_CONFIG))
-  }
+  config: { type: Object, default: () => JSON.parse(JSON.stringify(DEFAULT_CONFIG)) }
 });
 
 const GameState = mongoose.model('GameState', GameStateSchema);
 
 const db = {
-  users: {},
-  clans: {},
-  guildPrefixes: {},
-  channelRestrictions: {},
-  bannedUsers: {},
-  tradeHistories: {},
-  config: JSON.parse(JSON.stringify(DEFAULT_CONFIG))
+  users: {}, clans: {}, guildPrefixes: {}, channelRestrictions: {},
+  bannedUsers: {}, tradeHistories: {}, config: JSON.parse(JSON.stringify(DEFAULT_CONFIG))
 };
 
 async function initDatabase() {
   try {
     const mongoUri = process.env.MONGO_URI;
-    if (!mongoUri) {
-      throw new Error('MONGO_URI environment variable is missing!');
-    }
+    if (!mongoUri) throw new Error('MONGO_URI environment variable is missing!');
     await mongoose.connect(mongoUri);
     console.log('Connected to MongoDB successfully!');
 
     let state = await GameState.findById('main_state');
     if (!state) {
       state = await GameState.create({
-        _id: 'main_state',
-        users: {},
-        clans: {},
-        guildPrefixes: {},
-        channelRestrictions: {},
-        bannedUsers: {},
-        tradeHistories: {},
-        config: db.config
+        _id: 'main_state', users: {}, clans: {}, guildPrefixes: {},
+        channelRestrictions: {}, bannedUsers: {}, tradeHistories: {}, config: db.config
       });
     }
     db.users = state.users || {};
@@ -113,9 +97,7 @@ async function initDatabase() {
         prefixCleaned = true;
       }
     }
-    if (prefixCleaned) {
-      await saveUsers();
-    }
+    if (prefixCleaned) await saveUsers();
   } catch (err) {
     console.error('Database connection error:', err);
     process.exit(1);
@@ -125,9 +107,7 @@ async function initDatabase() {
 async function saveUsers() {
   try {
     let state = await GameState.findById('main_state');
-    if (!state) {
-      state = new GameState({ _id: 'main_state' });
-    }
+    if (!state) state = new GameState({ _id: 'main_state' });
     state.users = db.users;
     state.clans = db.clans;
     state.guildPrefixes = db.guildPrefixes;
@@ -148,11 +128,4 @@ async function saveUsers() {
   }
 }
 
-module.exports = {
-  DATA_FILE,
-  gameData,
-  GameState,
-  db,
-  initDatabase,
-  saveUsers
-};
+module.exports = { DATA_FILE, gameData, GameState, db, initDatabase, saveUsers };
