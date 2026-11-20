@@ -1,7 +1,7 @@
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
   ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SectionBuilder,
-  ThumbnailBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags
+  ThumbnailBuilder, AttachmentBuilder, MessageFlags
 } = require('discord.js');
 const mongoose = require('mongoose');
 const {
@@ -13,12 +13,29 @@ const {
   evaluateAndSyncUserBadges, isValidProfileBgUrl, ensureUser, getClanLogoDisplay,
   formatTimeRemaining, addExpAndLevelUp, parseOddsNumber
 } = require('../core/helpers');
+const { renderProfileCard } = require('../core/profileCard');
 
 const CORE_CMDS = [
   'start', 'rarities', 'customnn', 'profilebg', 'seasons', 'higheststats', 'help', 'status',
   'slot', 'daily', 'roll', 'drop', 'inventory', 'collections', 'shop',
   'rank', 'points', 'ranks', 'ccranks', 'tradehistory', 'trade', 'profile'
 ];
+
+const BACKGROUND_THEMES = {
+  crystal: { label: 'Violet Crystal', accent: 0xc084fc },
+  abyss: { label: 'Midnight Abyss', accent: 0x3b82f6 },
+  crimson: { label: 'Crimson Nova', accent: 0xef4444 },
+  emerald: { label: 'Emerald Rune', accent: 0x10b981 },
+  solar: { label: 'Solar Gold', accent: 0xf59e0b }
+};
+
+function hasBackgroundPerk(userData, syncedBadges = []) {
+  const active = new Set([
+    ...(Array.isArray(userData?.badges) ? userData.badges : []),
+    ...(Array.isArray(syncedBadges) ? syncedBadges : [])
+  ]);
+  return active.has('nitro') || active.has('supporter');
+}
 
 function parseHexColor(rawHex) {
   if (!rawHex || typeof rawHex !== 'string') return null;
@@ -133,45 +150,55 @@ async function execute(ctx) {
 
   if (command === 'profilebg') {
     if (!Array.isArray(user.badges)) user.badges = [];
+    const syncedBadges = await evaluateAndSyncUserBadges(userId, user, message.guild);
+    const canUseBgPerk = hasBackgroundPerk(user, syncedBadges);
 
     if (!args || args.length === 0) {
-      const currentBg = user.profileBg || 'None (Default)';
-      const currentColor = typeof user.profileAccentColor === 'number' ? `#${user.profileAccentColor.toString(16).padStart(6, '0')}` : 'Default';
+      const currentThemeKey = user.profileBgTheme || 'crystal';
+      const currentTheme = BACKGROUND_THEMES[currentThemeKey] || BACKGROUND_THEMES.crystal;
+      const themeList = Object.entries(BACKGROUND_THEMES)
+        .map(([key, t]) => `• \`${key}\` — ${t.label}`)
+        .join('\n');
+
       return message.reply({
-        components: [new ContainerBuilder().setAccentColor(user.profileAccentColor || 0x5865f2).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
-          `# 🎨 Chibi RPG Profile GIF Customizer\n\nCurrent Backdrop: ${currentBg}\nAccent Color: ${currentColor}\n\n` +
-          `Usage:\n• ${currentPrefix}profilebg <https://...gif> | [nickname] | [supporter:on|off] | [nitro:on|off] | [color:#hex]\n• ${currentPrefix}profilebg reset`
+        components: [new ContainerBuilder().setAccentColor(user.profileAccentColor || currentTheme.accent).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
+          `# 🎨 Chibi RPG Profile Background Customizer\n\nCurrent Theme: **${currentTheme.label}** (\`${currentThemeKey}\`)\n` +
+          `Perk Status: ${canUseBgPerk ? '✅ Unlocked (Supporter / Nitro)' : '🔒 Locked — Requires Supporter or Nitro Badge'}\n\n` +
+          `Available Themes:\n${themeList}\n\n` +
+          `Usage:\n• \`${currentPrefix}profilebg <theme>\`\n• \`${currentPrefix}profilebg reset\``
         )))],
         flags: MessageFlags.IsComponentsV2
       });
     }
 
-    if (args[0].toLowerCase() === 'reset') {
+    const choice = args[0].toLowerCase();
+
+    if (choice === 'reset') {
       user.profileBg = null;
+      user.profileBgTheme = 'crystal';
       user.profileAccentColor = null;
       await saveUsers();
-      return message.reply(toSmallCaps('✅ Your custom profile GIF backdrop and accent color have been reset!'));
+      return message.reply(toSmallCaps('✅ Your profile background theme has been reset to default!'));
+    }
+
+    if (!canUseBgPerk) {
+      return message.reply(
+        toSmallCaps('❌ Only users with the **Supporter** or **Nitro** badge can customize their profile background!')
+      );
     }
 
     const parts = args.join(' ').trim().split('|').map(p => p.trim()).filter(Boolean);
-    const attachment = message.attachments && message.attachments.size > 0 ? message.attachments.first() : null;
-    let bgCandidate = parts[0] || '';
-    let startIdx = 0;
-
-    if (isValidProfileBgUrl(bgCandidate)) {
-      startIdx = 1;
-    } else if (attachment && isValidProfileBgUrl(attachment.url)) {
-      bgCandidate = attachment.url;
-      startIdx = 0;
-    } else {
-      return message.reply(toSmallCaps(`❌ Invalid GIF/image URL or attachment. Provide a valid https:// .gif (or Giphy/Tenor) URL, or use ${currentPrefix}profilebg reset.`));
+    const themeKey = parts[0].toLowerCase();
+    if (!BACKGROUND_THEMES[themeKey]) {
+      const validKeys = Object.keys(BACKGROUND_THEMES).map(k => `\`${k}\``).join(', ');
+      return message.reply(toSmallCaps(`❌ Invalid background theme. Choose from: ${validKeys} or use \`${currentPrefix}profilebg reset\`.`));
     }
 
     const badgeSet = new Set(user.badges);
     let updatedNickname = null;
-    let updatedColor = user.profileAccentColor;
+    let updatedColor = BACKGROUND_THEMES[themeKey].accent;
 
-    for (let i = startIdx; i < parts.length; i++) {
+    for (let i = 1; i < parts.length; i++) {
       const seg = parts[i];
       const badgeMatch = seg.match(/^(supporter|nitro)\s*:\s*(.+)$/i);
       const colorMatch = seg.match(/^(?:color|accent)\s*:\s*#?([0-9a-fA-F]{6})$/i);
@@ -189,7 +216,8 @@ async function execute(ctx) {
       }
     }
 
-    user.profileBg = bgCandidate;
+    user.profileBg = null;
+    user.profileBgTheme = themeKey;
     if (updatedNickname) user.customNickname = updatedNickname;
     if (typeof updatedColor === 'number') user.profileAccentColor = updatedColor;
     user.badges = Array.from(badgeSet).filter(k => Boolean(BADGE_CATALOG[k]));
@@ -197,18 +225,16 @@ async function execute(ctx) {
     await evaluateAndSyncUserBadges(userId, user, message.guild);
     await saveUsers();
 
-    const container = new ContainerBuilder()
-      .setAccentColor(user.profileAccentColor || 0x23a55a)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent([
-        toSmallCaps('# ✅ Profile GIF Backdrop Updated!'),
-        toSmallCaps(`🖼️ Backdrop: ${user.profileBg}`),
+    return message.reply({
+      components: [new ContainerBuilder().setAccentColor(user.profileAccentColor || BACKGROUND_THEMES[themeKey].accent).addTextDisplayComponents(new TextDisplayBuilder().setContent([
+        toSmallCaps('# ✅ Profile Background Updated!'),
+        toSmallCaps(`🎨 Background Theme: **${BACKGROUND_THEMES[themeKey].label}** (\`${themeKey}\`)`),
         toSmallCaps(`🏷️ Nickname: ${user.customNickname || message.author.username}`),
         toSmallCaps(`💛 Supporter Badge: ${user.badges.includes('supporter') ? 'ON' : 'OFF'}`),
         toSmallCaps(`💎 Nitro Badge: ${user.badges.includes('nitro') ? 'ON' : 'OFF'}`)
-      ].join('\n')))
-      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(user.profileBg)));
-
-    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      ].join('\n')))],
+      flags: MessageFlags.IsComponentsV2
+    });
   }
 
   if (command === 'seasons') {
@@ -271,7 +297,7 @@ async function execute(ctx) {
       `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
       `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
       `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
-      `\`${currentPrefix}profilebg\` — Customize profile GIF backdrop\n` +
+      `\`${currentPrefix}profilebg\` — Customize profile background (Nitro/Supporter)\n` +
       `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
       `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
       `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
@@ -902,84 +928,47 @@ async function execute(ctx) {
     }
 
     const targetMember = targetUserMention || message.author;
-    const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
-    const hasCustomBg = isValidProfileBgUrl(targetUserData.profileBg);
-    const customAccent = typeof targetUserData.profileAccentColor === 'number' ? targetUserData.profileAccentColor : null;
     const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => ({ uId, points: uData.points || 0 })).sort((a, b) => b.points - a.points);
     const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
     const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
-    const clanDisplayStr = (targetUserData.clan && db.clans[targetUserData.clan])
-      ? `${getClanLogoDisplay(db.clans[targetUserData.clan].logoId)} ${targetUserData.clan.replace(/\*/g, '')}` : 'NONE';
     const joinedDateStr = targetUserData.joinedDate || 'N/A';
     const displayName = targetUserData.customNickname || targetMember.username;
-
-    if (callerHasBetaView && isTester(userId)) {
-      const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
-      await saveUsers();
-      const badgeIconsRow = syncedBadges.length > 0 ? syncedBadges.map(bKey => BADGE_CATALOG[bKey]?.icon).filter(Boolean).join(' ') : '*None*';
-      const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
-      targetUserData.inventory?.chibis?.forEach(c => { if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++; });
-
-      const bgLine = hasCustomBg ? `🖼️ ` + toSmallCaps('Backdrop: ') + `[GIF Backdrop](${targetUserData.profileBg.trim()})\n\n` : '';
-      const betaContent =
-        `${BETA_EMOJIS.USERS} **@${displayName}**\n` + toSmallCaps(`[${joinedDateStr}]\n\n`) + bgLine +
-        `${BETA_EMOJIS.TOTAL_BADGE} ` + toSmallCaps('User Badges\n') + `${badgeIconsRow}\n\n` +
-        '```\nUSER STATS | RANK STATS\n```\n' +
-        `${BETA_EMOJIS.STATS} ` + toSmallCaps('User Status\n') +
-        `${BETA_EMOJIS.DICE} ` + toSmallCaps(`Dice: **${(targetUserData.dice || 0).toLocaleString()}**\n`) +
-        `${BETA_EMOJIS.CASH} ` + toSmallCaps('Cash: **0**\n') +
-        `${BETA_EMOJIS.STREAK} ` + toSmallCaps(`Streak: **${targetUserData.streak || 0}D**\n`) +
-        `${BETA_EMOJIS.EXP} ` + toSmallCaps(`Level: **${targetUserData.userLevel || 1}**\n\n`) +
-        `${BETA_EMOJIS.RANK} ` + toSmallCaps('Rank Stats\n') +
-        `${BETA_EMOJIS.RANK} ` + toSmallCaps('Rank: ') + `${targetUserData.rank}` +
-        toSmallCaps(`\n${BETA_EMOJIS.TROPHY_PTS} Points: **${(targetUserData.points || 0).toLocaleString()}**\n${BETA_EMOJIS.GLOBAL} Leaderboard: **${leaderboardPos}**\n${BETA_EMOJIS.CLAN_BADGE} Clan: **${clanDisplayStr}**\n\n`) +
-        `${BETA_EMOJIS.INV} ` + toSmallCaps('Collections Rarities\n') +
-        `${BETA_EMOJIS.RARITIES.C} ` + toSmallCaps(`Common: **${rarityCounts.C}**\n`) +
-        `${BETA_EMOJIS.RARITIES.U} ` + toSmallCaps(`Uncommon: **${rarityCounts.U}**\n`) +
-        `${BETA_EMOJIS.RARITIES.R} ` + toSmallCaps(`Rare: **${rarityCounts.R}**\n`) +
-        `${BETA_EMOJIS.RARITIES.SR} ` + toSmallCaps(`SR: **${rarityCounts.SR}**\n`) +
-        `${rarityIconsMap['SRR'] || '📦'} ` + toSmallCaps(`SRR: **${rarityCounts.SRR}**\n`) +
-        `${BETA_EMOJIS.RARITIES.UTR} ` + toSmallCaps(`UTR: **${rarityCounts.UTR}**\n`) +
-        `${BETA_EMOJIS.RARITIES.SSRP} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**`);
-
-      const container = new ContainerBuilder().setAccentColor(customAccent || 0x1abc9c)
-        .addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(betaContent)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
-      if (hasCustomBg) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(targetUserData.profileBg.trim())));
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-    }
-
-    const mainRarityIconsMap = getRarityIconMap(false);
     const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
     targetUserData.inventory?.chibis?.forEach(c => { if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++; });
-    const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
-    const bestRollIconPart = targetUserData.bestChibi || 'NONE';
-    const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `1 IN ${targetUserData.bestRoll}` : 'NONE';
 
-    let customStatusDisplay = '';
-    if (targetUserData.customStatus?.text) {
-      const totalSecs = Math.floor((Date.now() - targetUserData.customStatus.timestamp) / 1000);
-      const hrs = Math.floor(totalSecs / 3600), mins = Math.floor((totalSecs % 3600) / 60), secs = totalSecs % 60;
-      const timeFormatted = hrs > 0 ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}` : `${mins}:${String(secs).padStart(2, '0')}`;
-      customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
-    }
+    const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
+    await saveUsers();
 
-    const profileText =
-      toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) +
-      (hasCustomBg ? toSmallCaps('🖼️ BACKDROP: ') + `[GIF Backdrop](${targetUserData.profileBg.trim()})\n` : '') +
-      customStatusDisplay + '\n' +
-      toSmallCaps('## 📊 STATS\n\nRANKS: ') + `${targetUserData.rank}` + toSmallCaps(`  |  🎲: **${targetUserData.dice || 0}**\n`) +
-      toSmallCaps(`POINTS: **${targetUserData.points.toLocaleString()}**  |  GLOBAL RANK: **${leaderboardPos}**\nSTREAK: **${targetUserData.streak || 0}D**  |  CLAN: **${clanDisplayStr}**\nLEVEL: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})\n\n## 📦 COLLECTIONS\n\n`) +
-      `${mainRarityIconsMap['C'] || '📦'} ` + toSmallCaps(`C: **${rarityCounts.C}**  |  `) + `${mainRarityIconsMap['UTR'] || '📦'} ` + toSmallCaps(`UTR: **${rarityCounts.UTR}**\n`) +
-      `${mainRarityIconsMap['U'] || '📦'} ` + toSmallCaps(`U: **${rarityCounts.U}**  |  `) + `${mainRarityIconsMap['SSRP'] || '🌟'} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**\n`) +
-      `${mainRarityIconsMap['R'] || '📦'} ` + toSmallCaps(`R: **${rarityCounts.R}**\n`) +
-      `${mainRarityIconsMap['SR'] || '📦'} ` + toSmallCaps(`SR: **${rarityCounts.SR}**\n`) +
-      `${mainRarityIconsMap['SRR'] || '📦'} ` + toSmallCaps(`SRR: **${rarityCounts.SRR}**\n\n`) +
-      toSmallCaps(`🎲 **BEST ROLL:** ${bestRollIconPart} & ${bestRollOddsPart}`);
+    const canUseBgPerk = hasBackgroundPerk(targetUserData, syncedBadges);
+    const activeThemeKey = canUseBgPerk ? (targetUserData.profileBgTheme || 'crystal') : 'crystal';
+    const activeTheme = BACKGROUND_THEMES[activeThemeKey] || BACKGROUND_THEMES.crystal;
+    const customAccent = canUseBgPerk && typeof targetUserData.profileAccentColor === 'number'
+      ? targetUserData.profileAccentColor
+      : activeTheme.accent;
 
-    const container = new ContainerBuilder().setAccentColor(customAccent || 0x36393f)
-      .addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(profileText)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
-    if (hasCustomBg) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(targetUserData.profileBg.trim())));
-    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    const cardBuffer = await renderProfileCard({
+      targetUserData: {
+        ...targetUserData,
+        profileBg: null,
+        profileAccentColor: customAccent,
+        clanLogoId: targetUserData.clan && db.clans[targetUserData.clan]
+          ? db.clans[targetUserData.clan].logoId
+          : null
+      },
+      targetMember,
+      displayName,
+      joinedDateStr,
+      leaderboardPos,
+      syncedBadges,
+      rarityCounts,
+      rarityIconsMap: getRarityIconMap(false),
+      betaEmojis: BETA_EMOJIS,
+      useBetaStyle: Boolean(callerHasBetaView && isTester(userId)),
+      themeKey: activeThemeKey
+    });
+
+    const attachment = new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
+    return message.reply({ files: [attachment] });
   }
 
   return false;
