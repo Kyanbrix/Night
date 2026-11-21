@@ -29,8 +29,14 @@ function toSmallCaps(str) {
 }
 
 function getRarityIconMap(useBetaEmojis = false) {
-  const map = { SSRP: useBetaEmojis ? BETA_EMOJIS.RARITIES.SSRP : '<a:Ssrp:1572096279545126985>' };
+  const map = {
+    SRR: '<:Newsrr1:1573559263627055164>',
+    UTR: '<:Newutr1:1573559322527662090>',
+    STR: '<:Str:1573559367339614348>',
+    SSRP: useBetaEmojis ? BETA_EMOJIS.RARITIES.SSRP : '<a:Ssrp:1572096279545126985>'
+  };
   (gameData.rarities || []).forEach(r => {
+    if (map[r.key]) return;
     map[r.key] = (useBetaEmojis && BETA_EMOJIS.RARITIES[r.key]) ? BETA_EMOJIS.RARITIES[r.key] : r.emoji;
   });
   return map;
