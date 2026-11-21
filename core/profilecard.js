@@ -3,12 +3,23 @@ const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { BADGE_CATALOG } = require('./constants');
 
-let getClanLogoDisplay = null;
+let helperMod = null;
 try {
-  ({ getClanLogoDisplay } = require('./helpers'));
+  helperMod = require('./Helper');
 } catch {
-  getClanLogoDisplay = null;
+  try {
+    helperMod = require('./helpers');
+  } catch {
+    helperMod = null;
+  }
 }
+
+const getClanLogoDisplay = helperMod?.getClanLogoDisplay || null;
+const formatCompactValue = helperMod?.formatCompactValue || ((n) => String(Number(n) || 0));
+const getUserRollLuckPercent = helperMod?.getUserRollLuckPercent || (() => ({
+  diceInfo: { emoji: '<:Zenithdice:1573808579042087044>', luckPercent: 1000 },
+  totalLuckPercent: 1000
+}));
 
 const emojiCache = new Map();
 const imageCache = new Map();
@@ -197,12 +208,18 @@ const REVAMPED_RARITY_ICONS = {
   STR: '<:Str:1573559367339614348>'
 };
 
+const REVAMPED_STAT_ICONS = {
+  CASH: '<:Newcurrency:1573803627691114598>',
+  STREAK: '<:Newstreak:1573803737443467405>',
+  LEVEL: '<:Newlvl:1573803698029863106>'
+};
+
 function hasSupporterOrNitro(userData, syncedBadges = []) {
   const active = new Set([
     ...(Array.isArray(userData?.badges) ? userData.badges : []),
     ...(Array.isArray(syncedBadges) ? syncedBadges : [])
   ]);
-  return active.has('nitro') || active.has('support') || active.has('supporter');
+  return active.has('nitrouser') || active.has('supporter') || active.has('nitro') || active.has('support');
 }
 
 function isValidImageSource(rawSrc) {
@@ -592,10 +609,26 @@ async function renderProfileCard({
   ly += 54;
 
   const statusRows = [
-    { icon: useBetaStyle ? safeBetaEmojis.DICE : '🎲', fb: '🎲', text: `DICE: ${(Number(safeUserData.dice) || 0).toLocaleString()}` },
-    { icon: useBetaStyle ? safeBetaEmojis.CASH : '💵', fb: '💵', text: `CASH: ${(Number(safeUserData.cash) || 0).toLocaleString()}` },
-    { icon: useBetaStyle ? safeBetaEmojis.STREAK : '🔥', fb: '🔥', text: `STREAK: ${Number(safeUserData.streak) || 0}D` },
-    { icon: useBetaStyle ? safeBetaEmojis.EXP : '⭐', fb: '⭐', text: `LEVEL: ${Number(safeUserData.userLevel) || 1}` }
+    {
+      icon: useBetaStyle ? safeBetaEmojis.DICE : '🎲',
+      fb: '🎲',
+      text: `DICE: ${formatCompactValue(Number(safeUserData.dice) || 0)}`
+    },
+    {
+      icon: REVAMPED_STAT_ICONS.CASH,
+      fb: '💵',
+      text: `CASH: ${formatCompactValue(Number(safeUserData.cash) || 0)}`
+    },
+    {
+      icon: REVAMPED_STAT_ICONS.STREAK,
+      fb: '🔥',
+      text: `STREAK: ${formatCompactValue(Number(safeUserData.streak) || 0)}D`
+    },
+    {
+      icon: REVAMPED_STAT_ICONS.LEVEL,
+      fb: '⭐',
+      text: `LEVEL: ${formatCompactValue(Number(safeUserData.userLevel) || 1)}`
+    }
   ];
 
   for (const row of statusRows) {
@@ -632,7 +665,7 @@ async function renderProfileCard({
 
   await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.TROPHY_PTS : '🏆', '🏆', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
-  ctx.fillText(normalizeText(`POINTS: ${(Number(safeUserData.points) || 0).toLocaleString()}`), rightX + 44, ry);
+  ctx.fillText(normalizeText(`POINTS: ${formatCompactValue(Number(safeUserData.points) || 0)}`), rightX + 44, ry);
   ry += 48;
 
   await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.GLOBAL : '🌐', '🌐', rightX, ry - 22, 30);
@@ -651,24 +684,40 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
   ctx.fillText(fitText(ctx, clanClean, 410 - (cx - rightX), 24, 'bold'), cx, ry);
 
-  // Bottom section: COLLECTIONS RARITIES (icon + count only, no text labels)
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `bold 24px ${EMOJI_FONT_STACK}`;
-  ctx.textAlign = 'center';
-  ctx.fillText('📦  COLLECTIONS RARITIES', width / 2, 704);
-  ctx.textAlign = 'left';
+  // Divider between upper stats and bottom Collections Rarity | Attributes
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(548, 682);
+  ctx.lineTo(548, 836);
+  ctx.stroke();
 
-  const row1 = [
-    { key: 'C', count: Number(safeRarityCounts.C) || 0, x: 96 },
-    { key: 'U', count: Number(safeRarityCounts.U) || 0, x: 252 },
-    { key: 'R', count: Number(safeRarityCounts.R) || 0, x: 408 },
-    { key: 'SR', count: Number(safeRarityCounts.SR) || 0, x: 564 }
+  // Bottom-left header: Collections Rarity
+  await drawIcon(ctx, '<:Chibicol:1573807211891654911>', '📦', 82, 682, 28);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
+  ctx.fillText(normalizeText('COLLECTIONS RARITY'), 118, 703);
+
+  // Bottom-right header: Attributes
+  await drawIcon(ctx, '<:Attributes:1572634228074614965>', '⚡', 572, 682, 28);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
+  ctx.fillText(normalizeText('ATTRIBUTES'), 608, 703);
+
+  // Collections Rarity icon + count only (left side, 2 rows of 4)
+  const rarityRow1 = [
+    { key: 'C', count: Number(safeRarityCounts.C) || 0, x: 82 },
+    { key: 'U', count: Number(safeRarityCounts.U) || 0, x: 196 },
+    { key: 'R', count: Number(safeRarityCounts.R) || 0, x: 310 },
+    { key: 'SR', count: Number(safeRarityCounts.SR) || 0, x: 424 }
   ];
-  const row2 = [
-    { key: 'SRR', count: Number(safeRarityCounts.SRR) || 0, x: 136 },
-    { key: 'UTR', count: Number(safeRarityCounts.UTR) || 0, x: 326 },
-    { key: 'STR', count: Number(safeRarityCounts.STR) || 0, x: 516 },
-    { key: 'SSRP', count: Number(safeRarityCounts.SSRP) || 0, x: 706 }
+  const rarityRow2 = [
+    { key: 'SRR', count: Number(safeRarityCounts.SRR) || 0, x: 82 },
+    { key: 'UTR', count: Number(safeRarityCounts.UTR) || 0, x: 196 },
+    { key: 'STR', count: Number(safeRarityCounts.STR) || 0, x: 310 },
+    { key: 'SSRP', count: Number(safeRarityCounts.SSRP) || 0, x: 424 }
   ];
 
   const drawRarityIconOnlyRow = async (items, yPos) => {
@@ -678,16 +727,33 @@ async function renderProfileCard({
         (useBetaStyle && safeBetaEmojis.RARITIES?.[item.key]) ||
         safeRarityIconsMap[item.key] ||
         '📦';
-      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 24, 34);
+      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 20, 28);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
-      ctx.fillText(normalizeText(String(item.count)), item.x + 44, yPos);
+      ctx.font = `bold 20px ${TEXT_FONT_STACK}`;
+      ctx.fillText(normalizeText(formatCompactValue(item.count)), item.x + 33, yPos);
     }
   };
 
-  await drawRarityIconOnlyRow(row1, 756);
-  await drawRarityIconOnlyRow(row2, 812);
+  await drawRarityIconOnlyRow(rarityRow1, 754);
+  await drawRarityIconOnlyRow(rarityRow2, 806);
+
+  // Attributes beside Collections Rarity: Current Dice & Total Luck
+  const luckSummary = getUserRollLuckPercent(safeUserData);
+  const currentDiceIcon = luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>';
+  const totalLuckFormatted = `${formatCompactValue(luckSummary?.totalLuckPercent ?? 1000)}%`;
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
+  ctx.fillText(normalizeText('CURRENT DICE:'), 572, 754);
+  await drawIcon(ctx, currentDiceIcon, '🎲', 748, 732, 30);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
+  ctx.fillText(fitText(ctx, `TOTAL LUCK: ${totalLuckFormatted}`, 310, 21, 'bold'), 572, 806);
+
   ctx.restore();
 
   return canvas.toBuffer('image/png');
