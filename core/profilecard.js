@@ -386,6 +386,22 @@ function fitText(ctx, text, maxWidth, fontSize, weight = 'bold') {
   return normalized;
 }
 
+function resolveBadgeList(userData = {}, syncedBadges = []) {
+  const rawList = [
+    ...(Array.isArray(syncedBadges) ? syncedBadges : []),
+    ...(Array.isArray(userData?.badges) ? userData.badges : [])
+  ];
+  const uniqueKeys = [];
+  const seen = new Set();
+  for (const key of rawList) {
+    if (typeof key === 'string' && key.trim() && !seen.has(key)) {
+      seen.add(key);
+      uniqueKeys.push(key);
+    }
+  }
+  return uniqueKeys;
+}
+
 async function renderProfileCard({
   targetUserData = {},
   targetMember,
@@ -402,7 +418,7 @@ async function renderProfileCard({
   timePlayedStr = null
 }) {
   const safeUserData = targetUserData && typeof targetUserData === 'object' ? targetUserData : {};
-  const safeSyncedBadges = Array.isArray(syncedBadges) ? syncedBadges : [];
+  const safeSyncedBadges = resolveBadgeList(safeUserData, syncedBadges);
   const safeRarityCounts = rarityCounts && typeof rarityCounts === 'object' ? rarityCounts : {};
   const safeRarityIconsMap = rarityIconsMap && typeof rarityIconsMap === 'object' ? rarityIconsMap : {};
   const safeBetaEmojis = betaEmojis && typeof betaEmojis === 'object' ? betaEmojis : {};
@@ -544,7 +560,9 @@ async function renderProfileCard({
   if (safeSyncedBadges.length > 0) {
     let bx = 82;
     for (const badgeKey of safeSyncedBadges.slice(0, 8)) {
-      await drawIcon(ctx, BADGE_CATALOG?.[badgeKey]?.icon || '🏅', '🏅', bx, 236, 42);
+      const badgeEntry = BADGE_CATALOG?.[badgeKey];
+      const badgeIcon = typeof badgeEntry === 'string' ? badgeEntry : (badgeEntry?.icon || '🏅');
+      await drawIcon(ctx, badgeIcon, '🏅', bx, 236, 42);
       bx += 54;
     }
   } else {
@@ -703,10 +721,15 @@ async function renderProfileCard({
   await drawRarityIconOnlyRow(rarityRow1, 754);
   await drawRarityIconOnlyRow(rarityRow2, 806);
 
-  const equippedDiceKey = safeUserData.equippedDice || safeUserData.currentDice || safeUserData.activeDice || null;
-  const luckSummary = typeof getUserRollLuckPercent === 'function' ? getUserRollLuckPercent(safeUserData) : null;
-  const hasEquippedDice = Boolean(equippedDiceKey);
-  const currentDiceIcon = hasEquippedDice ? (luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>') : null;
+  const rawDiceVal = safeUserData.equippedDice ?? safeUserData.currentDice ?? safeUserData.activeDice ?? null;
+  const normalizedDiceKey = typeof rawDiceVal === 'string' ? rawDiceVal.trim().toLowerCase() : '';
+  const hasEquippedDice = Boolean(normalizedDiceKey && normalizedDiceKey !== 'none' && normalizedDiceKey !== 'null');
+  const luckSummary = hasEquippedDice && typeof getUserRollLuckPercent === 'function'
+    ? getUserRollLuckPercent(safeUserData)
+    : null;
+  const currentDiceIcon = hasEquippedDice
+    ? (luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>')
+    : null;
   const totalLuckVal = hasEquippedDice ? Number(luckSummary?.totalLuckPercent ?? 0) : 0;
 
   ctx.textAlign = 'left';
@@ -723,7 +746,11 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
   ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
-  ctx.fillText(fitText(ctx, `TOTAL LUCK: ${formatCompactValue(totalLuckVal)}%`, 310, 21, 'bold'), 572, 806);
+  ctx.fillText(
+    fitText(ctx, `TOTAL LUCK: ${totalLuckVal > 0 ? `${formatCompactValue(totalLuckVal)}%` : '0%'}`, 310, 21, 'bold'),
+    572,
+    806
+  );
 
   ctx.restore();
 
