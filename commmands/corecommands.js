@@ -28,12 +28,77 @@ const BACKGROUND_THEMES = {
   solar: { label: 'Solar Gold', accent: 0xf59e0b }
 };
 
+function getSyncedBadgeKeys(syncedResult, userData) {
+  const keys = new Set(Array.isArray(userData?.badges) ? userData.badges : []);
+  if (Array.isArray(syncedResult)) {
+    for (const k of syncedResult) {
+      if (typeof k === 'string' && k.trim()) keys.add(k.trim());
+    }
+  } else if (syncedResult && typeof syncedResult === 'object') {
+    if (Array.isArray(syncedResult.badges)) {
+      for (const k of syncedResult.badges) {
+        if (typeof k === 'string' && k.trim()) keys.add(k.trim());
+      }
+    }
+    for (const [k, v] of Object.entries(syncedResult)) {
+      if (v === true && k !== 'badges') keys.add(k);
+    }
+  }
+  return Array.from(keys).filter(k => Boolean(BADGE_CATALOG?.[k]));
+}
+
+async function syncAllBadges(targetUserId, targetUserData, guild, client) {
+  if (!Array.isArray(targetUserData.badges)) targetUserData.badges = [];
+  let rawSync = null;
+  try {
+    rawSync = await evaluateAndSyncUserBadges(targetUserId, targetUserData, guild);
+  } catch {
+    rawSync = null;
+  }
+
+  const badgeSet = new Set(getSyncedBadgeKeys(rawSync, targetUserData));
+
+  if (isTester(targetUserId) && BADGE_CATALOG?.tester) {
+    badgeSet.add('tester');
+  }
+
+  const ownerIds = new Set([
+    db?.config?.ownerId,
+    process.env.BOT_OWNER_ID,
+    process.env.OWNER_ID,
+    guild?.ownerId
+  ].filter(Boolean));
+  if (ownerIds.has(targetUserId) && BADGE_CATALOG?.owner) {
+    badgeSet.add('owner');
+  }
+
+  try {
+    const member = guild?.members?.cache?.get(targetUserId)
+      || (guild?.members?.fetch ? await guild.members.fetch(targetUserId).catch(() => null) : null);
+    if (member && member.premiumSince && BADGE_CATALOG?.booster) {
+      badgeSet.add('booster');
+    }
+  } catch {
+    // Ignore guild member fetch errors in DMs or uncached guilds
+  }
+
+  if (badgeSet.has('nitrouser') && BADGE_CATALOG?.nitro) {
+    badgeSet.add('nitro');
+  }
+  if (badgeSet.has('nitro') && BADGE_CATALOG?.nitrouser) {
+    badgeSet.add('nitrouser');
+  }
+
+  targetUserData.badges = Array.from(badgeSet);
+  return targetUserData.badges;
+}
+
 function hasBackgroundPerk(userData, syncedBadges = []) {
   const active = new Set([
     ...(Array.isArray(userData?.badges) ? userData.badges : []),
     ...(Array.isArray(syncedBadges) ? syncedBadges : [])
   ]);
-  return active.has('nitro') || active.has('supporter');
+  return active.has('nitro') || active.has('nitrouser') || active.has('supporter') || active.has('booster') || active.has('owner');
 }
 
 function parseHexColor(rawHex) {
@@ -83,7 +148,7 @@ async function execute(ctx) {
         if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
         updateUserRank(user);
         updatePeakRank(user);
-        await evaluateAndSyncUserBadges(userId, user, message.guild);
+        await syncAllBadges(userId, user, message.guild, client);
         await saveUsers();
         await startPromptMsg.edit({
           content: toSmallCaps(`🎉 **Journey Initialized!** You have been awarded **x50 Dice** ${BETA_EMOJIS.DICE} and your Chibi RPG profile is now active.`),
@@ -106,7 +171,7 @@ async function execute(ctx) {
     if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
     updateUserRank(user);
     updatePeakRank(user);
-    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await syncAllBadges(userId, user, message.guild, client);
     await saveUsers();
     return message.reply(toSmallCaps('🎉 Welcome to Chibi RPG RNG! You have been awarded 20x Dice 🎲 and your profile is initialized.'));
   }
@@ -149,7 +214,7 @@ async function execute(ctx) {
 
   if (command === 'profilebg') {
     if (!Array.isArray(user.badges)) user.badges = [];
-    const syncedBadges = await evaluateAndSyncUserBadges(userId, user, message.guild);
+    const syncedBadges = await syncAllBadges(userId, user, message.guild, client);
     const canUseBgPerk = hasBackgroundPerk(user, syncedBadges);
 
     if (!args || args.length === 0) {
@@ -162,7 +227,7 @@ async function execute(ctx) {
       return message.reply({
         components: [new ContainerBuilder().setAccentColor(user.profileAccentColor || currentTheme.accent).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
           `# 🎨 Chibi RPG Profile Background Customizer\n\nCurrent Theme: **${currentTheme.label}** (\`${currentThemeKey}\`)\n` +
-          `Perk Status: ${canUseBgPerk ? '✅ Unlocked (Supporter / Nitro)' : '🔒 Locked — Requires Supporter or Nitro Badge'}\n\n` +
+          `Perk Status: ${canUseBgPerk ? '✅ Unlocked (Nitro / Booster / Supporter / Owner)' : '🔒 Locked — Requires Nitro, Booster, Supporter, or Owner Badge'}\n\n` +
           `Available Themes:\n${themeList}\n\n` +
           `Usage:\n• \`${currentPrefix}profilebg <theme>\`\n• \`${currentPrefix}profilebg reset\``
         )))],
@@ -176,13 +241,14 @@ async function execute(ctx) {
       user.profileBg = null;
       user.profileBgTheme = 'crystal';
       user.profileAccentColor = null;
+      await syncAllBadges(userId, user, message.guild, client);
       await saveUsers();
       return message.reply(toSmallCaps('✅ Your profile background theme has been reset to default!'));
     }
 
     if (!canUseBgPerk) {
       return message.reply(
-        toSmallCaps('❌ Only users with the **Supporter** or **Nitro** badge can customize their profile background!')
+        toSmallCaps('❌ Only users with the **Nitro**, **Booster**, **Supporter**, or **Owner** badge can customize their profile background!')
       );
     }
 
@@ -199,7 +265,7 @@ async function execute(ctx) {
 
     for (let i = 1; i < parts.length; i++) {
       const seg = parts[i];
-      const badgeMatch = seg.match(/^(supporter|nitro)\s*:\s*(.+)$/i);
+      const badgeMatch = seg.match(/^(supporter|nitro|booster)\s*:\s*(.+)$/i);
       const colorMatch = seg.match(/^(?:color|accent)\s*:\s*#?([0-9a-fA-F]{6})$/i);
       if (badgeMatch) {
         const key = badgeMatch[1].toLowerCase();
@@ -221,7 +287,7 @@ async function execute(ctx) {
     if (typeof updatedColor === 'number') user.profileAccentColor = updatedColor;
     user.badges = Array.from(badgeSet).filter(k => Boolean(BADGE_CATALOG[k]));
 
-    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await syncAllBadges(userId, user, message.guild, client);
     await saveUsers();
 
     return message.reply({
@@ -230,7 +296,10 @@ async function execute(ctx) {
         toSmallCaps(`🎨 Background Theme: **${BACKGROUND_THEMES[themeKey].label}** (\`${themeKey}\`)`),
         toSmallCaps(`🏷️ Nickname: ${user.customNickname || message.author.username}`),
         toSmallCaps(`💛 Supporter Badge: ${user.badges.includes('supporter') ? 'ON' : 'OFF'}`),
-        toSmallCaps(`💎 Nitro Badge: ${user.badges.includes('nitro') ? 'ON' : 'OFF'}`)
+        toSmallCaps(`💎 Nitro Badge: ${user.badges.includes('nitro') ? 'ON' : 'OFF'}`),
+        toSmallCaps(`🚀 Booster Badge: ${user.badges.includes('booster') ? 'ON' : 'OFF'}`),
+        toSmallCaps(`🧪 Tester Badge: ${user.badges.includes('tester') ? 'ON' : 'OFF'}`),
+        toSmallCaps(`👑 Owner Badge: ${user.badges.includes('owner') ? 'ON' : 'OFF'}`)
       ].join('\n')))],
       flags: MessageFlags.IsComponentsV2
     });
@@ -486,7 +555,7 @@ async function execute(ctx) {
     }
 
     updateUserRank(user);
-    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await syncAllBadges(userId, user, message.guild, client);
     await saveUsers();
 
     const diceIcon = callerHasBetaView ? BETA_EMOJIS.DICE : '🎲';
@@ -615,7 +684,13 @@ async function execute(ctx) {
       new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('buy_clover').setLabel(toSmallCaps('Buy Clover (15 🎲)')).setStyle(ButtonStyle.Success)
     );
-    const diceList = (gameData.shopDice || []).map(d => `${d.emoji} **${d.name}** (\`${d.id}\`) — ${d.costDisplay} | +${d.luckPercent}%`).join('\n');
+    const diceList = (gameData.shopDice || []).map(d => {
+      const cleanCost = String(d.costDisplay || d.cost || '0')
+        .replace(/<:Newcurrency:1573803627691114598>/g, '')
+        .replace(/\|/g, '')
+        .trim();
+      return `${d.emoji} **${d.name}** (\`${d.id}\`) — ${cleanCost} <:Newcurrency:1573803627691114598> +${d.luckPercent}%`;
+    }).join('\n');
     const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(new TextDisplayBuilder().setContent(
       toSmallCaps('# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n🧴 Spray (5 🎲): Use this for Awesome Chibi boost [30 Uses]\n🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]\n\n**Shop Dice** (`' + currentPrefix + 'shop buy <id>`):\n') + diceList
     ));
@@ -894,8 +969,8 @@ async function execute(ctx) {
             db.tradeHistories[target.id].push({ partnerId: userId, timestamp: tradeTimestamp });
 
             updateUserRank(u1); updateUserRank(u2);
-            await evaluateAndSyncUserBadges(userId, u1, message.guild);
-            await evaluateAndSyncUserBadges(target.id, u2, message.guild);
+            await syncAllBadges(userId, u1, message.guild, client);
+            await syncAllBadges(target.id, u2, message.guild, client);
             await saveUsers();
             tradeCollector.stop();
 
@@ -948,7 +1023,7 @@ async function execute(ctx) {
     const rarityCounts = { SSRP: 0, UGMR: 0, USRR: 0, STR: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
     targetUserData.inventory?.chibis?.forEach(c => { if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++; });
 
-    const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
+    const syncedBadges = await syncAllBadges(targetUserId, targetUserData, message.guild, client);
     await saveUsers();
 
     const canUseBgPerk = hasBackgroundPerk(targetUserData, syncedBadges);
@@ -961,6 +1036,7 @@ async function execute(ctx) {
     const cardBuffer = await renderProfileCard({
       targetUserData: {
         ...targetUserData,
+        badges: syncedBadges,
         profileBg: null,
         profileAccentColor: customAccent,
         clanLogoId: targetUserData.clan && db.clans[targetUserData.clan]
