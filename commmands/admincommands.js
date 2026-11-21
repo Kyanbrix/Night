@@ -21,6 +21,37 @@ const ADMIN_CMDS = [
   'adminsetrank', 'adminsetpoints', 'admingivepermission', 'adminsetlevel'
 ];
 
+function resolveCatalogBadgeKey(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const cleaned = rawKey.trim().toLowerCase();
+  if (BADGE_CATALOG?.[cleaned]) return cleaned;
+
+  const aliases = {
+    nitrouser: 'nitro',
+    supporter: 'support',
+    creator: 'developer'
+  };
+  const mapped = aliases[cleaned];
+  if (mapped && BADGE_CATALOG?.[mapped]) return mapped;
+  return null;
+}
+
+async function syncUserBadgesSafe(targetId, targetData, guild) {
+  if (!Array.isArray(targetData.badges)) targetData.badges = [];
+  const beforeSet = new Set(targetData.badges);
+  try {
+    await evaluateAndSyncUserBadges(targetId, targetData, guild);
+  } catch {
+    // Preserve manual badges if sync helper throws
+  }
+  const afterSet = new Set(Array.isArray(targetData.badges) ? targetData.badges : []);
+  for (const k of beforeSet) {
+    if (BADGE_CATALOG?.[k]) afterSet.add(k);
+  }
+  targetData.badges = Array.from(afterSet).filter(k => Boolean(BADGE_CATALOG?.[k]));
+  return targetData.badges;
+}
+
 async function execute(ctx) {
   const { command, args, message, client, userId, guildId, currentPrefix, user, isOwner, isAdmin } = ctx;
   if (!ADMIN_CMDS.includes(command)) return false;
@@ -33,8 +64,11 @@ async function execute(ctx) {
     if (!db.config.testers) db.config.testers = [];
     if (!db.config.testers.includes(target.id)) {
       db.config.testers.push(target.id);
+      if (BADGE_CATALOG?.tester && !db.users[target.id].badges.includes('tester')) {
+        db.users[target.id].badges.push('tester');
+      }
       db.config.pendingUpdatesCount = (db.config.pendingUpdatesCount || 0) + 1;
-      await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
+      await syncUserBadgesSafe(target.id, db.users[target.id], message.guild);
       await saveUsers();
     }
     return message.reply(toSmallCaps(`✅ Successfully added <@${target.id}> to the Beta Tester roster!`));
@@ -46,8 +80,12 @@ async function execute(ctx) {
     if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}removetester [@user]`));
     if (db.config.testers) {
       db.config.testers = db.config.testers.filter(id => id !== target.id);
-      await saveUsers();
     }
+    if (db.users[target.id] && Array.isArray(db.users[target.id].badges)) {
+      db.users[target.id].badges = db.users[target.id].badges.filter(k => k !== 'tester');
+      await syncUserBadgesSafe(target.id, db.users[target.id], message.guild);
+    }
+    await saveUsers();
     return message.reply(toSmallCaps(`❌ Successfully removed <@${target.id}> from the Beta Tester roster.`));
   }
 
@@ -107,7 +145,8 @@ async function execute(ctx) {
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
-    const badgeDef = BADGE_CATALOG[badgeKeyArg];
+    const resolvedKey = resolveCatalogBadgeKey(badgeKeyArg);
+    const badgeDef = resolvedKey ? BADGE_CATALOG[resolvedKey] : null;
     if (!badgeDef) {
       return message.reply(toSmallCaps(`❌ Unknown badge key \`${badgeKeyArg}\`! Type \`${currentPrefix}agb\` with no arguments to see all valid badge keys.`));
     }
@@ -124,6 +163,7 @@ async function execute(ctx) {
       targetData.badges.push(badgeDef.key);
       actionText = `Granted ${badgeDef.icon} **${badgeDef.name}** to <@${target.id}>!`;
     }
+    await syncUserBadgesSafe(target.id, targetData, message.guild);
     await saveUsers();
     return message.reply(toSmallCaps(`✅ ${actionText}`));
   }
@@ -258,7 +298,7 @@ async function execute(ctx) {
       ensureUser(uId);
       updateUserRank(db.users[uId]);
       updatePeakRank(db.users[uId]);
-      await evaluateAndSyncUserBadges(uId, db.users[uId], message.guild);
+      await syncUserBadgesSafe(uId, db.users[uId], message.guild);
       restoredCount++;
     }
     await saveUsers();
@@ -289,7 +329,7 @@ async function execute(ctx) {
     db.config.ownerId = userId;
     if (message.guild) db.config.mainGuildId = message.guild.id;
     user.permissions = true;
-    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await syncUserBadgesSafe(userId, user, message.guild);
     await saveUsers();
     return message.reply(toSmallCaps(`🛡️ Admin override successful! You are now set as the Bot Owner & Admin, and this server (${message.guild ? message.guild.name : 'DM'}) is locked as the Main Server.`));
   }
@@ -332,21 +372,22 @@ async function execute(ctx) {
     if (!selection.deferred && !selection.replied) await selection.deferUpdate().catch(() => {});
 
     const template = EVENT_CHIBIS_POOL.find(c => c.id === selection.values[0]);
+    if (!template) return promptMsg.edit({ content: toSmallCaps('❌ Selected chibi not found.'), components: [] }).catch(() => {});
     const generatedId = new mongoose.Types.ObjectId().toString();
     if (!db.users[target.id].inventory.chibis) db.users[target.id].inventory.chibis = [];
     db.users[target.id].inventory.chibis.push({
       id: generatedId, chibiId: generatedId, name: template.name, rarity: 'SSRP',
       emoji: template.emoji, isShiny: false, level: 1, exp: 0, date: new Date().toLocaleDateString()
     });
-    await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
+    await syncUserBadgesSafe(target.id, db.users[target.id], message.guild);
     await saveUsers();
     return promptMsg.edit({ content: toSmallCaps(`✅ Successfully gifted ${template.emoji} **${template.name}** (SSRP) to <@${target.id}>!`), components: [] }).catch(() => {});
   }
 
   if (command === 'adminsetclanrewards') {
     if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can configure clan rewards!'));
-    const rankPos = parseInt(args[0]);
-    const qty = parseInt(args[1]);
+    const rankPos = parseInt(args[0], 10);
+    const qty = parseInt(args[1], 10);
     const rarity = args[2]?.toUpperCase();
     const emoji = args[3];
     if (![1, 2, 3].includes(rankPos) || isNaN(qty) || !rarity || !emoji) {
@@ -437,7 +478,7 @@ async function execute(ctx) {
 
     if (command === 'admingivecrystal') {
       const target = message.mentions.users.first();
-      const amount = parseInt(args[1]);
+      const amount = parseInt(args[1], 10);
       if (!target || isNaN(amount)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivecrystal [@user] [amount]`));
       ensureUser(target.id);
       if (!db.config.eventCrystals) db.config.eventCrystals = {};
@@ -447,7 +488,7 @@ async function execute(ctx) {
     }
 
     if (command === 'adminsetlbseason') {
-      const seasonNum = parseInt(args[0]);
+      const seasonNum = parseInt(args[0], 10);
       if (isNaN(seasonNum) || seasonNum < 1) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlbseason [season_number]`));
       db.config.seasonNumber = seasonNum;
       await saveUsers();
@@ -535,7 +576,7 @@ async function execute(ctx) {
     if (command === 'admingiveitem') {
       const target = message.mentions.users.first();
       const itemType = args[1]?.toLowerCase();
-      const quantity = parseInt(args[2]);
+      const quantity = parseInt(args[2], 10);
       if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
         return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]`));
       }
@@ -561,7 +602,7 @@ async function execute(ctx) {
 
     if (command === 'adminsetpoints') {
       const target = message.mentions.users.first();
-      const pts = parseInt(args[1]);
+      const pts = parseInt(args[1], 10);
       if (!target || isNaN(pts)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetpoints [@user] [points]`));
       ensureUser(target.id);
       db.users[target.id].points = pts;
@@ -576,19 +617,19 @@ async function execute(ctx) {
       if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivepermission [@user]`));
       ensureUser(target.id);
       db.users[target.id].permissions = true;
-      await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
+      await syncUserBadgesSafe(target.id, db.users[target.id], message.guild);
       await saveUsers();
       return message.reply(toSmallCaps(`🛡️ Admin permissions granted to <@${target.id}>.`));
     }
 
     if (command === 'adminsetlevel') {
       const target = message.mentions.users.first();
-      const lvl = parseInt(args[1]);
+      const lvl = parseInt(args[1], 10);
       if (!target || isNaN(lvl) || lvl < 1) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlevel [@user] [level]`));
       ensureUser(target.id);
       db.users[target.id].userLevel = lvl;
       db.users[target.id].userExp = 0;
-      await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
+      await syncUserBadgesSafe(target.id, db.users[target.id], message.guild);
       await saveUsers();
       return message.reply(toSmallCaps(`🛡️ Admin set user level for <@${target.id}> to Level ${lvl}.`));
     }
