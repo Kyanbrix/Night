@@ -1,7 +1,6 @@
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
-  ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SectionBuilder,
-  ThumbnailBuilder, AttachmentBuilder, MessageFlags
+  ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, AttachmentBuilder, MessageFlags
 } = require('discord.js');
 const mongoose = require('mongoose');
 const {
@@ -10,7 +9,7 @@ const {
 const { gameData, db, saveUsers } = require('../core/database');
 const {
   isTester, toSmallCaps, getRarityIconMap, updateUserRank, updatePeakRank,
-  evaluateAndSyncUserBadges, isValidProfileBgUrl, ensureUser, getClanLogoDisplay,
+  evaluateAndSyncUserBadges, ensureUser, getClanLogoDisplay,
   formatTimeRemaining, addExpAndLevelUp, parseOddsNumber
 } = require('../core/helpers');
 const { renderProfileCard } = require('../core/profileCard');
@@ -550,7 +549,7 @@ async function execute(ctx) {
         grouped[key].count++;
       });
       const entries = Object.values(grouped);
-      const rarityRank = { SSRP: 1, UTR: 2, SRR: 3, SR: 4, R: 5, U: 6, C: 7 };
+      const rarityRank = { SSRP: 0, UGMR: 1, USRR: 2, STR: 3, UTR: 4, SRR: 5, SR: 6, R: 7, U: 8, C: 9 };
       if (sortBy === 'rarity') entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
       else if (sortBy === 'alpha') entries.sort((a, b) => a.name.localeCompare(b.name));
       return entries;
@@ -600,13 +599,26 @@ async function execute(ctx) {
   }
 
   if (command === 'shop') {
+    if (args[0]?.toLowerCase() === 'buy' && args[1]) {
+      const diceObj = (gameData.shopDice || []).find(d => d.id.toLowerCase() === args[1].toLowerCase() || d.name.toLowerCase().includes(args[1].toLowerCase()));
+      if (!diceObj) return message.reply(toSmallCaps('❌ Dice not found!'));
+      if (diceObj.restriction === 'cash' && Number(user.cash || 0) < diceObj.cost) {
+        return message.reply(toSmallCaps(`❌ Need ${diceObj.costDisplay} Cash!`));
+      }
+      if (diceObj.restriction === 'cash') user.cash = Number(user.cash || 0) - diceObj.cost;
+      user.equippedDice = diceObj.id;
+      await saveUsers();
+      return message.reply(toSmallCaps(`✅ Equipped ${diceObj.emoji} **${diceObj.name}** (+${diceObj.luckPercent}% Luck)!`));
+    }
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('buy_clover').setLabel(toSmallCaps('Buy Clover (15 🎲)')).setStyle(ButtonStyle.Success)
     );
-    const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
-      '# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n🧴 Spray (5 🎲): Use this for Awesome Chibi boost [30 Uses]\n🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]'
-    )));
+    const diceList = (gameData.shopDice || []).map(d => `${d.emoji} **${d.name}** (\`${d.id}\`) — ${d.costDisplay} | +${d.luckPercent}%`).join('\n');
+    const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      toSmallCaps('# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n🧴 Spray (5 🎲): Use this for Awesome Chibi boost [30 Uses]\n🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]\n\n**Shop Dice** (`' + currentPrefix + 'shop buy <id>`):\n') + diceList
+    ));
     const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
 
     const collector = shopMsg.createMessageComponentCollector({ time: 60000 });
@@ -933,7 +945,7 @@ async function execute(ctx) {
     const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
     const joinedDateStr = targetUserData.joinedDate || 'N/A';
     const displayName = targetUserData.customNickname || targetMember.username;
-    const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+    const rarityCounts = { SSRP: 0, UGMR: 0, USRR: 0, STR: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
     targetUserData.inventory?.chibis?.forEach(c => { if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++; });
 
     const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
@@ -961,10 +973,11 @@ async function execute(ctx) {
       leaderboardPos,
       syncedBadges,
       rarityCounts,
-      rarityIconsMap: getRarityIconMap(false),
+      rarityIconsMap,
       betaEmojis: BETA_EMOJIS,
       useBetaStyle: Boolean(callerHasBetaView && isTester(userId)),
-      themeKey: activeThemeKey
+      themeKey: activeThemeKey,
+      customBgUrl: targetUserData.customBg || null
     });
 
     const attachment = new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
