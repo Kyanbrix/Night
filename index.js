@@ -11,21 +11,33 @@ const {
   EVENT_CHIBIS_POOL, SEASON_LIST, TRIVIA_BANK, SHINY_ICON, RARITY_HIERARCHY, ALL_VALID_COMMANDS,
   TESTER_ONLY_COMMANDS
 } = require('./core/constants');
-const { gameData, GameState, db, initDatabase, saveUsers } = require('./core/database');
+const { gameData, GameState, db, initDatabase, saveUsers: rawSaveUsers } = require('./core/database');
 const {
   isTester, canSeeUnreleasedBeta, toSmallCaps, getRarityIconMap, updateUserRank, updatePeakRank,
   evaluateAndSyncUserBadges, ensureUser, getClanLogoDisplay, getClanLogoImageUrl,
   getClanLogoListText, getClanMemberRole, pushClanMail, parseDurationToMs, formatTimeRemaining,
-  addExpAndLevelUp, parseOddsNumber
+  formatTimePlayed, addExpAndLevelUp, parseOddsNumber
 } = require('./core/helpers');
 const { renderProfileCard, THEME_PALETTES, hasSupporterOrNitro } = require('./core/profilecard');
 
+// Serialize database saves so concurrent commands never clobber writes
+let saveQueue = Promise.resolve();
+const saveUsers = () => {
+  saveQueue = saveQueue.then(() => rawSaveUsers()).catch(err => {
+    console.error('[saveUsers] Error:', err);
+  });
+  return saveQueue;
+};
+
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
+
 const cooldowns = new Map();
 
 const BATTLE_ICONS = {
@@ -42,17 +54,16 @@ const buildStatBar = (current, max, length = 10) => {
 };
 
 client.once('ready', async () => {
-  await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
 
   if (!db.config.mainGuildId && client.guilds.cache.size > 0) {
     const firstGuild = client.guilds.cache.first();
     db.config.mainGuildId = firstGuild.id;
-    const state = await GameState.findById('main_state');
+    const state = await GameState.findById('main_state').catch(() => null);
     if (state) {
       state.config = db.config;
       state.markModified('config');
-      await state.save();
+      await state.save().catch(() => {});
     }
     console.log(`📌 Auto-assigned Main Server: ${firstGuild.name} (${firstGuild.id})`);
   }
@@ -66,6 +77,8 @@ client.once('ready', async () => {
 
   setInterval(async () => {
     const now = Date.now();
+    let changed = false;
+
     if (db.config.seasonExpires && now >= db.config.seasonExpires) {
       for (const uId of Object.keys(db.users)) {
         const u = db.users[uId];
@@ -78,7 +91,7 @@ client.once('ready', async () => {
       db.config.seasonNumber = (db.config.seasonNumber || 1) + 1;
       db.config.seasonStartedAt = now;
       db.config.seasonExpires = now + (30 * 24 * 60 * 60 * 1000);
-      await saveUsers();
+      changed = true;
       console.log(`Season timer expired! Automatically started Season ${db.config.seasonNumber} and archived user peak records.`);
     }
 
@@ -104,8 +117,11 @@ client.once('ready', async () => {
               category: 'Rewards',
               claimed: false,
               reward: {
-                type: 'chibi', qty: rewardCfg.qty || 1, rarity: rewardCfg.rarity || 'SR',
-                name: sampleChibi.name, emoji: sampleChibi.emoji
+                type: 'chibi',
+                qty: rewardCfg.qty || 1,
+                rarity: rewardCfg.rarity || 'SR',
+                name: sampleChibi.name,
+                emoji: sampleChibi.emoji
               }
             });
           } else {
@@ -120,8 +136,12 @@ client.once('ready', async () => {
         }
       }
       db.config.clanSeasonExpires = now + (30 * 24 * 60 * 60 * 1000);
-      await saveUsers();
+      changed = true;
       console.log('Clan season expired! Rewards queued in clan mail.');
+    }
+
+    if (changed) {
+      await saveUsers();
     }
   }, 60000);
 });
@@ -129,11 +149,11 @@ client.once('ready', async () => {
 client.on('guildCreate', async guild => {
   if (!db.config.mainGuildId) {
     db.config.mainGuildId = guild.id;
-    const state = await GameState.findById('main_state');
+    const state = await GameState.findById('main_state').catch(() => null);
     if (state) {
       state.config = db.config;
       state.markModified('config');
-      await state.save();
+      await state.save().catch(() => {});
     }
     console.log(`📌 Main/First Server registered: ${guild.name} (${guild.id})`);
   }
@@ -213,7 +233,10 @@ client.on('messageCreate', async message => {
     }
   }
   timestamps.set(command, nowTime);
-  setTimeout(() => timestamps.delete(command), cooldownAmount);
+  setTimeout(() => {
+    timestamps.delete(command);
+    if (timestamps.size === 0) cooldowns.delete(userId);
+  }, cooldownAmount);
 
   ensureUser(userId);
   const user = db.users[userId];
@@ -241,6 +264,7 @@ client.on('messageCreate', async message => {
     const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUId);
     const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
     const joinedDateStr = tData.joinedDate || 'N/A';
+    const timePlayedStr = formatTimePlayed(tData.firstPlayedAt || joinedDateStr);
     const displayName = tData.customNickname || targetMemberObj?.username || 'Player';
 
     const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
@@ -266,6 +290,7 @@ client.on('messageCreate', async message => {
       targetMember: targetMemberObj,
       displayName,
       joinedDateStr,
+      timePlayedStr,
       leaderboardPos,
       syncedBadges: syncedBadgesList,
       rarityCounts,
@@ -281,16 +306,18 @@ client.on('messageCreate', async message => {
 
   try {
     const currentMs = Date.now();
+    let eventChanged = false;
     if (db.config.luckEventExpires && currentMs > db.config.luckEventExpires) {
       db.config.globalLuckMultiplier = 1.0;
       db.config.luckEventExpires = 0;
-      await saveUsers();
+      eventChanged = true;
     }
     if (db.config.xpEventExpires && currentMs > db.config.xpEventExpires) {
       db.config.globalXpMultiplier = 1.0;
       db.config.xpEventExpires = 0;
-      await saveUsers();
+      eventChanged = true;
     }
+    if (eventChanged) await saveUsers();
 
     if (command === 'start') {
       if (user.started) return message.reply(toSmallCaps('⚠️ You have already started your Chibi RPG journey!'));
@@ -314,8 +341,10 @@ client.on('messageCreate', async message => {
             return i.followUp({ content: toSmallCaps('❌ Only the command user can press this Start button!'), ephemeral: true });
           }
           pressed = true;
+          const nowInit = Date.now();
           user.started = true;
-          user.joinedDate = new Date().toLocaleDateString();
+          user.joinedDate = new Date(nowInit).toLocaleDateString();
+          if (!user.firstPlayedAt) user.firstPlayedAt = nowInit;
           user.dice += 50;
           if (!db.config.ownerId) db.config.ownerId = userId;
           if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
@@ -341,8 +370,10 @@ client.on('messageCreate', async message => {
         return;
       }
 
+      const nowInit = Date.now();
       user.started = true;
-      user.joinedDate = new Date().toLocaleDateString();
+      user.joinedDate = new Date(nowInit).toLocaleDateString();
+      if (!user.firstPlayedAt) user.firstPlayedAt = nowInit;
       user.dice += 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
       if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
@@ -408,7 +439,7 @@ client.on('messageCreate', async message => {
         new TextDisplayBuilder().setContent(toSmallCaps(
           `# 🧪 Active Beta Tester Features List\n\n` +
           `1. **Revamped Beta Profile (\`${currentPrefix}p\` / \`${currentPrefix}profile\`)**\n` +
-          `   • Clean User Status (Dice, Cash = 0, Streak, Level), Rank Stats, Badges & Collections Rarities\n` +
+          `   • Clean User Status (Dice, Cash, Streak, Level), Best Roll, Timeplayed, Rank Stats, Badges & Collections Rarities\n` +
           `2. **Revamped Leaderboards (\`${currentPrefix}ranks\` & \`${currentPrefix}ccranks\` / \`${currentPrefix}ccr\`)**\n` +
           `   • Clean Global & Clan leaderboards with season end timers & automatic clan rewards\n` +
           `3. **Beta Clan Commands (\`${currentPrefix}cclaninfo\`, \`${currentPrefix}cpromote\`/\`${currentPrefix}cp\`, \`${currentPrefix}kick\`, \`${currentPrefix}cannounce\`, \`${currentPrefix}cmail\`, \`${currentPrefix}ceditdesc\`)**\n` +
@@ -602,16 +633,39 @@ client.on('messageCreate', async message => {
 
     if (command === 'ownerresetdata') {
       if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can execute data resets!'));
+      const resetNow = Date.now();
       for (const uId of Object.keys(db.users)) {
         db.users[uId] = {
-          started: false, joinedDate: new Date().toLocaleDateString(), dice: 10, points: 0,
-          rank: '<:unranked:1571314276071907519>', clan: null, customNickname: null,
-          highestSeasonRank: '<:unranked:1571314276071907519>', highestSeasonPoints: 0,
-          inventory: { chibis: [], items: { spray: 0, clover: 0 } }, team: [null, null, null],
-          equippedChibi: null, bestRoll: 'None', bestRollTier: 0, bestRollVal: 0, bestChibi: null,
-          userLevel: 1, userExp: 0, lastDrop: 0, todayDrops: 0, lastDaily: 0, streak: 0,
-          permissions: (uId === db.config.ownerId ? true : false), customStatus: null, badges: [], clanMail: [],
-          customBg: null, profileBg: null, profileBgTheme: 'crystal'
+          started: false,
+          joinedDate: new Date(resetNow).toLocaleDateString(),
+          firstPlayedAt: resetNow,
+          dice: 10,
+          points: 0,
+          rank: '<:unranked:1571314276071907519>',
+          clan: null,
+          customNickname: null,
+          highestSeasonRank: '<:unranked:1571314276071907519>',
+          highestSeasonPoints: 0,
+          inventory: { chibis: [], items: { spray: 0, clover: 0 } },
+          team: [null, null, null],
+          equippedChibi: null,
+          bestRoll: 'None',
+          bestRollTier: 0,
+          bestRollVal: 0,
+          bestChibi: null,
+          userLevel: 1,
+          userExp: 0,
+          lastDrop: 0,
+          todayDrops: 0,
+          lastDaily: 0,
+          streak: 0,
+          permissions: (uId === db.config.ownerId ? true : false),
+          customStatus: null,
+          badges: [],
+          clanMail: [],
+          customBg: null,
+          profileBg: null,
+          profileBgTheme: 'crystal'
         };
       }
       db.clans = {};
@@ -2050,6 +2104,8 @@ client.on('messageCreate', async message => {
         }
 
         if (highestChibi && (
+          !targetUserData.bestRoll ||
+          targetUserData.bestRoll === 'None' ||
           targetUserData.bestRoll === '1 in 1' ||
           highestTier > (targetUserData.bestRollTier || 0) ||
           (highestTier === (targetUserData.bestRollTier || 0) && highestVal > (targetUserData.bestRollVal || 0))
@@ -2628,13 +2684,23 @@ client.on('messageCreate', async message => {
 
               if (p1Offer.dice > 0) { u1.dice -= p1Offer.dice; u2.dice += p1Offer.dice; }
               if (p1Offer.chibi) {
-                const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1Offer.chibi.chibiId || p1Offer.chibi.id));
-                if (idx !== -1) u2.inventory.chibis.push(u1.inventory.chibis.splice(idx, 1)[0]);
+                const movedId = p1Offer.chibi.chibiId || p1Offer.chibi.id;
+                const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === movedId);
+                if (idx !== -1) {
+                  u2.inventory.chibis.push(u1.inventory.chibis.splice(idx, 1)[0]);
+                  u1.team = (u1.team || [null, null, null]).map(slotId => (slotId === movedId ? null : slotId));
+                  if (u1.equippedChibi === movedId) u1.equippedChibi = u1.team[0] || null;
+                }
               }
               if (p2Offer.dice > 0) { u2.dice -= p2Offer.dice; u1.dice += p2Offer.dice; }
               if (p2Offer.chibi) {
-                const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2Offer.chibi.chibiId || p2Offer.chibi.id));
-                if (idx !== -1) u1.inventory.chibis.push(u2.inventory.chibis.splice(idx, 1)[0]);
+                const movedId = p2Offer.chibi.chibiId || p2Offer.chibi.id;
+                const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === movedId);
+                if (idx !== -1) {
+                  u1.inventory.chibis.push(u2.inventory.chibis.splice(idx, 1)[0]);
+                  u2.team = (u2.team || [null, null, null]).map(slotId => (slotId === movedId ? null : slotId));
+                  if (u2.equippedChibi === movedId) u2.equippedChibi = u2.team[0] || null;
+                }
               }
 
               if (!db.tradeHistories[userId]) db.tradeHistories[userId] = [];
@@ -2685,7 +2751,7 @@ client.on('messageCreate', async message => {
           `• Total Registered Users: ${Object.keys(db.users).length}\n• Total Active Clans: ${Object.keys(db.clans).length}\n• Connected Guilds: ${client.guilds.cache.size}\n\nUse your designated admin/owner commands safely.`
         ))
       );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2, ephemeral: true });
+      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     if (command === 'ownergivechibi') {
@@ -2962,6 +3028,7 @@ client.on('messageCreate', async message => {
   }
 });
 
-initDatabase().then(() => {
-  client.login(process.env.DISCORD_TOKEN);
-});
+(async () => {
+  await initDatabase();
+  await client.login(process.env.DISCORD_TOKEN);
+})();
