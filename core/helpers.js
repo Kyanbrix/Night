@@ -321,7 +321,11 @@ function updatePeakRank(user) {
 }
 
 async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = null) {
-  const badgeSet = new Set();
+  const badgeSet = new Set(
+    Array.isArray(targetUserData.badges)
+      ? targetUserData.badges.filter(k => Boolean(BADGE_CATALOG?.[k]))
+      : []
+  );
 
   const level = Number(targetUserData.userLevel) || 1;
   if (level >= 50) badgeSet.add('lvl50');
@@ -330,7 +334,7 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
   const nowDate = new Date();
   const firstPlayedMs = Number(targetUserData.firstPlayedAt) || Date.parse(targetUserData.joinedDate || '') || nowDate.getTime();
   const daysPlayed = Math.floor(Math.max(0, nowDate.getTime() - firstPlayedMs) / (1000 * 60 * 60 * 24));
-  if (daysPlayed >= 100) badgeSet.add('100days');
+  if (daysPlayed >= 100) badgeSet.add('days100');
 
   // Complete all Collections except SSRP or Event chibi
   const eligibleCatalog = new Set(
@@ -359,7 +363,7 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
     targetUserData.rolledUmgr ||
     (targetUserData.inventory?.chibis || []).some(c => String(c.rarity || '').toUpperCase() === 'UMGR')
   );
-  if (rolledUmgr) badgeSet.add('what');
+  if (rolledUmgr) badgeSet.add('ugmr');
 
   const gamblingEarned = Number(targetUserData.gamblingEarnings || targetUserData.gamblingWon || 0);
   if (gamblingEarned >= 1_000_000_000_000) badgeSet.add('gamblingod');
@@ -367,7 +371,7 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
   if (targetUserData.foughtDev3v3) badgeSet.add('devvsplayer');
 
   if (targetUserId === db.config.ownerId || isTester(targetUserId)) {
-    badgeSet.add('dev');
+    badgeSet.add('developer');
   }
   if (targetUserData.permissions === true) {
     badgeSet.add('admin');
@@ -390,8 +394,8 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
       const member = await guild.members.fetch(targetUserId).catch(() => null);
       if (member) {
         if (member.premiumSinceTimestamp) {
-          badgeSet.add('boostinguser');
-          badgeSet.add('nitrouser');
+          badgeSet.add('booster');
+          badgeSet.add('nitro');
         }
         if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           badgeSet.add('admin');
