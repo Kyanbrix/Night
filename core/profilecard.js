@@ -191,6 +191,12 @@ const THEME_PALETTES = {
   }
 };
 
+const REVAMPED_RARITY_ICONS = {
+  SRR: '<:Newsrr1:1573559263627055164>',
+  UTR: '<:Newutr1:1573559322527662090>',
+  STR: '<:Str:1573559367339614348>'
+};
+
 function hasSupporterOrNitro(userData, syncedBadges = []) {
   const active = new Set([
     ...(Array.isArray(userData?.badges) ? userData.badges : []),
@@ -645,7 +651,7 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
   ctx.fillText(fitText(ctx, clanClean, 410 - (cx - rightX), 24, 'bold'), cx, ry);
 
-  // Bottom section: COLLECTIONS RARITIES
+  // Bottom section: COLLECTIONS RARITIES (icon + count only, no text labels)
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold 24px ${EMOJI_FONT_STACK}`;
   ctx.textAlign = 'center';
@@ -653,32 +659,35 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
 
   const row1 = [
-    { key: 'C', label: `COMMON: ${Number(safeRarityCounts.C) || 0}`, x: 84 },
-    { key: 'U', label: `UNCOMMON: ${Number(safeRarityCounts.U) || 0}`, x: 355 },
-    { key: 'R', label: `RARE: ${Number(safeRarityCounts.R) || 0}`, x: 675 }
+    { key: 'C', count: Number(safeRarityCounts.C) || 0, x: 96 },
+    { key: 'U', count: Number(safeRarityCounts.U) || 0, x: 252 },
+    { key: 'R', count: Number(safeRarityCounts.R) || 0, x: 408 },
+    { key: 'SR', count: Number(safeRarityCounts.SR) || 0, x: 564 }
   ];
   const row2 = [
-    { key: 'SR', label: `SR: ${Number(safeRarityCounts.SR) || 0}`, x: 84 },
-    { key: 'SRR', label: `SRR: ${Number(safeRarityCounts.SRR) || 0}`, x: 285 },
-    { key: 'UTR', label: `UTR: ${Number(safeRarityCounts.UTR) || 0}`, x: 485 },
-    { key: 'SSRP', label: `SSRP: ${Number(safeRarityCounts.SSRP) || 0}`, x: 685 }
+    { key: 'SRR', count: Number(safeRarityCounts.SRR) || 0, x: 136 },
+    { key: 'UTR', count: Number(safeRarityCounts.UTR) || 0, x: 326 },
+    { key: 'STR', count: Number(safeRarityCounts.STR) || 0, x: 516 },
+    { key: 'SSRP', count: Number(safeRarityCounts.SSRP) || 0, x: 706 }
   ];
 
-  const drawRarityRow = async (items, yPos) => {
+  const drawRarityIconOnlyRow = async (items, yPos) => {
     for (const item of items) {
-      const iconRaw = (useBetaStyle && safeBetaEmojis.RARITIES?.[item.key])
-        || safeRarityIconsMap[item.key]
-        || '📦';
-      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 22, 30);
+      const iconRaw =
+        REVAMPED_RARITY_ICONS[item.key] ||
+        (useBetaStyle && safeBetaEmojis.RARITIES?.[item.key]) ||
+        safeRarityIconsMap[item.key] ||
+        '📦';
+      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 24, 34);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold 23px ${TEXT_FONT_STACK}`;
-      ctx.fillText(normalizeText(item.label), item.x + 38, yPos);
+      ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
+      ctx.fillText(normalizeText(String(item.count)), item.x + 44, yPos);
     }
   };
 
-  await drawRarityRow(row1, 756);
-  await drawRarityRow(row2, 812);
+  await drawRarityIconOnlyRow(row1, 756);
+  await drawRarityIconOnlyRow(row2, 812);
   ctx.restore();
 
   return canvas.toBuffer('image/png');
