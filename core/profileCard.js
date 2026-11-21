@@ -141,7 +141,37 @@ function hasSupporterOrNitro(userData, syncedBadges = []) {
     ...(Array.isArray(userData?.badges) ? userData.badges : []),
     ...(Array.isArray(syncedBadges) ? syncedBadges : [])
   ]);
-  return active.has('nitro') || active.has('supporter');
+  return active.has('nitro') || active.has('support') || active.has('supporter');
+}
+
+function isValidImageUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function drawCoverImage(ctx, img, dx, dy, dw, dh) {
+  const imgRatio = img.width / img.height;
+  const boxRatio = dw / dh;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = img.width;
+  let sh = img.height;
+
+  if (imgRatio > boxRatio) {
+    sw = img.height * boxRatio;
+    sx = (img.width - sw) / 2;
+  } else if (imgRatio < boxRatio) {
+    sh = img.width / boxRatio;
+    sy = (img.height - sh) / 2;
+  }
+
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
 function getEmojiCdnUrl(raw) {
@@ -163,6 +193,10 @@ async function loadRemote(url, cache, timeoutMs = 4500) {
     const res = await fetcher(url, { signal: ctrl.signal });
     clearTimeout(timer);
     if (!res.ok) return null;
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType && !contentType.startsWith('image/')) return null;
+
     const buf = Buffer.from(await res.arrayBuffer());
     const img = await loadImage(buf);
     cache.set(url, img);
@@ -246,7 +280,8 @@ async function renderProfileCard({
   rarityIconsMap = {},
   betaEmojis = {},
   useBetaStyle = false,
-  themeKey = 'crystal'
+  themeKey = 'crystal',
+  customBgUrl = null
 }) {
   const safeUserData = targetUserData && typeof targetUserData === 'object' ? targetUserData : {};
   const safeSyncedBadges = Array.isArray(syncedBadges) ? syncedBadges : [];
@@ -259,9 +294,19 @@ async function renderProfileCard({
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  const canCustomizeBg = hasSupporterOrNitro(safeUserData, safeSyncedBadges);
-  const selectedKey = canCustomizeBg && THEME_PALETTES[themeKey] ? themeKey : 'crystal';
+  const canUsePerk = hasSupporterOrNitro(safeUserData, safeSyncedBadges);
+  const selectedKey = canUsePerk && THEME_PALETTES[themeKey] ? themeKey : 'crystal';
   const palette = THEME_PALETTES[selectedKey];
+
+  const candidateBg = customBgUrl
+    || safeUserData.customBg
+    || safeUserData.bgUrl
+    || safeUserData.backgroundUrl
+    || null;
+
+  const customBgImg = canUsePerk && isValidImageUrl(candidateBg)
+    ? await loadRemote(candidateBg.trim(), imageCache, 6000)
+    : null;
 
   // Base gradient background
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
@@ -270,6 +315,20 @@ async function renderProfileCard({
   bgGrad.addColorStop(1, palette.bgBot);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
+
+  // Custom supporter/nitro image behind the card frame & content
+  if (customBgImg) {
+    ctx.save();
+    drawCoverImage(ctx, customBgImg, 0, 0, width, height);
+
+    const scrim = ctx.createLinearGradient(0, 0, 0, height);
+    scrim.addColorStop(0, 'rgba(9, 6, 20, 0.55)');
+    scrim.addColorStop(0.5, 'rgba(9, 6, 20, 0.65)');
+    scrim.addColorStop(1, 'rgba(9, 6, 20, 0.78)');
+    ctx.fillStyle = scrim;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
 
   // Ambient aura glows
   const auraLeft = ctx.createRadialGradient(190, 210, 15, 190, 210, 330);
@@ -301,8 +360,8 @@ async function renderProfileCard({
   traceChamferBox(ctx, 36, 36, width - 72, height - 72, 20);
   ctx.stroke();
 
-  // Main dark translucent container
-  ctx.fillStyle = palette.panelFill;
+  // Main translucent container (slightly more transparent when custom BG is active)
+  ctx.fillStyle = customBgImg ? 'rgba(9, 6, 20, 0.48)' : palette.panelFill;
   traceChamferBox(ctx, 46, 46, width - 92, height - 92, 16);
   ctx.fill();
   ctx.restore();
