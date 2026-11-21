@@ -40,14 +40,20 @@
     {
       "key": "SRR",
       "name": "Super Super Rare",
-      "emoji": "<:srr:1571309440614006975>",
+      "emoji": "<:Newsrr1:1573559263627055164>",
       "weight": 0.1
     },
     {
       "key": "UTR",
       "name": "Ultra Rare",
-      "emoji": "<a:Utrrnew1:1572096274415747234>",
+      "emoji": "<:Newutr1:1573559322527662090>",
       "weight": 0.01
+    },
+    {
+      "key": "STR",
+      "name": "Special Tier Rare",
+      "emoji": "<:Str:1573559367339614348>",
+      "weight": 0.0075
     },
     {
       "key": "SSRP",
@@ -209,6 +215,20 @@
       "emoji": "<:nyrin:1571310593544032459>",
       "odds": "1 in 1B",
       "shinyOdds": "1 in 100T"
+    },
+    {
+      "name": "Str_Vanguard",
+      "rarity": "STR",
+      "emoji": "<:Str:1573559367339614348>",
+      "odds": "1 in 100B",
+      "shinyOdds": "1 in 250T"
+    },
+    {
+      "name": "Str_Aegis",
+      "rarity": "STR",
+      "emoji": "<:Str:1573559367339614348>",
+      "odds": "1 in 250B",
+      "shinyOdds": "1 in 500T"
     }
   ],
   "stats": {
@@ -235,6 +255,10 @@
     "UTR": {
       "normal": { "hp": 350, "atk": 55, "def": 30, "hpPer": 25, "atkPer": 17, "defPer": 15 },
       "shiny": { "hp": 1200, "atk": 115, "def": 75, "hpPer": 83, "atkPer": 23, "defPer": 19 }
+    },
+    "STR": {
+      "normal": { "hp": 400, "atk": 65, "def": 35, "hpPer": 30, "atkPer": 20, "defPer": 17 },
+      "shiny": { "hp": 1350, "atk": 132, "def": 85, "hpPer": 94, "atkPer": 27, "defPer": 22 }
     },
     "SSRP": {
       "normal": { "hp": 450, "atk": 75, "def": 40, "hpPer": 35, "atkPer": 22, "defPer": 18 },
