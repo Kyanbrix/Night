@@ -53,7 +53,7 @@ const buildStatBar = (current, max, length = 10) => {
   return `[${'█'.repeat(filled)}${'░'.repeat(length - filled)}]`;
 };
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
 
   if (!db.config.mainGuildId && client.guilds.cache.size > 0) {
@@ -345,7 +345,7 @@ client.on('messageCreate', async message => {
           user.started = true;
           user.joinedDate = new Date(nowInit).toLocaleDateString();
           if (!user.firstPlayedAt) user.firstPlayedAt = nowInit;
-          user.dice += 50;
+          user.dice = Number(user.dice || 0) + 50;
           if (!db.config.ownerId) db.config.ownerId = userId;
           if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
           updateUserRank(user);
@@ -374,7 +374,7 @@ client.on('messageCreate', async message => {
       user.started = true;
       user.joinedDate = new Date(nowInit).toLocaleDateString();
       if (!user.firstPlayedAt) user.firstPlayedAt = nowInit;
-      user.dice += 20;
+      user.dice = Number(user.dice || 0) + 20;
       if (!db.config.ownerId) db.config.ownerId = userId;
       if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
       updateUserRank(user);
@@ -1230,7 +1230,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) — Roll Chibis\n` +
         `\`${currentPrefix}drop\` (${currentPrefix}d) — Claim free dice every 10s\n` +
         `\`${currentPrefix}slot [bet]\` — Play Chibi Slot Machine 🎰\n` +
-        `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n` +
+        `\`${currentPrefix}shop\` — Buy Dice, Spray & Clover boosts\n` +
         `\`${currentPrefix}rarities\` (${currentPrefix}rar) — View Chibi drop rates\n\n` +
         toSmallCaps('🌟 **Beta Event System**\n') +
         `\`${currentPrefix}event\` — View Beta Event Hub\n` +
@@ -1340,8 +1340,8 @@ client.on('messageCreate', async message => {
       }
 
       const winnings = Math.round(bet * payoutMultiplier);
-      user.dice += winnings;
-      user.points += pointsWon;
+      user.dice = Number(user.dice || 0) + winnings;
+      user.points = Number(user.points || 0) + pointsWon;
       updateUserRank(user);
       await saveUsers();
 
@@ -1372,7 +1372,7 @@ client.on('messageCreate', async message => {
       else if (user.streak >= 10) multiplier = 2;
 
       const rewardDice = 1 * multiplier;
-      user.dice += rewardDice;
+      user.dice = Number(user.dice || 0) + rewardDice;
       updateUserRank(user);
       await saveUsers();
       return message.reply(toSmallCaps(`🎁 Daily Reward Claimed!\n🔥 Streak: ${user.streak} Days\n🎲 Reward: +${rewardDice}x Dice (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`));
@@ -1396,7 +1396,7 @@ client.on('messageCreate', async message => {
         user.inventory.items.clover--;
       }
 
-      user.dice -= qty;
+      user.dice = Number(user.dice || 0) - qty;
       const resultsSummary = [];
       let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
@@ -1508,7 +1508,7 @@ client.on('messageCreate', async message => {
         randD -= d.weight;
       }
 
-      user.dice += chosenDrop.dice;
+      user.dice = Number(user.dice || 0) + Number(chosenDrop.dice || 0);
       updateUserRank(user);
       await saveUsers();
 
@@ -1620,13 +1620,32 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'shop') {
+      // Support optional CLI-style purchase: `+shop dice [qty]` or `+shop spray` or `+shop clover`
+      const directItem = args[0]?.toLowerCase();
+      const directQty = Math.max(1, parseInt(args[1], 10) || 1);
+
+      if (directItem === 'dice') {
+        const unitCost = 10; // 10 points per 1 Dice (or adjust to your economy)
+        const totalCost = unitCost * directQty;
+        if ((user.points || 0) < totalCost) {
+          return message.reply(toSmallCaps(`❌ You need **${totalCost} Points** to buy **${directQty}x Dice**, but you only have **${user.points || 0} Points**!`));
+        }
+        user.points = Number(user.points || 0) - totalCost;
+        user.dice = Number(user.dice || 0) + directQty; // Stacks directly onto existing dice balance
+        updateUserRank(user);
+        await saveUsers();
+        return message.reply(toSmallCaps(`✅ Purchased **+${directQty}x Dice 🎲** for **${totalCost} Points**! Total Dice: **${user.dice} 🎲**`));
+      }
+
       const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('buy_dice_10').setLabel(toSmallCaps('+10 Dice 🎲 (100 Pts)')).setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('buy_clover').setLabel(toSmallCaps('Buy Clover (15 🎲)')).setStyle(ButtonStyle.Success)
       );
       const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(toSmallCaps(
           '# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n' +
+          `🎲 +10 Dice (100 Pts): Stacks directly onto your Dice balance (or use \`${currentPrefix}shop dice [qty]\`)\n` +
           '🧴 Spray (5 🎲): Use this for Awesome Chibi boost [30 Uses]\n' +
           '🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]'
         ))
@@ -1639,20 +1658,31 @@ client.on('messageCreate', async message => {
         if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
         if (!user.inventory.items) user.inventory.items = { spray: 0, clover: 0 };
 
-        if (i.customId === 'buy_spray') {
-          if (user.dice < 5) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
-          user.dice -= 5;
-          user.inventory.items.spray += 30;
+        if (i.customId === 'buy_dice_10') {
+          const cost = 100;
+          const amount = 10;
+          if ((user.points || 0) < cost) {
+            return i.followUp({ content: toSmallCaps(`❌ Not enough points! You need ${cost} Points, you have ${user.points || 0}.`), ephemeral: true });
+          }
+          user.points = Number(user.points || 0) - cost;
+          user.dice = Number(user.dice || 0) + amount; // Stackable dice balance
           updateUserRank(user);
           await saveUsers();
-          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), ephemeral: true });
+          return i.followUp({ content: toSmallCaps(`✅ Purchased **+${amount}x Dice 🎲**! Stacked Dice Balance: **${user.dice} 🎲**`), ephemeral: true });
+        } else if (i.customId === 'buy_spray') {
+          if (user.dice < 5) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+          user.dice = Number(user.dice || 0) - 5;
+          user.inventory.items.spray = Number(user.inventory.items.spray || 0) + 30;
+          updateUserRank(user);
+          await saveUsers();
+          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray} | Remaining Dice: ${user.dice} 🎲`), ephemeral: true });
         } else if (i.customId === 'buy_clover') {
           if (user.dice < 15) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
-          user.dice -= 15;
-          user.inventory.items.clover += 50;
+          user.dice = Number(user.dice || 0) - 15;
+          user.inventory.items.clover = Number(user.inventory.items.clover || 0) + 50;
           updateUserRank(user);
           await saveUsers();
-          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), ephemeral: true });
+          return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover} | Remaining Dice: ${user.dice} 🎲`), ephemeral: true });
         }
       });
       return;
@@ -2047,12 +2077,19 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'meme') {
-      const res = await fetch('https://meme-api.com/gimme');
-      const data = await res.json();
-      const container = new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(toSmallCaps(`# ${data.title}\n*(r/${data.subreddit})*`))
-      );
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      try {
+        const res = await fetch('https://meme-api.com/gimme');
+        if (!res.ok) return message.reply(toSmallCaps('❌ Could not fetch a meme right now. Please try again later.'));
+        const data = await res.json();
+        const title = data?.title || 'Random Meme';
+        const subreddit = data?.subreddit || 'memes';
+        const container = new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(toSmallCaps(`# ${title}\n*(r/${subreddit})*`))
+        );
+        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      } catch {
+        return message.reply(toSmallCaps('❌ Failed to load meme API. Please try again later.'));
+      }
     }
 
     if (command === 'trivia') {
@@ -2064,7 +2101,7 @@ client.on('messageCreate', async message => {
         const userAnswer = m.content.toLowerCase().trim();
         if (selected.a.some(ans => userAnswer.includes(ans))) {
           const awardedPoints = Math.floor(Math.random() * 4) + 17;
-          user.points += awardedPoints;
+          user.points = Number(user.points || 0) + awardedPoints;
           const awardedExp = addExpAndLevelUp(user, null, 450);
           const triviaCrystals = Math.floor(Math.random() * 6) + 5;
           if (!db.config.eventCrystals) db.config.eventCrystals = {};
@@ -2192,7 +2229,7 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps(`❌ You do not have enough dice to create a clan! You need **${clanCreationCost} 🎲 Dice**, but you only have **${user.dice} 🎲**.`));
       }
 
-      user.dice -= clanCreationCost;
+      user.dice = Number(user.dice || 0) - clanCreationCost;
       db.clans[clanName] = {
         name: clanName, leader: userId, viceLeader: null, members: [userId],
         roles: { [userId]: 'Leader' }, description: '', logoId: logoArg, renameCount: 0
@@ -2486,7 +2523,7 @@ client.on('messageCreate', async message => {
               claimedSummaries.push(`${qty}x ${rarityIconsMap[rarity] || ''} ${chibiEmoji} ${chibiName}`);
             } else if (rw.type === 'dice') {
               const diceAmt = Math.max(1, parseInt(rw.dice, 10) || 0);
-              user.dice = (user.dice || 0) + diceAmt;
+              user.dice = Number(user.dice || 0) + diceAmt;
               claimedSummaries.push(`${diceAmt}x ${BETA_EMOJIS.DICE} Dice`);
             }
             mailEntry.claimed = true;
@@ -2684,7 +2721,7 @@ client.on('messageCreate', async message => {
                 return ti.followUp({ content: toSmallCaps('❌ One of the players no longer has enough dice for this trade!'), ephemeral: true });
               }
 
-              if (p1Offer.dice > 0) { u1.dice -= p1Offer.dice; u2.dice += p1Offer.dice; }
+              if (p1Offer.dice > 0) { u1.dice -= p1Offer.dice; u2.dice = Number(u2.dice || 0) + p1Offer.dice; }
               if (p1Offer.chibi) {
                 const movedId = p1Offer.chibi.chibiId || p1Offer.chibi.id;
                 const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === movedId);
@@ -2694,7 +2731,7 @@ client.on('messageCreate', async message => {
                   if (u1.equippedChibi === movedId) u1.equippedChibi = u1.team[0] || null;
                 }
               }
-              if (p2Offer.dice > 0) { u2.dice -= p2Offer.dice; u1.dice += p2Offer.dice; }
+              if (p2Offer.dice > 0) { u2.dice -= p2Offer.dice; u1.dice = Number(u1.dice || 0) + p2Offer.dice; }
               if (p2Offer.chibi) {
                 const movedId = p2Offer.chibi.chibiId || p2Offer.chibi.id;
                 const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === movedId);
@@ -2972,9 +3009,9 @@ client.on('messageCreate', async message => {
         }
         ensureUser(target.id);
         if (!db.users[target.id].inventory.items) db.users[target.id].inventory.items = { spray: 0, clover: 0 };
-        if (itemType === 'dice') db.users[target.id].dice += quantity;
-        else if (itemType === 'spray') db.users[target.id].inventory.items.spray += quantity;
-        else if (itemType === 'clover') db.users[target.id].inventory.items.clover += quantity;
+        if (itemType === 'dice') db.users[target.id].dice = Number(db.users[target.id].dice || 0) + quantity;
+        else if (itemType === 'spray') db.users[target.id].inventory.items.spray = Number(db.users[target.id].inventory.items.spray || 0) + quantity;
+        else if (itemType === 'clover') db.users[target.id].inventory.items.clover = Number(db.users[target.id].inventory.items.clover || 0) + quantity;
         updateUserRank(db.users[target.id]);
         await saveUsers();
         return message.reply(toSmallCaps(`🎁 Admin granted ${quantity}x ${itemType} to <@${target.id}>.`));
