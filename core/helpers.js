@@ -31,7 +31,7 @@ function toSmallCaps(str) {
 function getRarityIconMap(useBetaEmojis = false) {
   const map = {
     SRR: '<:Newsrr1:1573559263627055164>',
-    UTR: '<:Newutr1:1573559322527662090>',
+    UTR: '<:Utr_new1:1573575929463308318>',
     STR: '<:Str:1573559367339614348>',
     SSRP: useBetaEmojis ? BETA_EMOJIS.RARITIES.SSRP : '<a:Ssrp:1572096279545126985>'
   };
