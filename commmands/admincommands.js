@@ -28,7 +28,7 @@ function resolveCatalogBadgeKey(rawKey) {
 
   const aliases = {
     nitrouser: 'nitro',
-    supporter: 'support',
+    support: 'supporter',
     creator: 'developer'
   };
   const mapped = aliases[cleaned];
@@ -50,6 +50,12 @@ async function syncUserBadgesSafe(targetId, targetData, guild) {
   }
   targetData.badges = Array.from(afterSet).filter(k => Boolean(BADGE_CATALOG?.[k]));
   return targetData.badges;
+}
+
+function formatBadgeCatalogLines(categoryName) {
+  const entries = Object.values(BADGE_CATALOG || {}).filter(b => b.category === categoryName);
+  if (!entries.length) return '*None*';
+  return entries.map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
 }
 
 async function execute(ctx) {
@@ -120,7 +126,7 @@ async function execute(ctx) {
         `4. **Interactive Start Button (\`${currentPrefix}start\`)**\n` +
         `   • Pressable Start button awarding **x50 Dice**\n` +
         `5. **Badge System & Owner Grant (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
-        `   • Discord & Event/Stats badges with automatic requirement unlocks`
+        `   • Obtainable, Utility & Event badges with automatic requirement unlocks`
       ))
     );
     return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -132,14 +138,18 @@ async function execute(ctx) {
     const badgeKeyArg = args[1] ? args[1].toLowerCase() : null;
 
     if (!target || !badgeKeyArg) {
-      const discordLines = Object.values(BADGE_CATALOG).filter(b => b.category === 'Discord Category')
-        .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
-      const eventLines = Object.values(BADGE_CATALOG).filter(b => b.category === 'Event & Stats Category')
-        .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
+      const obtainableLines = formatBadgeCatalogLines('Obtainable Badges');
+      const utilityLines = formatBadgeCatalogLines('Utility Badges');
+      const eventLines = formatBadgeCatalogLines('Event Badges');
+
       const container = new ContainerBuilder().setAccentColor(0x9b59b6).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          toSmallCaps(`# 🏅 Available Badges Catalog (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)\n\n**Usage:** \`${currentPrefix}admingivebadges [@user] [badge_key]\`\n\n**Discord Category:**\n`) +
-          discordLines + toSmallCaps('\n\n**Event & Stats Category:**\n') + eventLines
+          toSmallCaps(`# 🏅 Available Badges Catalog (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)\n\n**Usage:** \`${currentPrefix}admingivebadges [@user] [badge_key]\`\n\n**Obtainable Badges:**\n`) +
+          obtainableLines +
+          toSmallCaps('\n\n**Utility Badges:**\n') +
+          utilityLines +
+          toSmallCaps('\n\n**Event Badges:**\n') +
+          eventLines
         )
       );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
