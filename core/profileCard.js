@@ -1,5 +1,8 @@
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { BADGE_CATALOG, SHINY_ICON } = require('./constants');
+
+const path = require('path');
+const fs = require('fs');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
+const { BADGE_CATALOG } = require('./constants');
 
 const THEME_PALETTES = {
   crystal: {
@@ -64,7 +67,25 @@ const THEME_PALETTES = {
   }
 };
 
-const FONT_STACK = '"DejaVu Sans", "Noto Sans", "Liberation Sans", Arial, sans-serif';
+// Register a bundled .ttf font if present (recommended for Railway Linux)
+const BUNDLED_FONT_CANDIDATES = [
+  path.join(__dirname, '..', 'assets', 'font.ttf'),
+  path.join(__dirname, '..', 'assets', 'DejaVuSans.ttf'),
+  path.join(__dirname, '..', 'assets', 'Inter-Bold.ttf')
+];
+
+let registeredFontFamily = 'sans-serif';
+for (const fontPath of BUNDLED_FONT_CANDIDATES) {
+  if (fs.existsSync(fontPath)) {
+    const ok = GlobalFonts.registerFromPath(fontPath, 'CardFont');
+    if (ok) {
+      registeredFontFamily = 'CardFont';
+      break;
+    }
+  }
+}
+
+const FONT_STACK = `"${registeredFontFamily}", "DejaVu Sans", "Liberation Sans", sans-serif`;
 
 function hasSupporterOrNitro(userData = {}, syncedBadges = []) {
   const badgeSet = new Set([
@@ -75,16 +96,23 @@ function hasSupporterOrNitro(userData = {}, syncedBadges = []) {
 }
 
 function parseEmojiSpec(raw) {
-  if (!raw || typeof raw !== 'string') return { type: 'text', value: '✨' };
+  if (!raw || typeof raw !== 'string') return { type: 'text', value: '★' };
   const trimmed = raw.trim();
   const customMatch = trimmed.match(/^<(a?):([a-zA-Z0-9_]+):(\d+)>$/);
   if (customMatch) {
     const id = customMatch[3];
-    // Static PNG URL for crisp canvas rendering (animated emojis still render as a frame in PNG)
-    return { type: 'url', url: `https://cdn.discordapp.com/emojis/${id}.png?size=128&quality=lossless`, fallback: '✨' };
+    return {
+      type: 'url',
+      url: `https://cdn.discordapp.com/emojis/${id}.png?size=128&quality=lossless`,
+      fallback: '★'
+    };
   }
   if (/^\d{15,22}$/.test(trimmed)) {
-    return { type: 'url', url: `https://cdn.discordapp.com/emojis/${trimmed}.png?size=128&quality=lossless`, fallback: '✨' };
+    return {
+      type: 'url',
+      url: `https://cdn.discordapp.com/emojis/${trimmed}.png?size=128&quality=lossless`,
+      fallback: '★'
+    };
   }
   return { type: 'text', value: trimmed };
 }
@@ -98,7 +126,7 @@ async function safeLoadImage(url) {
 }
 
 function roundRectPath(ctx, x, y, w, h, r) {
-  const radius = Math.min(r, w / 2, h / 2);
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
   ctx.arcTo(x + w, y, x + w, y + h, radius);
@@ -108,23 +136,46 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+function safeDrawText(ctx, text, x, y, fontStr, color, align = 'left', maxWidth = null) {
+  try {
+    ctx.save();
+    ctx.font = fontStr;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const str = String(text ?? '');
+    if (maxWidth && maxWidth > 0) {
+      ctx.fillText(str, x, y, maxWidth);
+    } else {
+      ctx.fillText(str, x, y);
+    }
+    ctx.restore();
+  } catch (err) {
+    console.error('[profilecard] drawText error:', err.message);
+  }
+}
+
 async function drawIconSpec(ctx, spec, x, y, size, palette) {
   if (!spec) return;
   if (spec.type === 'url') {
     const img = await safeLoadImage(spec.url);
     if (img) {
-      ctx.drawImage(img, x, y, size, size);
-      return;
+      try {
+        ctx.drawImage(img, x, y, size, size);
+        return;
+      } catch {}
     }
   }
   const label = spec.type === 'url' ? spec.fallback : spec.value;
-  ctx.save();
-  ctx.font = `${Math.round(size * 0.78)}px ${FONT_STACK}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = palette.textPrimary;
-  ctx.fillText(label, x + size / 2, y + size / 2 + 1);
-  ctx.restore();
+  safeDrawText(
+    ctx,
+    label,
+    x + size / 2,
+    y + size / 2 + 1,
+    `700 ${Math.round(size * 0.72)}px ${FONT_STACK}`,
+    palette.textPrimary,
+    'center'
+  );
 }
 
 async function renderProfileCard({
@@ -146,20 +197,14 @@ async function renderProfileCard({
   const ctx = canvas.getContext('2d');
   const palette = THEME_PALETTES[themeKey] || THEME_PALETTES.crystal;
 
-  // 1. Background gradient & subtle glow
+  // 1. Background
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
   bgGrad.addColorStop(0, palette.bgTop);
   bgGrad.addColorStop(1, palette.bgBottom);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  const glow = ctx.createRadialGradient(width * 0.5, height * 0.35, 40, width * 0.5, height * 0.35, 520);
-  glow.addColorStop(0, `${palette.accent}28`);
-  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, height);
-
-  // 2. Outer & inner card frame
+  // 2. Card frame
   ctx.save();
   roundRectPath(ctx, 22, 22, width - 44, height - 44, 34);
   ctx.strokeStyle = palette.borderOuter;
@@ -201,7 +246,7 @@ async function renderProfileCard({
   }
   ctx.restore();
 
-  // 4. Badges row (upper-left)
+  // 4. Badges row
   const badgeKeys = Array.from(new Set([
     ...(Array.isArray(syncedBadges) ? syncedBadges : []),
     ...(Array.isArray(targetUserData.badges) ? targetUserData.badges : [])
@@ -215,7 +260,7 @@ async function renderProfileCard({
     badgeX += 54;
   }
 
-  // 5. Nameplate pill + Visible Display Name
+  // 5. Nameplate + Display Name
   const nameBoxX = 86;
   const nameBoxY = 258;
   const nameBoxW = width - 172;
@@ -228,21 +273,21 @@ async function renderProfileCard({
   ctx.strokeStyle = palette.nameplateStroke;
   ctx.lineWidth = 2.5;
   ctx.stroke();
-
-  const safeName = String(displayName || 'Player').trim() || 'Player';
-  let fontSize = 32;
-  ctx.font = `700 ${fontSize}px ${FONT_STACK}`;
-  while (fontSize > 18 && ctx.measureText(safeName).width > nameBoxW - 48) {
-    fontSize -= 2;
-    ctx.font = `700 ${fontSize}px ${FONT_STACK}`;
-  }
-  ctx.fillStyle = palette.textPrimary;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(safeName, nameBoxX + nameBoxW / 2, nameBoxY + nameBoxH / 2 + 1);
   ctx.restore();
 
-  // 6. Left Column: Dice, Cash (0), Streak, Level
+  const safeName = String(displayName || 'Player').trim() || 'Player';
+  safeDrawText(
+    ctx,
+    safeName,
+    nameBoxX + nameBoxW / 2,
+    nameBoxY + nameBoxH / 2 + 1,
+    `700 32px ${FONT_STACK}`,
+    palette.textPrimary,
+    'center',
+    nameBoxW - 40
+  );
+
+  // 6. Left Column
   const leftX = 96;
   const statsStartY = 385;
   const rowGap = 72;
@@ -257,16 +302,19 @@ async function renderProfileCard({
   for (let i = 0; i < leftRows.length; i++) {
     const y = statsStartY + i * rowGap;
     await drawIconSpec(ctx, parseEmojiSpec(leftRows[i].icon), leftX, y, 42, palette);
-    ctx.save();
-    ctx.font = `600 28px ${FONT_STACK}`;
-    ctx.fillStyle = palette.textPrimary;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(leftRows[i].text, leftX + 56, y + 22);
-    ctx.restore();
+    safeDrawText(
+      ctx,
+      leftRows[i].text,
+      leftX + 56,
+      y + 22,
+      `600 28px ${FONT_STACK}`,
+      palette.textPrimary,
+      'left',
+      310
+    );
   }
 
-  // 7. Right Column: Rank, Points, Leaderboard Pos, Best Roll, Clan
+  // 7. Right Column
   const rightX = 485;
   const rightRows = [
     { icon: targetUserData.rank || '🏅', text: `${(targetUserData.points || 0).toLocaleString()} Pts` },
@@ -279,17 +327,19 @@ async function renderProfileCard({
   for (let i = 0; i < rightRows.length; i++) {
     const y = statsStartY + i * rowGap;
     await drawIconSpec(ctx, parseEmojiSpec(rightRows[i].icon), rightX, y, 40, palette);
-    ctx.save();
-    ctx.font = `600 24px ${FONT_STACK}`;
-    ctx.fillStyle = palette.textPrimary;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const label = rightRows[i].text;
-    ctx.fillText(label.length > 26 ? `${label.slice(0, 25)}…` : label, rightX + 54, y + 21);
-    ctx.restore();
+    safeDrawText(
+      ctx,
+      rightRows[i].text,
+      rightX + 54,
+      y + 21,
+      `600 24px ${FONT_STACK}`,
+      palette.textPrimary,
+      'left',
+      270
+    );
   }
 
-  // 8. Bottom Rarity Counts Grid
+  // 8. Bottom Rarity Counts
   const raritiesOrder = ['SSRP', 'UTR', 'SRR', 'SR', 'R', 'U', 'C'];
   const gridStartY = 815;
   const colWidth = (width - 172) / 4;
@@ -303,14 +353,16 @@ async function renderProfileCard({
 
     const rIconRaw = rarityIconsMap[rKey] || rKey;
     await drawIconSpec(ctx, parseEmojiSpec(rIconRaw), x, y, 36, palette);
-
-    ctx.save();
-    ctx.font = `700 24px ${FONT_STACK}`;
-    ctx.fillStyle = palette.textPrimary;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${rKey}: ${rarityCounts[rKey] || 0}`, x + 46, y + 19);
-    ctx.restore();
+    safeDrawText(
+      ctx,
+      `${rKey}: ${rarityCounts[rKey] || 0}`,
+      x + 46,
+      y + 19,
+      `700 24px ${FONT_STACK}`,
+      palette.textPrimary,
+      'left',
+      colWidth - 52
+    );
   }
 
   return canvas.toBuffer('image/png');
