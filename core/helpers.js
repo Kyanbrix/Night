@@ -8,7 +8,9 @@ function isTester(userId) {
   return Array.isArray(db.config.testers) && db.config.testers.includes(userId);
 }
 
-function canSeeUnreleasedBeta(userId) { return isTester(userId); }
+function canSeeUnreleasedBeta(userId) {
+  return isTester(userId);
+}
 
 function toSmallCaps(str) {
   if (!str) return '';
@@ -112,27 +114,55 @@ function isValidProfileBgUrl(rawUrl) {
 }
 
 function ensureUser(userId) {
+  const now = Date.now();
   if (!db.users[userId]) {
     db.users[userId] = {
-      started: false, joinedDate: new Date().toLocaleDateString(), dice: 10, points: 0,
-      rank: '<:unranked:1571314276071907519>', clan: null, customNickname: null,
-      profileBg: null, profileAccentColor: null,
-      highestSeasonRank: '<:unranked:1571314276071907519>', highestSeasonPoints: 0,
-      inventory: { chibis: [], items: { spray: 0, clover: 0 } }, team: [null, null, null],
-      equippedChibi: null, bestRoll: 'None', bestRollTier: 0, bestRollVal: 0, bestChibi: null,
-      userLevel: 1, userExp: 0, lastDrop: 0, todayDrops: 0, lastDaily: 0, streak: 0,
-      permissions: false, customStatus: null, badges: [], clanMail: []
+      started: false,
+      joinedDate: new Date(now).toLocaleDateString(),
+      firstPlayedAt: now,
+      dice: 10,
+      points: 0,
+      rank: '<:unranked:1571314276071907519>',
+      clan: null,
+      customNickname: null,
+      profileBg: null,
+      profileAccentColor: null,
+      highestSeasonRank: '<:unranked:1571314276071907519>',
+      highestSeasonPoints: 0,
+      inventory: { chibis: [], items: { spray: 0, clover: 0 } },
+      team: [null, null, null],
+      equippedChibi: null,
+      bestRoll: 'None',
+      bestRollTier: 0,
+      bestRollVal: 0,
+      bestChibi: null,
+      userLevel: 1,
+      userExp: 0,
+      lastDrop: 0,
+      todayDrops: 0,
+      lastDaily: 0,
+      streak: 0,
+      permissions: false,
+      customStatus: null,
+      badges: [],
+      clanMail: []
     };
     updateUserRank(db.users[userId]);
     saveUsers();
   } else {
-    if (!db.users[userId].joinedDate) db.users[userId].joinedDate = new Date().toLocaleDateString();
-    if (!Array.isArray(db.users[userId].badges)) db.users[userId].badges = [];
-    if (!Array.isArray(db.users[userId].clanMail)) db.users[userId].clanMail = [];
-    if (typeof db.users[userId].profileBg !== 'string') db.users[userId].profileBg = null;
-    if (typeof db.users[userId].profileAccentColor !== 'number') db.users[userId].profileAccentColor = null;
-    updateUserRank(db.users[userId]);
-    updatePeakRank(db.users[userId]);
+    const u = db.users[userId];
+    if (!u.joinedDate) u.joinedDate = new Date(now).toLocaleDateString();
+    if (!u.firstPlayedAt) {
+      const parsedJoined = Date.parse(u.joinedDate);
+      u.firstPlayedAt = !Number.isNaN(parsedJoined) && parsedJoined > 0 ? parsedJoined : now;
+    }
+    if (!u.bestRoll) u.bestRoll = 'None';
+    if (!Array.isArray(u.badges)) u.badges = [];
+    if (!Array.isArray(u.clanMail)) u.clanMail = [];
+    if (typeof u.profileBg !== 'string') u.profileBg = null;
+    if (typeof u.profileAccentColor !== 'number') u.profileAccentColor = null;
+    updateUserRank(u);
+    updatePeakRank(u);
   }
 }
 
@@ -201,6 +231,61 @@ function formatTimeRemaining(ms) {
   return toSmallCaps(`${minutes}m`);
 }
 
+function formatTimePlayed(startInput, nowMs = Date.now()) {
+  let startMs = null;
+
+  if (typeof startInput === 'number' && Number.isFinite(startInput) && startInput > 0) {
+    startMs = startInput;
+  } else if (typeof startInput === 'string' && startInput.trim()) {
+    const parsed = Date.parse(startInput.trim());
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      startMs = parsed;
+    }
+  }
+
+  if (!startMs || nowMs <= startMs) {
+    return '0s';
+  }
+
+  let remSec = Math.floor((nowMs - startMs) / 1000);
+
+  const secInMin = 60;
+  const secInHour = 3600;
+  const secInDay = 86400;
+  const secInWeek = 7 * secInDay;
+  const secInMonth = 30 * secInDay;
+  const secInYear = 365 * secInDay;
+
+  const years = Math.floor(remSec / secInYear);
+  remSec %= secInYear;
+
+  const months = Math.floor(remSec / secInMonth);
+  remSec %= secInMonth;
+
+  const weeks = Math.floor(remSec / secInWeek);
+  remSec %= secInWeek;
+
+  const days = Math.floor(remSec / secInDay);
+  remSec %= secInDay;
+
+  const hours = Math.floor(remSec / secInHour);
+  remSec %= secInHour;
+
+  const minutes = Math.floor(remSec / secInMin);
+  const seconds = remSec % secInMin;
+
+  const units = [];
+  if (years > 0) units.push(`${years}y`);
+  if (months > 0) units.push(`${months}mo`);
+  if (weeks > 0) units.push(`${weeks}w`);
+  if (days > 0) units.push(`${days}d`);
+  if (hours > 0) units.push(`${hours}h`);
+  if (minutes > 0) units.push(`${minutes}m`);
+  units.push(`${seconds}s`);
+
+  return units.join(' ');
+}
+
 function addExpAndLevelUp(user, chibi, baseExpAmount) {
   const xpMultiplier = db.config.globalXpMultiplier || 1.0;
   const expAmount = Math.round(baseExpAmount * xpMultiplier);
@@ -245,5 +330,6 @@ module.exports = {
   isTester, canSeeUnreleasedBeta, toSmallCaps, getRarityIconMap, updateUserRank,
   updatePeakRank, evaluateAndSyncUserBadges, isValidProfileBgUrl, ensureUser,
   getClanLogoDisplay, getClanLogoImageUrl, getClanLogoListText, getClanMemberRole,
-  pushClanMail, parseDurationToMs, formatTimeRemaining, addExpAndLevelUp, parseOddsNumber
+  pushClanMail, parseDurationToMs, formatTimeRemaining, formatTimePlayed,
+  addExpAndLevelUp, parseOddsNumber
 };
