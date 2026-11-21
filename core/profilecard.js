@@ -1,3 +1,4 @@
+
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
@@ -182,7 +183,7 @@ function getEmojiCdnUrl(raw) {
   return `https://cdn.discordapp.com/emojis/${match[2]}.${ext}?size=96`;
 }
 
-async function loadRemote(url, cache, timeoutMs = 4500) {
+async function loadRemote(url, cache, timeoutMs = 6000) {
   if (!url) return null;
   if (cache.has(url)) return cache.get(url);
 
@@ -190,18 +191,30 @@ async function loadRemote(url, cache, timeoutMs = 4500) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const fetcher = typeof fetch === 'function' ? fetch : require('node-fetch');
-    const res = await fetcher(url, { signal: ctrl.signal });
+    const res = await fetcher(url, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 DiscordBot' }
+    });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[profilecard] HTTP ${res.status} fetching image: ${url}`);
+      return null;
+    }
 
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType && !contentType.startsWith('image/')) return null;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html') || contentType.includes('application/json')) {
+      console.warn(`[profilecard] Non-image content-type (${contentType}) for URL: ${url}`);
+      return null;
+    }
 
     const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) return null;
+
     const img = await loadImage(buf);
     cache.set(url, img);
     return img;
-  } catch {
+  } catch (err) {
+    console.warn(`[profilecard] Failed to load image ${url}:`, err?.message || err);
     return null;
   }
 }
@@ -304,8 +317,8 @@ async function renderProfileCard({
     || safeUserData.backgroundUrl
     || null;
 
-  const customBgImg = canUsePerk && isValidImageUrl(candidateBg)
-    ? await loadRemote(candidateBg.trim(), imageCache, 6000)
+  const customBgImg = isValidImageUrl(candidateBg)
+    ? await loadRemote(candidateBg.trim(), imageCache, 7000)
     : null;
 
   // Base gradient background
@@ -316,15 +329,15 @@ async function renderProfileCard({
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // Custom supporter/nitro image behind the card frame & content
+  // Custom background image behind the card frame & content
   if (customBgImg) {
     ctx.save();
     drawCoverImage(ctx, customBgImg, 0, 0, width, height);
 
     const scrim = ctx.createLinearGradient(0, 0, 0, height);
-    scrim.addColorStop(0, 'rgba(9, 6, 20, 0.55)');
-    scrim.addColorStop(0.5, 'rgba(9, 6, 20, 0.65)');
-    scrim.addColorStop(1, 'rgba(9, 6, 20, 0.78)');
+    scrim.addColorStop(0, 'rgba(9, 6, 20, 0.35)');
+    scrim.addColorStop(0.5, 'rgba(9, 6, 20, 0.45)');
+    scrim.addColorStop(1, 'rgba(9, 6, 20, 0.62)');
     ctx.fillStyle = scrim;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
@@ -360,8 +373,8 @@ async function renderProfileCard({
   traceChamferBox(ctx, 36, 36, width - 72, height - 72, 20);
   ctx.stroke();
 
-  // Main translucent container (slightly more transparent when custom BG is active)
-  ctx.fillStyle = customBgImg ? 'rgba(9, 6, 20, 0.48)' : palette.panelFill;
+  // Main translucent container (more transparent when custom BG is active)
+  ctx.fillStyle = customBgImg ? 'rgba(9, 6, 20, 0.28)' : palette.panelFill;
   traceChamferBox(ctx, 46, 46, width - 92, height - 92, 16);
   ctx.fill();
   ctx.restore();
