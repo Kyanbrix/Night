@@ -40,6 +40,37 @@ const client = new Client({
 
 const cooldowns = new Map();
 
+// Revamped rarity definitions (normal % and shiny % chances)
+const REVAMPED_RARITY_CONFIG = [
+  { key: 'C', label: 'Common', emoji: '<:Pcommon:1573802564200300687>', normalPct: 35, shinyPct: 0.0952, weight: 35 },
+  { key: 'U', label: 'Uncommon', emoji: '<:Puncommon:1573802607561015306>', normalPct: 15, shinyPct: 0.0721, weight: 15 },
+  { key: 'R', label: 'Rare', emoji: '<:Prare:1573802661134864464>', normalPct: 8, shinyPct: 0.0572, weight: 8 },
+  { key: 'SR', label: 'SR', emoji: '<:Psr:1573802765459918889>', normalPct: 4, shinyPct: 0.0217, weight: 4 },
+  { key: 'SRR', label: 'SRR', emoji: '<:Psrr:1573802796040585358>', normalPct: 1, shinyPct: 0.0137, weight: 1 },
+  { key: 'UTR', label: 'UTR', emoji: '<a:Putr:1573802703090614342>', normalPct: 0.49, shinyPct: 0.0092, weight: 0.49 },
+  { key: 'STR', label: 'STR', emoji: '<a:Pstr:1573802859491762237>', normalPct: 0.1, shinyPct: 0.0028, weight: 0.1 },
+  { key: 'USRR', label: 'USRR', emoji: '<a:Pusrr:1573802908846264380>', normalPct: 0.0190, shinyPct: 0.0010, weight: 0.0190 },
+  { key: 'UGMR', label: 'UGMR', emoji: '<a:Pugmr:1573802950675923024>', normalPct: 0.015, shinyPct: 0.0001, weight: 0.015 }
+];
+
+const REVAMPED_RARITY_ICONS = REVAMPED_RARITY_CONFIG.reduce((acc, r) => {
+  acc[r.key] = r.emoji;
+  return acc;
+}, {});
+
+const REVAMPED_RARITY_TIER = {
+  SSRP: 10,
+  UGMR: 9,
+  USRR: 8,
+  STR: 7,
+  UTR: 6,
+  SRR: 5,
+  SR: 4,
+  R: 3,
+  U: 2,
+  C: 1
+};
+
 const BATTLE_ICONS = {
   hp: '<:Hp:1572769347061940356>',
   def: '<:Def:1572769405841055784>',
@@ -241,7 +272,10 @@ client.on('messageCreate', async message => {
   ensureUser(userId);
   const user = db.users[userId];
   const callerHasBetaView = canSeeUnreleasedBeta(userId) || Boolean(db.config.featuresPublished);
-  const rarityIconsMap = getRarityIconMap(callerHasBetaView);
+  const rarityIconsMap = {
+    ...getRarityIconMap(callerHasBetaView),
+    ...REVAMPED_RARITY_ICONS
+  };
 
   const getDisplayName = async (uId) => {
     const uData = db.users[uId];
@@ -267,7 +301,7 @@ client.on('messageCreate', async message => {
     const timePlayedStr = formatTimePlayed(tData.firstPlayedAt || joinedDateStr);
     const displayName = tData.customNickname || targetMemberObj?.username || 'Player';
 
-    const rarityCounts = { SSRP: 0, STR: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+    const rarityCounts = { SSRP: 0, UGMR: 0, USRR: 0, STR: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
     if (tData.inventory && tData.inventory.chibis) {
       tData.inventory.chibis.forEach(c => {
         if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++;
@@ -294,7 +328,7 @@ client.on('messageCreate', async message => {
       leaderboardPos,
       syncedBadges: syncedBadgesList,
       rarityCounts,
-      rarityIconsMap: getRarityIconMap(false),
+      rarityIconsMap,
       betaEmojis: BETA_EMOJIS,
       useBetaStyle: Boolean(callerHasBetaView),
       themeKey: activeThemeKey,
@@ -862,7 +896,11 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'rarities') {
-      const raritiesInfo =
+      const revampedLines = REVAMPED_RARITY_CONFIG.map(r =>
+        `${r.emoji} **${r.label} (${r.key})**\n• Normal Chance: **${r.normalPct}%** | Shiny Chance: **${r.shinyPct}%**`
+      ).join('\n\n');
+
+      const eventSection =
         `${rarityIconsMap['SSRP'] || '🌟'} **Super Special Rare Plus (SSRP - Beta Event)**\n` +
         `• Cat Event: Normal 1 in 500B | Shiny 1 in 1Qa\n` +
         `• Doge Event: Normal 1 in 1T | Shiny 1 in 20Qa\n` +
@@ -874,17 +912,15 @@ client.on('messageCreate', async message => {
         `• Ruru Event: Normal 1 in 250Qa | Shiny 1 in 10Sx\n` +
         `• Zoprb Event: Normal 1 in 1Qi | Shiny 1 in 100Sx\n` +
         `• Kazerb Event: Normal 1 in 500Qi | Shiny 1 in 50Sp\n` +
-        `• Georb Event: Normal 1 in 10Sp | Shiny 1 in 50No\n\n` +
-        `${rarityIconsMap['C'] || '📦'} **Common (C)**\n• Normal Drop Rate: 20% (~1 in 2) | Shiny Drop Rate: 1%\n\n` +
-        `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n• Normal Drop Rate: 12% | Shiny Drop Rate: 0.10%\n\n` +
-        `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n• Normal Drop Rate: 7% | Shiny Drop Rate: 0.5%\n\n` +
-        `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n• Normal Drop Rate: 1% | Shiny Drop Rate: 0.1%\n\n` +
-        `${rarityIconsMap['SRR'] || '<:Newsrr1:1573559263627055164>'} **Super Rare Rare (SRR)**\n• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
-        `${rarityIconsMap['UTR'] || '<:Newutr1:1573559322527662090>'} **Ultra Rare (UTR)**\n• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%\n\n` +
-        `${rarityIconsMap['STR'] || '<:Str:1573559367339614348>'} **Special Tier Rare (STR)**\n• Normal Drop Rate: 0.0005% | Shiny Drop Rate: 0.00005%`;
+        `• Georb Event: Normal 1 in 10Sp | Shiny 1 in 50No`;
 
       const container = new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(toSmallCaps('# 📊 Chibi Rarities & Drop Rates\n\n') + raritiesInfo)
+        new TextDisplayBuilder().setContent(
+          toSmallCaps('# 📊 Revamped Chibi Rarities & Drop Rates\n\n') +
+          revampedLines +
+          toSmallCaps('\n\n-----------------------------------\n\n') +
+          eventSection
+        )
       );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
@@ -1401,64 +1437,87 @@ client.on('messageCreate', async message => {
       let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
+      // Shiny rolls are intentionally rare; spray gives a tiny nudge while keeping shinies hard to hit
+      const shinyBoostMultiplier = boost === 'spray' ? 1.15 : 1.0;
+
       let totalExpGained = 0;
       const primaryChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === (user.team[0] || user.equippedChibi));
 
       for (let i = 0; i < qty; i++) {
-        const baseRarityChances = {
-          C: { normal: 20, shiny: 1 }, U: { normal: 12, shiny: 0.10 }, R: { normal: 7, shiny: 0.5 },
-          SR: { normal: 1, shiny: 0.1 }, SRR: { normal: 0.10, shiny: 0.0010 }, UTR: { normal: 0.001, shiny: 0.0001 },
-          STR: { normal: 0.0005, shiny: 0.00005 }
-        };
-        const adjustedRarities = gameData.rarities.map(r => {
-          const cfg = baseRarityChances[r.key] || { normal: r.weight, shiny: 0.1 };
-          let normW = cfg.normal;
-          let shinyW = cfg.shiny;
-          if (r.key !== 'C') {
-            normW *= activeLuckMultiplier;
-            shinyW *= activeLuckMultiplier;
-          }
-          return { ...r, normW, shinyW };
+        const adjustedRarities = REVAMPED_RARITY_CONFIG.map(r => {
+          const isCommon = r.key === 'C';
+          const effectiveNormalPct = isCommon ? r.normalPct : r.normalPct * activeLuckMultiplier;
+          const effectiveShinyPct = Math.min(100, r.shinyPct * shinyBoostMultiplier);
+          return {
+            ...r,
+            effectiveNormalPct,
+            effectiveShinyPct
+          };
         });
 
-        const totalWeight = adjustedRarities.reduce((sum, r) => sum + r.normW, 0);
+        const totalWeight = adjustedRarities.reduce((sum, r) => sum + r.effectiveNormalPct, 0);
         let randW = Math.random() * totalWeight;
         let chosenRarityObj = adjustedRarities[0];
         for (const r of adjustedRarities) {
-          if (randW < r.normW) {
+          if (randW < r.effectiveNormalPct) {
             chosenRarityObj = r;
             break;
           }
-          randW -= r.normW;
+          randW -= r.effectiveNormalPct;
         }
 
-        const availableChibis = gameData.chibis.filter(c => c.rarity === chosenRarityObj.key);
-        const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
+        const matchingChibis = (gameData.chibis || []).filter(c => c.rarity === chosenRarityObj.key);
+        const fallbackPool = (gameData.chibis && gameData.chibis.length > 0)
+          ? gameData.chibis
+          : [{ name: `${chosenRarityObj.label} Chibi`, rarity: chosenRarityObj.key, emoji: chosenRarityObj.emoji, odds: `1 in ${Math.max(1, Math.round(100 / Math.max(0.0001, chosenRarityObj.normalPct)))}`, shinyOdds: `1 in ${Math.max(1, Math.round(100 / Math.max(0.0001, chosenRarityObj.shinyPct)))}` }];
+        const chibiTemplate = matchingChibis.length > 0
+          ? matchingChibis[Math.floor(Math.random() * matchingChibis.length)]
+          : {
+              ...fallbackPool[Math.floor(Math.random() * fallbackPool.length)],
+              name: `${chosenRarityObj.label} ${fallbackPool[0].name}`,
+              rarity: chosenRarityObj.key,
+              emoji: chosenRarityObj.emoji
+            };
+
         const normalVal = parseOddsNumber(chibiTemplate.odds);
-        const targetShinyChance = (baseRarityChances[chosenRarityObj.key]?.shiny || 0.1) * (activeLuckMultiplier > 1 ? activeLuckMultiplier : 1);
-        const isShiny = Math.random() * 100 < targetShinyChance;
+        // Hard shiny roll: independent low-percentage check against the rarity's shinyPct
+        const isShiny = (Math.random() * 100) < chosenRarityObj.effectiveShinyPct;
 
         const pushChibi = () => {
           const generatedId = new mongoose.Types.ObjectId().toString();
           user.inventory.chibis.push({
-            id: generatedId, chibiId: generatedId, name: chibiTemplate.name, rarity: chibiTemplate.rarity,
-            emoji: chibiTemplate.emoji, isShiny, level: 1, exp: 0, date: new Date().toLocaleDateString()
+            id: generatedId,
+            chibiId: generatedId,
+            name: chibiTemplate.name,
+            rarity: chosenRarityObj.key,
+            emoji: chibiTemplate.emoji || chosenRarityObj.emoji,
+            isShiny,
+            level: 1,
+            exp: 0,
+            date: new Date().toLocaleDateString()
           });
           return generatedId;
         };
 
         pushChibi();
-        resultsSummary.push({ chibi: chibiTemplate, isShiny });
+        resultsSummary.push({
+          chibi: { ...chibiTemplate, rarity: chosenRarityObj.key, emoji: chibiTemplate.emoji || chosenRarityObj.emoji },
+          isShiny
+        });
 
         if (boost === 'clover' && Math.random() < 0.5) {
           pushChibi();
-          resultsSummary.push({ chibi: chibiTemplate, isShiny, duplicated: true });
+          resultsSummary.push({
+            chibi: { ...chibiTemplate, rarity: chosenRarityObj.key, emoji: chibiTemplate.emoji || chosenRarityObj.emoji },
+            isShiny,
+            duplicated: true
+          });
         }
 
         const baseExpRoll = isShiny ? Math.floor(Math.random() * 251) + 50 : Math.floor(Math.random() * 141) + 10;
         totalExpGained += addExpAndLevelUp(user, primaryChibi, baseExpRoll);
 
-        const currentTier = RARITY_HIERARCHY[chibiTemplate.rarity] || 1;
+        const currentTier = REVAMPED_RARITY_TIER[chosenRarityObj.key] || RARITY_HIERARCHY[chosenRarityObj.key] || 1;
         const savedTier = user.bestRollTier || 0;
         const currentRollVal = isShiny ? (normalVal * 10) : normalVal;
         const savedRollVal = user.bestRollVal || 0;
@@ -1466,8 +1525,8 @@ client.on('messageCreate', async message => {
         if (currentTier > savedTier || (currentTier === savedTier && currentRollVal > savedRollVal)) {
           user.bestRollTier = currentTier;
           user.bestRollVal = currentRollVal;
-          user.bestRoll = chibiTemplate.shinyOdds || chibiTemplate.odds;
-          user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
+          user.bestRoll = isShiny ? `${chosenRarityObj.shinyPct}% Shiny` : `${chosenRarityObj.normalPct}%`;
+          user.bestChibi = `${rarityIconsMap[chosenRarityObj.key]} ${chibiTemplate.emoji || chosenRarityObj.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
         }
       }
 
@@ -1480,7 +1539,7 @@ client.on('messageCreate', async message => {
       const container = new ContainerBuilder().setAccentColor(0x57f287).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           toSmallCaps(`# ${diceIcon} Chibi Roll Results\n\n`) +
-          resultsSummary.map(r => `${rarityIconsMap[r.chibi.rarity]} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${r.duplicated ? '(🍀 Duplicated!)' : ''}`).join('\n') +
+          resultsSummary.map(r => `${rarityIconsMap[r.chibi.rarity] || REVAMPED_RARITY_ICONS[r.chibi.rarity] || '📦'} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${r.duplicated ? '(🍀 Duplicated!)' : ''}`).join('\n') +
           toSmallCaps(`\n\n✨ Gained +${totalExpGained} EXP!`) + luckNotice +
           toSmallCaps(`\n${diceIcon} Remaining Dice: ${user.dice}`)
         )
@@ -1557,7 +1616,7 @@ client.on('messageCreate', async message => {
           grouped[key].count++;
         });
         const entries = Object.values(grouped);
-        const rarityRank = { SSRP: 1, STR: 2, UTR: 3, SRR: 4, SR: 5, R: 6, U: 7, C: 8 };
+        const rarityRank = { SSRP: 0, UGMR: 1, USRR: 2, STR: 3, UTR: 4, SRR: 5, SR: 6, R: 7, U: 8, C: 9 };
         if (sortBy === 'rarity') entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
         else if (sortBy === 'alpha') entries.sort((a, b) => a.name.localeCompare(b.name));
         return entries;
@@ -1620,18 +1679,17 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'shop') {
-      // Support optional CLI-style purchase: `+shop dice [qty]` or `+shop spray` or `+shop clover`
       const directItem = args[0]?.toLowerCase();
       const directQty = Math.max(1, parseInt(args[1], 10) || 1);
 
       if (directItem === 'dice') {
-        const unitCost = 10; // 10 points per 1 Dice (or adjust to your economy)
+        const unitCost = 10;
         const totalCost = unitCost * directQty;
         if ((user.points || 0) < totalCost) {
           return message.reply(toSmallCaps(`❌ You need **${totalCost} Points** to buy **${directQty}x Dice**, but you only have **${user.points || 0} Points**!`));
         }
         user.points = Number(user.points || 0) - totalCost;
-        user.dice = Number(user.dice || 0) + directQty; // Stacks directly onto existing dice balance
+        user.dice = Number(user.dice || 0) + directQty;
         updateUserRank(user);
         await saveUsers();
         return message.reply(toSmallCaps(`✅ Purchased **+${directQty}x Dice 🎲** for **${totalCost} Points**! Total Dice: **${user.dice} 🎲**`));
@@ -1665,7 +1723,7 @@ client.on('messageCreate', async message => {
             return i.followUp({ content: toSmallCaps(`❌ Not enough points! You need ${cost} Points, you have ${user.points || 0}.`), ephemeral: true });
           }
           user.points = Number(user.points || 0) - cost;
-          user.dice = Number(user.dice || 0) + amount; // Stackable dice balance
+          user.dice = Number(user.dice || 0) + amount;
           updateUserRank(user);
           await saveUsers();
           return i.followUp({ content: toSmallCaps(`✅ Purchased **+${amount}x Dice 🎲**! Stacked Dice Balance: **${user.dice} 🎲**`), ephemeral: true });
@@ -2130,7 +2188,7 @@ client.on('messageCreate', async message => {
         let highestVal = 0;
 
         for (const c of targetUserData.inventory.chibis) {
-          const tier = RARITY_HIERARCHY[c.rarity] || 1;
+          const tier = REVAMPED_RARITY_TIER[c.rarity] || RARITY_HIERARCHY[c.rarity] || 1;
           const allChibisPool = [...(gameData.chibis || []), ...(gameData.eventChibis || [])];
           const template = allChibisPool.find(t => t.name === c.name && t.rarity === c.rarity);
           const oddsStr = template ? (c.isShiny ? template.shinyOdds : template.odds) : '1 in 1';
