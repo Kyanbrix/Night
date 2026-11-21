@@ -1,17 +1,128 @@
-
 const BADGE_CATALOG = {
-  partner: { key: 'partner', category: 'Discord Category', name: 'Partner Badge', icon: '<:Partner_badge:1572633331244474369>', description: 'Owning by partnership' },
-  staff: { key: 'staff', category: 'Discord Category', name: 'Staff Badge', icon: '<:Staff_badge:1572633388622549063>', description: 'You must admin or mod to have this' },
-  moderator: { key: 'moderator', category: 'Discord Category', name: 'Moderator Badge', icon: '<:Moderator_badge:1572633450081558618>', description: 'You must moderator to have this' },
-  developer: { key: 'developer', category: 'Discord Category', name: 'Developer Badge', icon: '<:Developer:1572779245242159284>', description: 'Creator of the bot' },
-  bughunter: { key: 'bughunter', category: 'Discord Category', name: 'Bug Hunter Badge', icon: '<:Bughunter:1572779201126469824>', description: 'Catching Too many bugs' },
-  support: { key: 'support', category: 'Discord Category', name: 'Beta Supporter Badge', icon: '<a:Support_badge:1572634032712188077>', description: 'Giving this by support the server since beta' },
-  booster: { key: 'booster', category: 'Discord Category', name: 'Server Booster Badge', icon: '<a:Booster_badge:1572634086034505768>', description: 'Boosting the server in discord' },
-  nitro: { key: 'nitro', category: 'Discord Category', name: 'Nitro Badge', icon: '<a:Nitro_badge:1572634168037220453>', description: 'Must owned a nitro, this badge have many perks' },
-  collections: { key: 'collections', category: 'Event & Stats Category', name: 'Complete Collections Badge', icon: '<a:Collections:1572768891547947078>', description: 'Complete all collections' },
-  lvl100: { key: 'lvl100', category: 'Event & Stats Category', name: 'Level 100 Badge', icon: '<:Lvl100_badge:1572634228074614965>', description: 'Obtained reaching lvl 100' },
-  xmas2026: { key: 'xmas2026', category: 'Event & Stats Category', name: 'Xmas 2026 Badge', icon: '<a:Snow_badge:1572633513042387016>', description: 'Obtainable during xmas event 2026' },
-  halloween2026: { key: 'halloween2026', category: 'Event & Stats Category', name: 'Halloween 2026 Badge', icon: '<a:Pumpkins:1572780141246152724>', description: 'Obtainable during halloween event 2026' }
+  // Obtainable Badges
+  hacker: {
+    key: 'hacker',
+    category: 'Obtainable Badges',
+    name: 'Hacker Badge',
+    icon: '<:Hacker:1573804176457212014>',
+    description: 'Obtaining Hacker Dice'
+  },
+  archangel: {
+    key: 'archangel',
+    category: 'Obtainable Badges',
+    name: 'Archangel Badge',
+    icon: '<:Archangel:1573804118722613279>',
+    description: 'Obtaining Archangel Dice'
+  },
+  days100: {
+    key: 'days100',
+    category: 'Obtainable Badges',
+    name: '100 Days Badge',
+    icon: '<:100days:1573803920055341056>',
+    description: 'Playing 100 Days Are you Crazy?'
+  },
+  collections: {
+    key: 'collections',
+    category: 'Obtainable Badges',
+    name: 'Collections Master Badge',
+    icon: '<:Collectionss:1573804220044541992>',
+    description: 'Complete all Collections Except SSRP or Event chibi'
+  },
+  lvl50: {
+    key: 'lvl50',
+    category: 'Obtainable Badges',
+    name: 'Level 50 Badge',
+    icon: '<:Lvl50:1573805749153439844>',
+    description: 'Reaching Level 50'
+  },
+  lvl100: {
+    key: 'lvl100',
+    category: 'Obtainable Badges',
+    name: 'Level 100 Badge',
+    icon: '<:Lvl100:1573805790525923470>',
+    description: 'Reaching Level 100'
+  },
+  ugmr: {
+    key: 'ugmr',
+    category: 'Obtainable Badges',
+    name: 'UGMR Roller Badge',
+    icon: '<:What:1573806040644980917>',
+    description: 'Rolling UMGR crazy'
+  },
+  gamblingod: {
+    key: 'gamblingod',
+    category: 'Obtainable Badges',
+    name: 'Gambling God Badge',
+    icon: '<:Gamblingod:1573806102771007519>',
+    description: 'Earn 1T money in gambling'
+  },
+
+  // Utility Badges
+  devvsplayer: {
+    key: 'devvsplayer',
+    category: 'Utility Badges',
+    name: 'Dev vs Player Badge',
+    icon: '<:DevVsPlayer:1573805960311476245>',
+    description: 'Fighting Developer 3v3'
+  },
+  developer: {
+    key: 'developer',
+    category: 'Utility Badges',
+    name: 'Developer Badge',
+    icon: '<:Dev:1573804306023452682>',
+    description: 'Developer of the bot'
+  },
+  supporter: {
+    key: 'supporter',
+    category: 'Utility Badges',
+    name: 'Supporter Badge',
+    icon: '<:Supporter:1573804400840015874>',
+    description: 'Support the bot since beta'
+  },
+  nitro: {
+    key: 'nitro',
+    category: 'Utility Badges',
+    name: 'Nitro User Badge',
+    icon: '<:Nitrouser:1573804526132265010>',
+    description: 'Obtaining for nitro users'
+  },
+  booster: {
+    key: 'booster',
+    category: 'Utility Badges',
+    name: 'Boosting User Badge',
+    icon: '<:Boostinguser:1573804574123237376>',
+    description: 'Obtaining for booster'
+  },
+  mods: {
+    key: 'mods',
+    category: 'Utility Badges',
+    name: 'Moderator Badge',
+    icon: '<:Mods:1573804640447897602>',
+    description: 'Moderator only'
+  },
+  admin: {
+    key: 'admin',
+    category: 'Utility Badges',
+    name: 'Admin Badge',
+    icon: '<:Admin:1573804706915029083>',
+    description: 'Admin only'
+  },
+
+  // Event Badges
+  halloween2026: {
+    key: 'halloween2026',
+    category: 'Event Badges',
+    name: 'Halloween 2026 Badge',
+    icon: '<:Halloween2026:1573818026745143367>',
+    description: 'Obtained by playing halloween event 2026'
+  },
+  xmas2026: {
+    key: 'xmas2026',
+    category: 'Event Badges',
+    name: 'Xmas 2026 Badge',
+    icon: '<:Xmas2026:1573817982885437490>',
+    description: 'Obtained by playing Xmas event 2026'
+  }
 };
 
 const BETA_EMOJIS = {
