@@ -402,6 +402,22 @@ function resolveBadgeList(userData = {}, syncedBadges = []) {
   return uniqueKeys;
 }
 
+function resolveEquippedDiceState(safeUserData) {
+  const rawDiceVal = safeUserData.equippedDice ?? safeUserData.currentDice ?? safeUserData.activeDice ?? null;
+  if (rawDiceVal === null || rawDiceVal === undefined || rawDiceVal === false) {
+    return { hasEquippedDice: false, diceKey: null };
+  }
+  const cleaned = String(rawDiceVal).trim().toLowerCase();
+  if (!cleaned || cleaned === 'none' || cleaned === 'null' || cleaned === 'undefined' || cleaned === 'false') {
+    return { hasEquippedDice: false, diceKey: null };
+  }
+  const ownedDice = Array.isArray(safeUserData.ownedDice) ? safeUserData.ownedDice.map(d => String(d).toLowerCase()) : null;
+  if (ownedDice && ownedDice.length > 0 && !ownedDice.includes(cleaned) && safeUserData.explicitlyEquippedDice !== true) {
+    return { hasEquippedDice: false, diceKey: null };
+  }
+  return { hasEquippedDice: true, diceKey: cleaned };
+}
+
 async function renderProfileCard({
   targetUserData = {},
   targetMember,
@@ -721,16 +737,12 @@ async function renderProfileCard({
   await drawRarityIconOnlyRow(rarityRow1, 754);
   await drawRarityIconOnlyRow(rarityRow2, 806);
 
-  const rawDiceVal = safeUserData.equippedDice ?? safeUserData.currentDice ?? safeUserData.activeDice ?? null;
-  const normalizedDiceKey = typeof rawDiceVal === 'string' ? rawDiceVal.trim().toLowerCase() : '';
-  const hasEquippedDice = Boolean(normalizedDiceKey && normalizedDiceKey !== 'none' && normalizedDiceKey !== 'null');
+  const { hasEquippedDice } = resolveEquippedDiceState(safeUserData);
   const luckSummary = hasEquippedDice && typeof getUserRollLuckPercent === 'function'
     ? getUserRollLuckPercent(safeUserData)
     : null;
-  const currentDiceIcon = hasEquippedDice
-    ? (luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>')
-    : null;
-  const totalLuckVal = hasEquippedDice ? Number(luckSummary?.totalLuckPercent ?? 0) : 0;
+  const currentDiceIcon = hasEquippedDice ? (luckSummary?.diceInfo?.emoji || null) : null;
+  const totalLuckVal = hasEquippedDice ? (Number(luckSummary?.totalLuckPercent) || 0) : 0;
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
