@@ -683,6 +683,7 @@ client.on('messageCreate', async message => {
           inventory: { chibis: [], items: { spray: 0, clover: 0 } },
           team: [null, null, null],
           equippedChibi: null,
+          equippedDice: null,
           bestRoll: 'None',
           bestRollTier: 0,
           bestRollVal: 0,
@@ -1437,7 +1438,6 @@ client.on('messageCreate', async message => {
       let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
       if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
-      // Shiny rolls are intentionally rare; spray gives a tiny nudge while keeping shinies hard to hit
       const shinyBoostMultiplier = boost === 'spray' ? 1.15 : 1.0;
 
       let totalExpGained = 0;
@@ -1480,7 +1480,6 @@ client.on('messageCreate', async message => {
             };
 
         const normalVal = parseOddsNumber(chibiTemplate.odds);
-        // Hard shiny roll: independent low-percentage check against the rarity's shinyPct
         const isShiny = (Math.random() * 100) < chosenRarityObj.effectiveShinyPct;
 
         const pushChibi = () => {
@@ -1682,6 +1681,18 @@ client.on('messageCreate', async message => {
       const directItem = args[0]?.toLowerCase();
       const directQty = Math.max(1, parseInt(args[1], 10) || 1);
 
+      if (directItem === 'buy' && args[1]) {
+        const diceObj = (gameData.shopDice || []).find(d => d.id.toLowerCase() === args[1].toLowerCase() || d.name.toLowerCase().includes(args[1].toLowerCase()));
+        if (!diceObj) return message.reply(toSmallCaps('❌ Dice not found in shop!'));
+        if (diceObj.restriction === 'cash' && Number(user.cash || 0) < diceObj.cost) {
+          return message.reply(toSmallCaps(`❌ Need ${diceObj.costDisplay} Cash!`));
+        }
+        if (diceObj.restriction === 'cash') user.cash = Number(user.cash || 0) - diceObj.cost;
+        user.equippedDice = diceObj.id;
+        await saveUsers();
+        return message.reply(toSmallCaps(`✅ Equipped ${diceObj.emoji} **${diceObj.name}** (+${diceObj.luckPercent}% Luck)!`));
+      }
+
       if (directItem === 'dice') {
         const unitCost = 10;
         const totalCost = unitCost * directQty;
@@ -1700,13 +1711,14 @@ client.on('messageCreate', async message => {
         new ButtonBuilder().setCustomId('buy_spray').setLabel(toSmallCaps('Buy Spray (5 🎲)')).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('buy_clover').setLabel(toSmallCaps('Buy Clover (15 🎲)')).setStyle(ButtonStyle.Success)
       );
+      const diceList = (gameData.shopDice || []).map(d => `${d.emoji} **${d.name}** (\`${d.id}\`) — ${d.costDisplay} | +${d.luckPercent}%`).join('\n');
       const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(toSmallCaps(
-          '# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n' +
+        new TextDisplayBuilder().setContent(
+          toSmallCaps('# 🛒 Chibi Shop\nBoost your rolling potential with shop items!\n\n' +
           `🎲 +10 Dice (100 Pts): Stacks directly onto your Dice balance (or use \`${currentPrefix}shop dice [qty]\`)\n` +
           '🧴 Spray (5 🎲): Use this for Awesome Chibi boost [30 Uses]\n' +
-          '🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]'
-        ))
+          '🍀 Clover (15 🎲): Use this to duplicate Chibis while rolling [50 Uses]\n\n**Shop Dice** (`' + currentPrefix + 'shop buy <id>`):\n') + diceList
+        )
       );
       const shopMsg = await message.reply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
 
@@ -3044,88 +3056,68 @@ client.on('messageCreate', async message => {
         db.config.globalLuckMultiplier = mult;
         db.config.luckEventExpires = Date.now() + durationMs;
         await saveUsers();
-        return message.reply(toSmallCaps(`⚡ Global Luck Event Activated! Multiplier set to ${mult}x for ${durationStr}!`));
+        return message.reply(toSmallCaps(`🍀 Admin Event Activated! Global Luck Multiplier is now **${mult}x** for **${durationStr}**!`));
       }
 
       if (command === 'adminsetxp') {
         const mult = parseFloat(args[0]);
         const durationStr = args[1];
         const durationMs = parseDurationToMs(durationStr);
-        if (isNaN(mult) || !durationMs) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetxp [multiplier] [duration] (e.g. ${currentPrefix}adminsetxp 1.5 1h)`));
+        if (isNaN(mult) || !durationMs) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetxp [multiplier] [duration] (e.g. ${currentPrefix}adminsetxp 2.0 1h)`));
         db.config.globalXpMultiplier = mult;
         db.config.xpEventExpires = Date.now() + durationMs;
         await saveUsers();
-        return message.reply(toSmallCaps(`✨ Global XP Event Activated! Multiplier set to ${mult}x for ${durationStr}!`));
+        return message.reply(toSmallCaps(`📈 Admin Event Activated! Global EXP Multiplier is now **${mult}x** for **${durationStr}**!`));
       }
 
       if (command === 'admingiveitem') {
         const target = message.mentions.users.first();
-        const itemType = args[1]?.toLowerCase();
-        const quantity = parseInt(args[2], 10);
-        if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
-          return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]`));
+        const item = args[1]?.toLowerCase();
+        const amount = parseInt(args[2], 10);
+        if (!target || !item || isNaN(amount)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [item_name] [amount] (e.g. dice, spray, clover)`));
+        ensureUser(target.id);
+        const tUser = db.users[target.id];
+        if (!tUser.inventory.items) tUser.inventory.items = { spray: 0, clover: 0 };
+
+        if (item === 'dice') {
+          tUser.dice = Number(tUser.dice || 0) + amount;
+        } else if (item === 'spray' || item === 'clover') {
+          tUser.inventory.items[item] = Number(tUser.inventory.items[item] || 0) + amount;
+        } else {
+          return message.reply(toSmallCaps('❌ Unknown item! Available items: `dice`, `spray`, `clover`.'));
         }
-        ensureUser(target.id);
-        if (!db.users[target.id].inventory.items) db.users[target.id].inventory.items = { spray: 0, clover: 0 };
-        if (itemType === 'dice') db.users[target.id].dice = Number(db.users[target.id].dice || 0) + quantity;
-        else if (itemType === 'spray') db.users[target.id].inventory.items.spray = Number(db.users[target.id].inventory.items.spray || 0) + quantity;
-        else if (itemType === 'clover') db.users[target.id].inventory.items.clover = Number(db.users[target.id].inventory.items.clover || 0) + quantity;
-        updateUserRank(db.users[target.id]);
+        updateUserRank(tUser);
+        await evaluateAndSyncUserBadges(target.id, tUser, message.guild);
         await saveUsers();
-        return message.reply(toSmallCaps(`🎁 Admin granted ${quantity}x ${itemType} to <@${target.id}>.`));
-      }
-
-      if (command === 'adminsetrank') {
-        const target = message.mentions.users.first();
-        const newRank = args.slice(1).join(' ');
-        if (!target || !newRank) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetrank [@user] [rank title]`));
-        ensureUser(target.id);
-        db.users[target.id].rank = newRank;
-        await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Admin updated rank icon for <@${target.id}>.`));
-      }
-
-      if (command === 'adminsetpoints') {
-        const target = message.mentions.users.first();
-        const pts = parseInt(args[1], 10);
-        if (!target || isNaN(pts)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetpoints [@user] [points]`));
-        ensureUser(target.id);
-        db.users[target.id].points = pts;
-        updateUserRank(db.users[target.id]);
-        await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Admin set points for <@${target.id}> to **${pts}** (Rank icon auto-updated).`));
+        return message.reply(toSmallCaps(`🛡️ Admin granted **${amount}x ${item}** to <@${target.id}>!`));
       }
 
       if (command === 'admingivepermission') {
-        if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can assign admin permissions!'));
+        if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can grant admin permissions to other users!'));
         const target = message.mentions.users.first();
         if (!target) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivepermission [@user]`));
         ensureUser(target.id);
         db.users[target.id].permissions = true;
         await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
         await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Admin permissions granted to <@${target.id}>.`));
-      }
-
-      if (command === 'adminsetlevel') {
-        const target = message.mentions.users.first();
-        const lvl = parseInt(args[1], 10);
-        if (!target || isNaN(lvl) || lvl < 1) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlevel [@user] [level]`));
-        ensureUser(target.id);
-        db.users[target.id].userLevel = lvl;
-        db.users[target.id].userExp = 0;
-        await evaluateAndSyncUserBadges(target.id, db.users[target.id], message.guild);
-        await saveUsers();
-        return message.reply(toSmallCaps(`🛡️ Admin set user level for <@${target.id}> to Level ${lvl}.`));
+        return message.reply(toSmallCaps(`🛡️ Successfully granted bot Admin permissions to <@${target.id}>!`));
       }
     }
   } catch (err) {
-    console.error(err);
-    message.reply(toSmallCaps('❌ An error occurred while executing this command.'));
+    console.error('Command Execution Error:', err);
+    return message.reply(toSmallCaps('❌ An unexpected error occurred while processing your command.'));
   }
 });
 
-(async () => {
-  await initDatabase();
-  await client.login(process.env.DISCORD_TOKEN);
-})();
+const TOKEN = process.env.DISCORD_TOKEN;
+if (!TOKEN) {
+  console.error('❌ DISCORD_TOKEN environment variable is not set! Please configure it before starting the bot.');
+  process.exit(1);
+}
+
+initDatabase().then(() => {
+  client.login(TOKEN);
+}).catch(err => {
+  console.error('❌ Failed to start bot due to database initialization error:', err);
+  process.exit(1);
+});
