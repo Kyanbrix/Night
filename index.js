@@ -267,7 +267,7 @@ client.on('messageCreate', async message => {
     const timePlayedStr = formatTimePlayed(tData.firstPlayedAt || joinedDateStr);
     const displayName = tData.customNickname || targetMemberObj?.username || 'Player';
 
-    const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+    const rarityCounts = { SSRP: 0, STR: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
     if (tData.inventory && tData.inventory.chibis) {
       tData.inventory.chibis.forEach(c => {
         if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++;
@@ -879,8 +879,9 @@ client.on('messageCreate', async message => {
         `${rarityIconsMap['U'] || '📦'} **Uncommon (U)**\n• Normal Drop Rate: 12% | Shiny Drop Rate: 0.10%\n\n` +
         `${rarityIconsMap['R'] || '📦'} **Rare (R)**\n• Normal Drop Rate: 7% | Shiny Drop Rate: 0.5%\n\n` +
         `${rarityIconsMap['SR'] || '📦'} **Super Rare (SR)**\n• Normal Drop Rate: 1% | Shiny Drop Rate: 0.1%\n\n` +
-        `${rarityIconsMap['SRR'] || '📦'} **Super Rare Rare (SRR)**\n• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
-        `${rarityIconsMap['UTR'] || '📦'} **Ultra Rare (UTR)**\n• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%`;
+        `${rarityIconsMap['SRR'] || '<:Newsrr1:1573559263627055164>'} **Super Rare Rare (SRR)**\n• Normal Drop Rate: 0.10% | Shiny Drop Rate: 0.0010%\n\n` +
+        `${rarityIconsMap['UTR'] || '<:Newutr1:1573559322527662090>'} **Ultra Rare (UTR)**\n• Normal Drop Rate: 0.001% | Shiny Drop Rate: 0.0001%\n\n` +
+        `${rarityIconsMap['STR'] || '<:Str:1573559367339614348>'} **Special Tier Rare (STR)**\n• Normal Drop Rate: 0.0005% | Shiny Drop Rate: 0.00005%`;
 
       const container = new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(toSmallCaps('# 📊 Chibi Rarities & Drop Rates\n\n') + raritiesInfo)
@@ -1406,7 +1407,8 @@ client.on('messageCreate', async message => {
       for (let i = 0; i < qty; i++) {
         const baseRarityChances = {
           C: { normal: 20, shiny: 1 }, U: { normal: 12, shiny: 0.10 }, R: { normal: 7, shiny: 0.5 },
-          SR: { normal: 1, shiny: 0.1 }, SRR: { normal: 0.10, shiny: 0.0010 }, UTR: { normal: 0.001, shiny: 0.0001 }
+          SR: { normal: 1, shiny: 0.1 }, SRR: { normal: 0.10, shiny: 0.0010 }, UTR: { normal: 0.001, shiny: 0.0001 },
+          STR: { normal: 0.0005, shiny: 0.00005 }
         };
         const adjustedRarities = gameData.rarities.map(r => {
           const cfg = baseRarityChances[r.key] || { normal: r.weight, shiny: 0.1 };
@@ -1555,7 +1557,7 @@ client.on('messageCreate', async message => {
           grouped[key].count++;
         });
         const entries = Object.values(grouped);
-        const rarityRank = { SSRP: 1, UTR: 2, SRR: 3, SR: 4, R: 5, U: 6, C: 7 };
+        const rarityRank = { SSRP: 1, STR: 2, UTR: 3, SRR: 4, SR: 5, R: 6, U: 7, C: 8 };
         if (sortBy === 'rarity') entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
         else if (sortBy === 'alpha') entries.sort((a, b) => a.name.localeCompare(b.name));
         return entries;
