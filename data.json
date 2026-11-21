@@ -17,56 +17,74 @@
     {
       "key": "C",
       "name": "Common",
-      "emoji": "<:common:1571309159679262720>",
-      "weight": 50
+      "emoji": "<:Pcommon:1573802564200300687>",
+      "weight": 35,
+      "normalPct": 35,
+      "shinyPct": 0.0952
     },
     {
       "key": "U",
       "name": "Uncommon",
-      "emoji": "<:uncommon:1571309216000377015>",
-      "weight": 35
+      "emoji": "<:Puncommon:1573802607561015306>",
+      "weight": 15,
+      "normalPct": 15,
+      "shinyPct": 0.0721
     },
     {
       "key": "R",
       "name": "Rare",
-      "emoji": "<:rare:1571309272854171708>",
-      "weight": 15
+      "emoji": "<:Prare:1573802661134864464>",
+      "weight": 8,
+      "normalPct": 8,
+      "shinyPct": 0.0572
     },
     {
       "key": "SR",
-      "name": "Super Rare",
-      "emoji": "<:sr:1571309375895769159>",
-      "weight": 1
+      "name": "SR",
+      "emoji": "<:Psr:1573802765459918889>",
+      "weight": 4,
+      "normalPct": 4,
+      "shinyPct": 0.0217
     },
     {
       "key": "SRR",
-      "name": "Super Super Rare",
-      "emoji": "<:Newsrr1:1573559263627055164>",
-      "weight": 0.1
+      "name": "SRR",
+      "emoji": "<:Psrr:1573802796040585358>",
+      "weight": 1,
+      "normalPct": 1,
+      "shinyPct": 0.0137
     },
     {
       "key": "UTR",
-      "name": "Ultra Rare",
-      "emoji": "<:Newutr1:1573559322527662090>",
-      "weight": 0.01
+      "name": "UTR",
+      "emoji": "<a:Putr:1573802703090614342>",
+      "weight": 0.49,
+      "normalPct": 0.49,
+      "shinyPct": 0.0092
     },
     {
       "key": "STR",
-      "name": "Special Tier Rare",
-      "emoji": "<:Str:1573559367339614348>",
-      "weight": 0.0075
+      "name": "STR",
+      "emoji": "<a:Pstr:1573802859491762237>",
+      "weight": 0.1,
+      "normalPct": 0.1,
+      "shinyPct": 0.0028
     },
     {
-      "key": "SSRP",
-      "name": "Super Ultra Rare",
-      "emoji": "<a:Ssrp:1572096279545126985>",
-      "weight": 0.005
+      "key": "USRR",
+      "name": "USRR",
+      "emoji": "<a:Pusrr:1573802908846264380>",
+      "weight": 0.019,
+      "normalPct": 0.019,
+      "shinyPct": 0.001
     },
     {
-      "key": "UMGR",
-      "name": "Universal Mythic God Rare",
-      "emoji": "<:What:1573806040644980917>",
-      "weight": 0.00001
+      "key": "UGMR",
+      "name": "UGMR",
+      "emoji": "<a:Pugmr:1573802950675923024>",
+      "weight": 0.015,
+      "normalPct": 0.015,
+      "shinyPct": 0.0001
     }
   ],
   "shopDice": [
@@ -378,21 +396,28 @@
     {
       "name": "Str_Vanguard",
       "rarity": "STR",
-      "emoji": "<:Str:1573559367339614348>",
+      "emoji": "<a:Pstr:1573802859491762237>",
       "odds": "1 in 100B",
       "shinyOdds": "1 in 250T"
     },
     {
       "name": "Str_Aegis",
       "rarity": "STR",
-      "emoji": "<:Str:1573559367339614348>",
+      "emoji": "<a:Pstr:1573802859491762237>",
       "odds": "1 in 250B",
       "shinyOdds": "1 in 500T"
     },
     {
-      "name": "Umgr_Ascendant",
-      "rarity": "UMGR",
-      "emoji": "<:What:1573806040644980917>",
+      "name": "Usrr_Sovereign",
+      "rarity": "USRR",
+      "emoji": "<a:Pusrr:1573802908846264380>",
+      "odds": "1 in 500T",
+      "shinyOdds": "1 in 10Qa"
+    },
+    {
+      "name": "Ugmr_Ascendant",
+      "rarity": "UGMR",
+      "emoji": "<a:Pugmr:1573802950675923024>",
       "odds": "1 in 1Qi",
       "shinyOdds": "1 in 10Sx"
     }
@@ -426,13 +451,17 @@
       "normal": { "hp": 400, "atk": 65, "def": 35, "hpPer": 30, "atkPer": 20, "defPer": 17 },
       "shiny": { "hp": 1350, "atk": 132, "def": 85, "hpPer": 94, "atkPer": 27, "defPer": 22 }
     },
+    "USRR": {
+      "normal": { "hp": 500, "atk": 85, "def": 45, "hpPer": 38, "atkPer": 25, "defPer": 20 },
+      "shiny": { "hp": 1750, "atk": 175, "def": 105, "hpPer": 118, "atkPer": 34, "defPer": 27 }
+    },
     "SSRP": {
       "normal": { "hp": 450, "atk": 75, "def": 40, "hpPer": 35, "atkPer": 22, "defPer": 18 },
       "shiny": { "hp": 1500, "atk": 150, "def": 95, "hpPer": 105, "atkPer": 30, "defPer": 24 }
     },
-    "UMGR": {
-      "normal": { "hp": 600, "atk": 105, "def": 55, "hpPer": 45, "atkPer": 30, "defPer": 24 },
-      "shiny": { "hp": 2200, "atk": 220, "def": 130, "hpPer": 140, "atkPer": 42, "defPer": 34 }
+    "UGMR": {
+      "normal": { "hp": 650, "atk": 115, "def": 60, "hpPer": 48, "atkPer": 32, "defPer": 26 },
+      "shiny": { "hp": 2350, "atk": 235, "def": 140, "hpPer": 150, "atkPer": 45, "defPer": 36 }
     }
   },
   "dropTable": [
