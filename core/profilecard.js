@@ -68,6 +68,61 @@ function normalizeText(str) {
     .join('');
 }
 
+function formatElapsedTimePlayed(startInput, nowMs = Date.now()) {
+  let startMs = null;
+
+  if (typeof startInput === 'number' && Number.isFinite(startInput) && startInput > 0) {
+    startMs = startInput;
+  } else if (typeof startInput === 'string' && startInput.trim()) {
+    const parsed = Date.parse(startInput.trim());
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      startMs = parsed;
+    }
+  }
+
+  if (!startMs || nowMs <= startMs) {
+    return '0s';
+  }
+
+  let totalSeconds = Math.floor((nowMs - startMs) / 1000);
+
+  const secInMin = 60;
+  const secInHour = 3600;
+  const secInDay = 86400;
+  const secInWeek = 7 * secInDay;
+  const secInMonth = 30 * secInDay;
+  const secInYear = 365 * secInDay;
+
+  const years = Math.floor(totalSeconds / secInYear);
+  totalSeconds %= secInYear;
+
+  const months = Math.floor(totalSeconds / secInMonth);
+  totalSeconds %= secInMonth;
+
+  const weeks = Math.floor(totalSeconds / secInWeek);
+  totalSeconds %= secInWeek;
+
+  const days = Math.floor(totalSeconds / secInDay);
+  totalSeconds %= secInDay;
+
+  const hours = Math.floor(totalSeconds / secInHour);
+  totalSeconds %= secInHour;
+
+  const minutes = Math.floor(totalSeconds / secInMin);
+  const seconds = totalSeconds % secInMin;
+
+  const parts = [];
+  if (years > 0) parts.push(`${years}y`);
+  if (months > 0) parts.push(`${months}mo`);
+  if (weeks > 0) parts.push(`${weeks}w`);
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+
+  return parts.join(' ');
+}
+
 const THEME_PALETTES = {
   crystal: {
     bgTop: '#0d061c',
@@ -298,7 +353,7 @@ function fitText(ctx, text, maxWidth, fontSize, weight = 'bold') {
   const normalized = normalizeText(text);
   let size = fontSize;
   ctx.font = `${weight} ${size}px ${TEXT_FONT_STACK}`;
-  while (size > 16 && ctx.measureText(normalized).width > maxWidth) {
+  while (size > 14 && ctx.measureText(normalized).width > maxWidth) {
     size -= 2;
     ctx.font = `${weight} ${size}px ${TEXT_FONT_STACK}`;
   }
@@ -317,7 +372,8 @@ async function renderProfileCard({
   betaEmojis = {},
   useBetaStyle = false,
   themeKey = 'crystal',
-  customBgUrl = null
+  customBgUrl = null,
+  timePlayedStr = null
 }) {
   const safeUserData = targetUserData && typeof targetUserData === 'object' ? targetUserData : {};
   const safeSyncedBadges = Array.isArray(syncedBadges) ? syncedBadges : [];
@@ -396,7 +452,7 @@ async function renderProfileCard({
   traceChamferBox(ctx, 36, 36, width - 72, height - 72, 20);
   ctx.stroke();
 
-  // Main translucent container (more transparent when custom BG is active)
+  // Main translucent container
   ctx.fillStyle = customBgImg ? 'rgba(9, 6, 20, 0.28)' : palette.panelFill;
   traceChamferBox(ctx, 46, 46, width - 92, height - 92, 16);
   ctx.fill();
@@ -429,18 +485,41 @@ async function renderProfileCard({
   }
   ctx.restore();
 
-  // User identity & join date
+  // User identity, join date, Best roll & Timeplayed
   ctx.save();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
   const rawDisplay = displayName || targetMember?.username || 'Player';
-  const safeHandle = fitText(ctx, `@${rawDisplay}`, 560, 42, 'bold');
-  ctx.fillText(safeHandle, 82, 120);
+  const safeHandle = fitText(ctx, `@${rawDisplay}`, 265, 38, 'bold');
+  ctx.fillText(safeHandle, 82, 114);
 
   ctx.fillStyle = palette.subText;
-  ctx.font = `bold 26px ${TEXT_FONT_STACK}`;
-  ctx.fillText(normalizeText(`[${joinedDateStr}]`), 82, 162);
+  ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
+  ctx.fillText(normalizeText(`[${joinedDateStr}]`), 82, 152);
+
+  // Vertical separator bar between identity/join-date and Best roll / Timeplayed
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(358, 82);
+  ctx.lineTo(358, 160);
+  ctx.stroke();
+
+  const bestRollDisplay = safeUserData.bestRoll && String(safeUserData.bestRoll).trim()
+    ? String(safeUserData.bestRoll).trim()
+    : 'None';
+
+  const computedTimePlayed = timePlayedStr
+    || formatElapsedTimePlayed(safeUserData.firstPlayedAt || joinedDateStr);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold 22px ${TEXT_FONT_STACK}`;
+  ctx.fillText(fitText(ctx, `Best roll: ${bestRollDisplay}`, 295, 22, 'bold'), 374, 112);
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = `bold 20px ${TEXT_FONT_STACK}`;
+  ctx.fillText(fitText(ctx, `Timeplayed: ${computedTimePlayed}`, 295, 20, 'bold'), 374, 148);
 
   // USER BADGES row
   ctx.fillStyle = '#ffffff';
@@ -608,5 +687,6 @@ async function renderProfileCard({
 module.exports = {
   renderProfileCard,
   THEME_PALETTES,
-  hasSupporterOrNitro
+  hasSupporterOrNitro,
+  formatElapsedTimePlayed
 };
