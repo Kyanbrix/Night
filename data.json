@@ -1,1 +1,470 @@
-{"settings":{"shinyChance":1e-7,"maxRollQuantity":25,"dropCooldownSeconds":10,"battleTimeoutMinutes":2,"tradeTimeoutMinutes":5,"userExpBase":2000,"userExpPerLevel":500,"normalChibiExpBase":1500,"normalChibiExpPerLevel":450,"shinyChibiExpBase":2500,"shinyChibiExpPerLevel":600,"weatherIntervalMinutes":30},"rarities":[{"key":"C","name":"Common","emoji":"<:common:1571309159679262720>","weight":50},{"key":"U","name":"Uncommon","emoji":"<:uncommon:1571309216000377015>","weight":35},{"key":"R","name":"Rare","emoji":"<:rare:1571309272854171708>","weight":15},{"key":"SR","name":"Super Rare","emoji":"<:sr:1571309375895769159>","weight":1},{"key":"SRR","name":"Super Super Rare","emoji":"<:Newsrr1:1573559263627055164>","weight":0.1},{"key":"UTR","name":"Ultra Rare","emoji":"<:Newutr1:1573559322527662090>","weight":0.01},{"key":"STR","name":"Special Tier Rare","emoji":"<:Str:1573559367339614348>","weight":0.0075},{"key":"SSRP","name":"Super Ultra Rare","emoji":"<a:Ssrp:1572096279545126985>","weight":0.005},{"key":"UMGR","name":"Universal Mythic God Rare","emoji":"<:What:1573806040644980917>","weight":0.00001}],"shopDice":[{"id":"zenith","name":"Zenith Dice","emoji":"<:Zenithdice:1573808579042087044>","cost":1000000,"costDisplay":"1M","luckPercent":1000,"restriction":"cash"},{"id":"archangel","name":"Archangel Dice","emoji":"<:Archangeldice:1573808666040209580>","cost":10000000,"costDisplay":"10M","luckPercent":5000,"restriction":"cash"},{"id":"galactic","name":"Galactic Dice","emoji":"<:Galacticdice:1573808816397750282>","cost":50000000,"costDisplay":"50M","luckPercent":15000,"restriction":"cash"},{"id":"inferno","name":"Inferno Dice","emoji":"<:Infernodice:1573809040322986027>","cost":200000000,"costDisplay":"200M","luckPercent":30000,"restriction":"cash"},{"id":"demigod","name":"Demigod Dice","emoji":"<:Demigoddice:1573809108543340638>","cost":500000000,"costDisplay":"500M","luckPercent":45000,"restriction":"cash"},{"id":"rainbow","name":"Rainbow Dice","emoji":"<:Rainbowdice:1573809197542285412>","cost":2000000000,"costDisplay":"2B","luckPercent":60000,"restriction":"cash"},{"id":"gradient","name":"Gradient Dice","emoji":"<:Gardientdice:1573809254891003954>","cost":10000000000,"costDisplay":"10B","luckPercent":100000,"restriction":"cash"},{"id":"hacker","name":"Hacker Dice","emoji":"<:Hackerdice:1573809319420367028>","cost":25000000000,"costDisplay":"25B","luckPercent":500000,"restriction":"cash"},{"id":"nosleep","name":"NoSleep Dice","emoji":"<:Nosleepdice:1573809380569120800>","cost":50000000000,"costDisplay":"50B","luckPercent":1000000,"restriction":"cash"},{"id":"supporter","name":"Supporter Dice","emoji":"<:Supporterdice:1573809498299048070>","cost":0,"costDisplay":"Supporter","luckPercent":3500000,"restriction":"supporter"},{"id":"glitch","name":"Glitch Dice","emoji":"<:Glitchdice:1573809577298886836>","cost":500000000000,"costDisplay":"500B","luckPercent":25000000,"restriction":"cash"},{"id":"developer","name":"Developer Dice","emoji":"<:Developerdice:1573809636543434932>","cost":0,"costDisplay":"Developer","luckPercent":1,"restriction":"developer"}],"weatherEvents":[{"id":"blue_luck","name":"Blue Luck","emoji":"<:Blueluck:1573809712041038035>","chancePercent":35,"luckBonusPercent":30,"description":"A calm azure breeze settles over the roll arena, granting +30% of your current luck."},{"id":"purple_luck","name":"Purple Luck","emoji":"<:Purpleluck:1573809925874786507>","chancePercent":20,"luckBonusPercent":50,"description":"Violet rift sparks drift across the dice table, granting +50% of your current luck."},{"id":"yellow_luck","name":"Yellow Luck","emoji":"<:Yellowluck:1573809988646735952>","chancePercent":10,"luckBonusPercent":70,"description":"Golden sunbeams charge the atmosphere with fortune, granting +70% of your current luck."},{"id":"gradient_luck","name":"Gradient Luck","emoji":"<:Gardientlucl:1573810062365827237>","chancePercent":1,"luckBonusPercent":100,"description":"Prismatic waves surge through the realm, doubling your current luck (+100%)."},{"id":"rainbow_luck","name":"Rainbow Luck","emoji":"<:Rainbowlucl:1573810125632831498>","chancePercent":0.1,"luckBonusPercent":500,"description":"A rare celestial rainbow erupts across the sky, unleashing +500% of your current luck."}],"eventChibis":[{"id":"1","name":"Cat Event","rarity":"SSRP","emoji":"<a:Cat_event:1572106344511569990>","cost":100,"odds":"1 in 500B","shinyOdds":"1 in 1Qa"},{"id":"2","name":"Doge Event","rarity":"SSRP","emoji":"<a:Doge_event:1572106275578319009>","cost":120,"odds":"1 in 1T","shinyOdds":"1 in 20Qa"},{"id":"3","name":"Troll Event","rarity":"SSRP","emoji":"<a:Troll_event:1572106181013545092>","cost":200,"odds":"1 in 30T","shinyOdds":"1 in 50Qa"},{"id":"4","name":"Frien Event","rarity":"SSRP","emoji":"<a:Frien_event:1572049331366928504>","cost":350,"odds":"1 in 100T","shinyOdds":"1 in 300Qa"},{"id":"5","name":"Seren Event","rarity":"SSRP","emoji":"<a:Seren_event:1572049443765751939>","cost":550,"odds":"1 in 500T","shinyOdds":"1 in 750Qa"},{"id":"6","name":"Hellkitty Event","rarity":"SSRP","emoji":"<a:Hellkitty_event:1572049176915742822>","cost":650,"odds":"1 in 5Qa","shinyOdds":"1 in 15Qi"},{"id":"7","name":"Mezz Event","rarity":"SSRP","emoji":"<a:Mezz_event:1572049078001340517>","cost":750,"odds":"1 in 75Qa","shinyOdds":"1 in 500Qi"},{"id":"8","name":"Ruru Event","rarity":"SSRP","emoji":"<a:ruru_event:1572048951786344448>","cost":1000,"odds":"1 in 250Qa","shinyOdds":"1 in 10Sx"},{"id":"9","name":"Zoprb Event","rarity":"SSRP","emoji":"<a:Zoprb_event:1572051059528958054>","cost":3000,"odds":"1 in 1Qi","shinyOdds":"1 in 100Sx"},{"id":"10","name":"Kazerb Event","rarity":"SSRP","emoji":"<a:Kazerb_event:1572050964192563281>","cost":4500,"odds":"1 in 500Qi","shinyOdds":"1 in 50Sp"},{"id":"11","name":"Georb Event","rarity":"SSRP","emoji":"<a:Georb_event:1572050282123366410>","cost":5000,"odds":"1 in 10Sp","shinyOdds":"1 in 50No"}],"chibis":[{"name":"Pampam","rarity":"C","emoji":"<:pampam:1571309970425651280>","odds":"1 in 30","shinyOdds":"1 in 10K"},{"name":"Maisa","rarity":"C","emoji":"<:maisa:1571310872662642728>","odds":"1 in 150","shinyOdds":"1 in 25K"},{"name":"Powey","rarity":"C","emoji":"<:powey:1571311363895328838>","odds":"1 in 400","shinyOdds":"1 in 150K"},{"name":"Frey","rarity":"C","emoji":"<:frey:1571309910673592380>","odds":"1 in 1K","shinyOdds":"1 in 500K"},{"name":"Mer","rarity":"U","emoji":"<:mer:1571309847293460510>","odds":"1 in 7K","shinyOdds":"1 in 5M"},{"name":"Betty","rarity":"U","emoji":"<:betty:1571310808049127565>","odds":"1 in 10K","shinyOdds":"1 in 15M"},{"name":"Tina","rarity":"U","emoji":"<:tina:1571310933505085540>","odds":"1 in 13K","shinyOdds":"1 in 25M"},{"name":"Ley","rarity":"U","emoji":"<:ley:1571311143757291592>","odds":"1 in 20K","shinyOdds":"1 in 50M"},{"name":"Kazuto","rarity":"R","emoji":"<:kazuto:1571309601872412843>","odds":"1 in 50K","shinyOdds":"1 in 80M"},{"name":"Ellie","rarity":"R","emoji":"<:ellie:1571310327746793532>","odds":"1 in 100K","shinyOdds":"1 in 150M"},{"name":"Kriz","rarity":"R","emoji":"<:kriz:1571310094048694292>","odds":"1 in 150K","shinyOdds":"1 in 300M"},{"name":"Hajime","rarity":"R","emoji":"<:hajime:1571310497066782951>","odds":"1 in 300K","shinyOdds":"1 in 500M"},{"name":"Pem","rarity":"SR","emoji":"<:pem:1571310654713896990>","odds":"1 in 500K","shinyOdds":"1 in 1B"},{"name":"Al_Mezu","rarity":"SR","emoji":"<:al_mezu:1571309748970717285>","odds":"1 in 750K","shinyOdds":"1 in 3B"},{"name":"Ev_Kazuto","rarity":"SR","emoji":"<:ev_kazuto:1571309671468241059>","odds":"1 in 1M","shinyOdds":"1 in 10B"},{"name":"Miku","rarity":"SRR","emoji":"<:miku:1571310441307705446>","odds":"1 in 1M","shinyOdds":"1 in 30B"},{"name":"Cute_Lily","rarity":"SRR","emoji":"<:cute_lily:1571311234131824740>","odds":"1 in 10M","shinyOdds":"1 in 50B"},{"name":"Angry_Angela","rarity":"SRR","emoji":"<:angry_angela:1571310235182698598>","odds":"1 in 50M","shinyOdds":"1 in 100B"},{"name":"Nyxzin","rarity":"UTR","emoji":"<:nyxzin:1571311098114609202>","odds":"1 in 50B","shinyOdds":"1 in 50T"},{"name":"Nyrin","rarity":"UTR","emoji":"<:nyrin:1571310593544032459>","odds":"1 in 1B","shinyOdds":"1 in 100T"},{"name":"Str_Vanguard","rarity":"STR","emoji":"<:Str:1573559367339614348>","odds":"1 in 100B","shinyOdds":"1 in 250T"},{"name":"Str_Aegis","rarity":"STR","emoji":"<:Str:1573559367339614348>","odds":"1 in 250B","shinyOdds":"1 in 500T"},{"name":"Umgr_Ascendant","rarity":"UMGR","emoji":"<:What:1573806040644980917>","odds":"1 in 1Qi","shinyOdds":"1 in 10Sx"}],"stats":{"C":{"normal":{"hp":120,"atk":6,"def":3,"hpPer":4,"atkPer":2,"defPer":1},"shiny":{"hp":160,"atk":15,"def":7,"hpPer":10,"atkPer":5,"defPer":3}},"U":{"normal":{"hp":150,"atk":9,"def":5,"hpPer":6,"atkPer":8,"defPer":5},"shiny":{"hp":200,"atk":14,"def":9,"hpPer":12,"atkPer":9,"defPer":7}},"R":{"normal":{"hp":180,"atk":12,"def":7,"hpPer":16,"atkPer":9,"defPer":8},"shiny":{"hp":220,"atk":15,"def":9,"hpPer":21,"atkPer":13,"defPer":10}},"SR":{"normal":{"hp":210,"atk":21,"def":13,"hpPer":13,"atkPer":11,"defPer":9},"shiny":{"hp":520,"atk":45,"def":29,"hpPer":30,"atkPer":18,"defPer":15}},"SRR":{"normal":{"hp":270,"atk":26,"def":18,"hpPer":17,"atkPer":14,"defPer":12},"shiny":{"hp":640,"atk":61,"def":37,"hpPer":54,"atkPer":22,"defPer":19}},"UTR":{"normal":{"hp":350,"atk":55,"def":30,"hpPer":25,"atkPer":17,"defPer":15},"shiny":{"hp":1200,"atk":115,"def":75,"hpPer":83,"atkPer":23,"defPer":19}},"STR":{"normal":{"hp":400,"atk":65,"def":35,"hpPer":30,"atkPer":20,"defPer":17},"shiny":{"hp":1350,"atk":132,"def":85,"hpPer":94,"atkPer":27,"defPer":22}},"SSRP":{"normal":{"hp":450,"atk":75,"def":40,"hpPer":35,"atkPer":22,"defPer":18},"shiny":{"hp":1500,"atk":150,"def":95,"hpPer":105,"atkPer":30,"defPer":24}},"UMGR":{"normal":{"hp":600,"atk":105,"def":55,"hpPer":45,"atkPer":30,"defPer":24},"shiny":{"hp":2200,"atk":220,"def":130,"hpPer":140,"atkPer":42,"defPer":34}}},"dropTable":[{"name":"Normal Drop","emoji":"📉","dice":1,"weight":60},{"name":"Rare Drop","emoji":"🎉","dice":3,"weight":10},{"name":"Epic Drop","emoji":"💎","dice":5,"weight":3},{"name":"Legendary Drop","emoji":"🍀","dice":10,"weight":1},{"name":"Extreme Drop","emoji":"☠️","dice":50,"weight":0.001}]}
+{
+  "settings": {
+    "shinyChance": 1e-07,
+    "maxRollQuantity": 25,
+    "dropCooldownSeconds": 10,
+    "battleTimeoutMinutes": 2,
+    "tradeTimeoutMinutes": 5,
+    "userExpBase": 2000,
+    "userExpPerLevel": 500,
+    "normalChibiExpBase": 1500,
+    "normalChibiExpPerLevel": 450,
+    "shinyChibiExpBase": 2500,
+    "shinyChibiExpPerLevel": 600,
+    "weatherIntervalMinutes": 30
+  },
+  "rarities": [
+    {
+      "key": "C",
+      "name": "Common",
+      "emoji": "<:common:1571309159679262720>",
+      "weight": 50
+    },
+    {
+      "key": "U",
+      "name": "Uncommon",
+      "emoji": "<:uncommon:1571309216000377015>",
+      "weight": 35
+    },
+    {
+      "key": "R",
+      "name": "Rare",
+      "emoji": "<:rare:1571309272854171708>",
+      "weight": 15
+    },
+    {
+      "key": "SR",
+      "name": "Super Rare",
+      "emoji": "<:sr:1571309375895769159>",
+      "weight": 1
+    },
+    {
+      "key": "SRR",
+      "name": "Super Super Rare",
+      "emoji": "<:Newsrr1:1573559263627055164>",
+      "weight": 0.1
+    },
+    {
+      "key": "UTR",
+      "name": "Ultra Rare",
+      "emoji": "<:Newutr1:1573559322527662090>",
+      "weight": 0.01
+    },
+    {
+      "key": "STR",
+      "name": "Special Tier Rare",
+      "emoji": "<:Str:1573559367339614348>",
+      "weight": 0.0075
+    },
+    {
+      "key": "SSRP",
+      "name": "Super Ultra Rare",
+      "emoji": "<a:Ssrp:1572096279545126985>",
+      "weight": 0.005
+    },
+    {
+      "key": "UMGR",
+      "name": "Universal Mythic God Rare",
+      "emoji": "<:What:1573806040644980917>",
+      "weight": 0.00001
+    }
+  ],
+  "shopDice": [
+    {
+      "id": "zenith",
+      "name": "Zenith Dice",
+      "emoji": "<:Zenithdice:1573808579042087044>",
+      "cost": 1000000,
+      "costDisplay": "1M",
+      "luckPercent": 1000,
+      "restriction": "cash"
+    },
+    {
+      "id": "archangel",
+      "name": "Archangel Dice",
+      "emoji": "<:Archangeldice:1573808666040209580>",
+      "cost": 10000000,
+      "costDisplay": "10M",
+      "luckPercent": 5000,
+      "restriction": "cash"
+    },
+    {
+      "id": "galactic",
+      "name": "Galactic Dice",
+      "emoji": "<:Galacticdice:1573808816397750282>",
+      "cost": 50000000,
+      "costDisplay": "50M",
+      "luckPercent": 15000,
+      "restriction": "cash"
+    },
+    {
+      "id": "inferno",
+      "name": "Inferno Dice",
+      "emoji": "<:Infernodice:1573809040322986027>",
+      "cost": 200000000,
+      "costDisplay": "200M",
+      "luckPercent": 30000,
+      "restriction": "cash"
+    },
+    {
+      "id": "demigod",
+      "name": "Demigod Dice",
+      "emoji": "<:Demigoddice:1573809108543340638>",
+      "cost": 500000000,
+      "costDisplay": "500M",
+      "luckPercent": 45000,
+      "restriction": "cash"
+    },
+    {
+      "id": "rainbow",
+      "name": "Rainbow Dice",
+      "emoji": "<:Rainbowdice:1573809197542285412>",
+      "cost": 2000000000,
+      "costDisplay": "2B",
+      "luckPercent": 60000,
+      "restriction": "cash"
+    },
+    {
+      "id": "gradient",
+      "name": "Gradient Dice",
+      "emoji": "<:Gardientdice:1573809254891003954>",
+      "cost": 10000000000,
+      "costDisplay": "10B",
+      "luckPercent": 100000,
+      "restriction": "cash"
+    },
+    {
+      "id": "hacker",
+      "name": "Hacker Dice",
+      "emoji": "<:Hackerdice:1573809319420367028>",
+      "cost": 25000000000,
+      "costDisplay": "25B",
+      "luckPercent": 500000,
+      "restriction": "cash"
+    },
+    {
+      "id": "nosleep",
+      "name": "NoSleep Dice",
+      "emoji": "<:Nosleepdice:1573809380569120800>",
+      "cost": 50000000000,
+      "costDisplay": "50B",
+      "luckPercent": 1000000,
+      "restriction": "cash"
+    },
+    {
+      "id": "supporter",
+      "name": "Supporter Dice",
+      "emoji": "<:Supporterdice:1573809498299048070>",
+      "cost": 0,
+      "costDisplay": "Supporter",
+      "luckPercent": 3500000,
+      "restriction": "supporter"
+    },
+    {
+      "id": "glitch",
+      "name": "Glitch Dice",
+      "emoji": "<:Glitchdice:1573809577298886836>",
+      "cost": 500000000000,
+      "costDisplay": "500B",
+      "luckPercent": 25000000,
+      "restriction": "cash"
+    },
+    {
+      "id": "developer",
+      "name": "Developer Dice",
+      "emoji": "<:Developerdice:1573809636543434932>",
+      "cost": 0,
+      "costDisplay": "Developer",
+      "luckPercent": 1,
+      "restriction": "developer"
+    }
+  ],
+  "weatherEvents": [
+    {
+      "id": "blue_luck",
+      "name": "Blue Luck",
+      "emoji": "<:Blueluck:1573809712041038035>",
+      "chancePercent": 35,
+      "luckBonusPercent": 30,
+      "description": "A calm azure breeze settles over the roll arena, granting +30% of your current luck."
+    },
+    {
+      "id": "purple_luck",
+      "name": "Purple Luck",
+      "emoji": "<:Purpleluck:1573809925874786507>",
+      "chancePercent": 20,
+      "luckBonusPercent": 50,
+      "description": "Violet rift sparks drift across the dice table, granting +50% of your current luck."
+    },
+    {
+      "id": "yellow_luck",
+      "name": "Yellow Luck",
+      "emoji": "<:Yellowluck:1573809988646735952>",
+      "chancePercent": 10,
+      "luckBonusPercent": 70,
+      "description": "Golden sunbeams charge the atmosphere with fortune, granting +70% of your current luck."
+    },
+    {
+      "id": "gradient_luck",
+      "name": "Gradient Luck",
+      "emoji": "<:Gardientlucl:1573810062365827237>",
+      "chancePercent": 1,
+      "luckBonusPercent": 100,
+      "description": "Prismatic waves surge through the realm, doubling your current luck (+100%)."
+    },
+    {
+      "id": "rainbow_luck",
+      "name": "Rainbow Luck",
+      "emoji": "<:Rainbowlucl:1573810125632831498>",
+      "chancePercent": 0.1,
+      "luckBonusPercent": 500,
+      "description": "A rare celestial rainbow erupts across the sky, unleashing +500% of your current luck."
+    }
+  ],
+  "eventChibis": [
+    { "id": "1", "name": "Cat Event", "rarity": "SSRP", "emoji": "<a:Cat_event:1572106344511569990>", "cost": 100, "odds": "1 in 500B", "shinyOdds": "1 in 1Qa" },
+    { "id": "2", "name": "Doge Event", "rarity": "SSRP", "emoji": "<a:Doge_event:1572106275578319009>", "cost": 120, "odds": "1 in 1T", "shinyOdds": "1 in 20Qa" },
+    { "id": "3", "name": "Troll Event", "rarity": "SSRP", "emoji": "<a:Troll_event:1572106181013545092>", "cost": 200, "odds": "1 in 30T", "shinyOdds": "1 in 50Qa" },
+    { "id": "4", "name": "Frien Event", "rarity": "SSRP", "emoji": "<a:Frien_event:1572049331366928504>", "cost": 350, "odds": "1 in 100T", "shinyOdds": "1 in 300Qa" },
+    { "id": "5", "name": "Seren Event", "rarity": "SSRP", "emoji": "<a:Seren_event:1572049443765751939>", "cost": 550, "odds": "1 in 500T", "shinyOdds": "1 in 750Qa" },
+    { "id": "6", "name": "Hellkitty Event", "rarity": "SSRP", "emoji": "<a:Hellkitty_event:1572049176915742822>", "cost": 650, "odds": "1 in 5Qa", "shinyOdds": "1 in 15Qi" },
+    { "id": "7", "name": "Mezz Event", "rarity": "SSRP", "emoji": "<a:Mezz_event:1572049078001340517>", "cost": 750, "odds": "1 in 75Qa", "shinyOdds": "1 in 500Qi" },
+    { "id": "8", "name": "Ruru Event", "rarity": "SSRP", "emoji": "<a:ruru_event:1572048951786344448>", "cost": 1000, "odds": "1 in 250Qa", "shinyOdds": "1 in 10Sx" },
+    { "id": "9", "name": "Zoprb Event", "rarity": "SSRP", "emoji": "<a:Zoprb_event:1572051059528958054>", "cost": 3000, "odds": "1 in 1Qi", "shinyOdds": "1 in 100Sx" },
+    { "id": "10", "name": "Kazerb Event", "rarity": "SSRP", "emoji": "<a:Kazerb_event:1572050964192563281>", "cost": 4500, "odds": "1 in 500Qi", "shinyOdds": "1 in 50Sp" },
+    { "id": "11", "name": "Georb Event", "rarity": "SSRP", "emoji": "<a:Georb_event:1572050282123366410>", "cost": 5000, "odds": "1 in 10Sp", "shinyOdds": "1 in 50No" }
+  ],
+  "chibis": [
+    {
+      "name": "Pampam",
+      "rarity": "C",
+      "emoji": "<:pampam:1571309970425651280>",
+      "odds": "1 in 30",
+      "shinyOdds": "1 in 10K"
+    },
+    {
+      "name": "Maisa",
+      "rarity": "C",
+      "emoji": "<:maisa:1571310872662642728>",
+      "odds": "1 in 150",
+      "shinyOdds": "1 in 25K"
+    },
+    {
+      "name": "Powey",
+      "rarity": "C",
+      "emoji": "<:powey:1571311363895328838>",
+      "odds": "1 in 400",
+      "shinyOdds": "1 in 150K"
+    },
+    {
+      "name": "Frey",
+      "rarity": "C",
+      "emoji": "<:frey:1571309910673592380>",
+      "odds": "1 in 1K",
+      "shinyOdds": "1 in 500K"
+    },
+    {
+      "name": "Mer",
+      "rarity": "U",
+      "emoji": "<:mer:1571309847293460510>",
+      "odds": "1 in 7K",
+      "shinyOdds": "1 in 5M"
+    },
+    {
+      "name": "Betty",
+      "rarity": "U",
+      "emoji": "<:betty:1571310808049127565>",
+      "odds": "1 in 10K",
+      "shinyOdds": "1 in 15M"
+    },
+    {
+      "name": "Tina",
+      "rarity": "U",
+      "emoji": "<:tina:1571310933505085540>",
+      "odds": "1 in 13K",
+      "shinyOdds": "1 in 25M"
+    },
+    {
+      "name": "Ley",
+      "rarity": "U",
+      "emoji": "<:ley:1571311143757291592>",
+      "odds": "1 in 20K",
+      "shinyOdds": "1 in 50M"
+    },
+    {
+      "name": "Kazuto",
+      "rarity": "R",
+      "emoji": "<:kazuto:1571309601872412843>",
+      "odds": "1 in 50K",
+      "shinyOdds": "1 in 80M"
+    },
+    {
+      "name": "Ellie",
+      "rarity": "R",
+      "emoji": "<:ellie:1571310327746793532>",
+      "odds": "1 in 100K",
+      "shinyOdds": "1 in 150M"
+    },
+    {
+      "name": "Kriz",
+      "rarity": "R",
+      "emoji": "<:kriz:1571310094048694292>",
+      "odds": "1 in 150K",
+      "shinyOdds": "1 in 300M"
+    },
+    {
+      "name": "Hajime",
+      "rarity": "R",
+      "emoji": "<:hajime:1571310497066782951>",
+      "odds": "1 in 300K",
+      "shinyOdds": "1 in 500M"
+    },
+    {
+      "name": "Pem",
+      "rarity": "SR",
+      "emoji": "<:pem:1571310654713896990>",
+      "odds": "1 in 500K",
+      "shinyOdds": "1 in 1B"
+    },
+    {
+      "name": "Al_Mezu",
+      "rarity": "SR",
+      "emoji": "<:al_mezu:1571309748970717285>",
+      "odds": "1 in 750K",
+      "shinyOdds": "1 in 3B"
+    },
+    {
+      "name": "Ev_Kazuto",
+      "rarity": "SR",
+      "emoji": "<:ev_kazuto:1571309671468241059>",
+      "odds": "1 in 1M",
+      "shinyOdds": "1 in 10B"
+    },
+    {
+      "name": "Miku",
+      "rarity": "SRR",
+      "emoji": "<:miku:1571310441307705446>",
+      "odds": "1 in 1M",
+      "shinyOdds": "1 in 30B"
+    },
+    {
+      "name": "Cute_Lily",
+      "rarity": "SRR",
+      "emoji": "<:cute_lily:1571311234131824740>",
+      "odds": "1 in 10M",
+      "shinyOdds": "1 in 50B"
+    },
+    {
+      "name": "Angry_Angela",
+      "rarity": "SRR",
+      "emoji": "<:angry_angela:1571310235182698598>",
+      "odds": "1 in 50M",
+      "shinyOdds": "1 in 100B"
+    },
+    {
+      "name": "Nyxzin",
+      "rarity": "UTR",
+      "emoji": "<:nyxzin:1571311098114609202>",
+      "odds": "1 in 50B",
+      "shinyOdds": "1 in 50T"
+    },
+    {
+      "name": "Nyrin",
+      "rarity": "UTR",
+      "emoji": "<:nyrin:1571310593544032459>",
+      "odds": "1 in 1B",
+      "shinyOdds": "1 in 100T"
+    },
+    {
+      "name": "Str_Vanguard",
+      "rarity": "STR",
+      "emoji": "<:Str:1573559367339614348>",
+      "odds": "1 in 100B",
+      "shinyOdds": "1 in 250T"
+    },
+    {
+      "name": "Str_Aegis",
+      "rarity": "STR",
+      "emoji": "<:Str:1573559367339614348>",
+      "odds": "1 in 250B",
+      "shinyOdds": "1 in 500T"
+    },
+    {
+      "name": "Umgr_Ascendant",
+      "rarity": "UMGR",
+      "emoji": "<:What:1573806040644980917>",
+      "odds": "1 in 1Qi",
+      "shinyOdds": "1 in 10Sx"
+    }
+  ],
+  "stats": {
+    "C": {
+      "normal": { "hp": 120, "atk": 6, "def": 3, "hpPer": 4, "atkPer": 2, "defPer": 1 },
+      "shiny": { "hp": 160, "atk": 15, "def": 7, "hpPer": 10, "atkPer": 5, "defPer": 3 }
+    },
+    "U": {
+      "normal": { "hp": 150, "atk": 9, "def": 5, "hpPer": 6, "atkPer": 8, "defPer": 5 },
+      "shiny": { "hp": 200, "atk": 14, "def": 9, "hpPer": 12, "atkPer": 9, "defPer": 7 }
+    },
+    "R": {
+      "normal": { "hp": 180, "atk": 12, "def": 7, "hpPer": 16, "atkPer": 9, "defPer": 8 },
+      "shiny": { "hp": 220, "atk": 15, "def": 9, "hpPer": 21, "atkPer": 13, "defPer": 10 }
+    },
+    "SR": {
+      "normal": { "hp": 210, "atk": 21, "def": 13, "hpPer": 13, "atkPer": 11, "defPer": 9 },
+      "shiny": { "hp": 520, "atk": 45, "def": 29, "hpPer": 30, "atkPer": 18, "defPer": 15 }
+    },
+    "SRR": {
+      "normal": { "hp": 270, "atk": 26, "def": 18, "hpPer": 17, "atkPer": 14, "defPer": 12 },
+      "shiny": { "hp": 640, "atk": 61, "def": 37, "hpPer": 54, "atkPer": 22, "defPer": 19 }
+    },
+    "UTR": {
+      "normal": { "hp": 350, "atk": 55, "def": 30, "hpPer": 25, "atkPer": 17, "defPer": 15 },
+      "shiny": { "hp": 1200, "atk": 115, "def": 75, "hpPer": 83, "atkPer": 23, "defPer": 19 }
+    },
+    "STR": {
+      "normal": { "hp": 400, "atk": 65, "def": 35, "hpPer": 30, "atkPer": 20, "defPer": 17 },
+      "shiny": { "hp": 1350, "atk": 132, "def": 85, "hpPer": 94, "atkPer": 27, "defPer": 22 }
+    },
+    "SSRP": {
+      "normal": { "hp": 450, "atk": 75, "def": 40, "hpPer": 35, "atkPer": 22, "defPer": 18 },
+      "shiny": { "hp": 1500, "atk": 150, "def": 95, "hpPer": 105, "atkPer": 30, "defPer": 24 }
+    },
+    "UMGR": {
+      "normal": { "hp": 600, "atk": 105, "def": 55, "hpPer": 45, "atkPer": 30, "defPer": 24 },
+      "shiny": { "hp": 2200, "atk": 220, "def": 130, "hpPer": 140, "atkPer": 42, "defPer": 34 }
+    }
+  },
+  "dropTable": [
+    {
+      "name": "Normal Drop",
+      "emoji": "📉",
+      "dice": 1,
+      "weight": 60
+    },
+    {
+      "name": "Rare Drop",
+      "emoji": "🎉",
+      "dice": 3,
+      "weight": 10
+    },
+    {
+      "name": "Epic Drop",
+      "emoji": "💎",
+      "dice": 5,
+      "weight": 3
+    },
+    {
+      "name": "Legendary Drop",
+      "emoji": "🍀",
+      "dice": 10,
+      "weight": 1
+    },
+    {
+      "name": "Extreme Drop",
+      "emoji": "☠️",
+      "dice": 50,
+      "weight": 0.001
+    }
+  ]
+}
