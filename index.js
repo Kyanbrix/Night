@@ -18,7 +18,7 @@ const {
   getClanLogoListText, getClanMemberRole, pushClanMail, parseDurationToMs, formatTimeRemaining,
   addExpAndLevelUp, parseOddsNumber
 } = require('./core/helpers');
-const { renderProfileCard, THEME_PALETTES, hasSupporterOrNitro } = require('./core/profileCard');
+const { renderProfileCard, THEME_PALETTES, hasSupporterOrNitro } = require('./core/profilecard');
 
 const client = new Client({
   intents: [
@@ -538,7 +538,8 @@ client.on('messageCreate', async message => {
           inventory: { chibis: [], items: { spray: 0, clover: 0 } }, team: [null, null, null],
           equippedChibi: null, bestRoll: 'None', bestRollTier: 0, bestRollVal: 0, bestChibi: null,
           userLevel: 1, userExp: 0, lastDrop: 0, todayDrops: 0, lastDaily: 0, streak: 0,
-          permissions: (uId === db.config.ownerId ? true : false), customStatus: null, badges: [], clanMail: []
+          permissions: (uId === db.config.ownerId ? true : false), customStatus: null, badges: [], clanMail: [],
+          customBg: null, profileBg: null, profileBgTheme: 'crystal'
         };
       }
       db.clans = {};
@@ -812,6 +813,57 @@ client.on('messageCreate', async message => {
       return message.reply(toSmallCaps(`✅ Successfully updated your profile background theme to **${chosenTheme}**!`));
     }
 
+    if (command === 'setbg') {
+      if (!Array.isArray(user.badges)) user.badges = [];
+      const syncedBadges = await evaluateAndSyncUserBadges(userId, user, message.guild);
+      const canUseBgPerk = hasSupporterOrNitro(user, syncedBadges);
+
+      if (!canUseBgPerk) {
+        return message.reply(
+          toSmallCaps('❌ Custom profile image backgrounds are exclusively for **Beta Supporter** and **Nitro** badge holders!')
+        );
+      }
+
+      const subArg = (args[0] || '').trim().toLowerCase();
+      if (!subArg && !message.attachments?.first()) {
+        return message.reply(toSmallCaps(
+          `🖼️ **Custom Profile Background (Supporter & Nitro Perk)**\n` +
+          `Current BG: ${user.customBg ? 'Set ✅' : 'None'}\n` +
+          `Usage: \`${currentPrefix}setbg <image_url>\`, attach an image with \`${currentPrefix}setbg\`, or \`${currentPrefix}setbg clear\``
+        ));
+      }
+
+      if (subArg === 'clear' || subArg === 'reset' || subArg === 'remove') {
+        user.customBg = null;
+        await saveUsers();
+        return message.reply(toSmallCaps('✅ Cleared your custom profile background image!'));
+      }
+
+      const attachment = message.attachments?.first();
+      const rawUrl = attachment?.url || args[0]?.trim();
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(rawUrl);
+      } catch {
+        return message.reply(toSmallCaps('❌ Please provide a valid image URL (`https://...`) or attach an image file!'));
+      }
+
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        return message.reply(toSmallCaps('❌ Image URL must start with `http://` or `https://`.'));
+      }
+
+      const isImageAttachment = attachment?.contentType?.startsWith('image/');
+      const hasImageExt = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(parsedUrl.pathname);
+      if (!isImageAttachment && !hasImageExt) {
+        return message.reply(toSmallCaps('❌ Please link or attach a direct image file (`.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif`).'));
+      }
+
+      user.customBg = parsedUrl.toString();
+      await saveUsers();
+      return message.reply(toSmallCaps(`✅ Custom profile background saved! Run \`${currentPrefix}p\` to preview it.`));
+    }
+
     const getDisplayName = async (uId) => {
       const uData = db.users[uId];
       if (uData && uData.customNickname) return uData.customNickname;
@@ -890,6 +942,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
         `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
         `\`${currentPrefix}profilebg\` — Customize profile background (Supporter/Nitro)\n` +
+        `\`${currentPrefix}setbg\` — Set custom background image (Supporter/Nitro)\n` +
         `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
         `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
         `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
@@ -1786,7 +1839,8 @@ client.on('messageCreate', async message => {
         rarityIconsMap: getRarityIconMap(false),
         betaEmojis: BETA_EMOJIS,
         useBetaStyle: Boolean(callerHasBetaView),
-        themeKey: activeThemeKey
+        themeKey: activeThemeKey,
+        customBgUrl: canUseBgPerk ? (targetUserData.customBg || null) : null
       });
 
       const attachment = new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
