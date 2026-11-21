@@ -1,4 +1,3 @@
-
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
@@ -16,22 +15,36 @@ const imageCache = new Map();
 
 function registerBundledFonts() {
   const loadedFamilies = [];
-  const fontsDir = path.join(__dirname, '..', 'fonts');
+  const candidateDirs = [
+    path.join(__dirname, '..', 'fonts'),
+    path.join(__dirname, '..'),
+    path.resolve(process.cwd(), 'fonts'),
+    path.resolve(process.cwd()),
+    '/fonts'
+  ];
 
-  try {
-    if (fs.existsSync(fontsDir) && fs.statSync(fontsDir).isDirectory()) {
-      const files = fs.readdirSync(fontsDir).filter(f => /\.(ttf|otf|woff2)$/i.test(f));
+  const checkedDirs = new Set();
+
+  for (const dir of candidateDirs) {
+    if (checkedDirs.has(dir)) continue;
+    checkedDirs.add(dir);
+
+    try {
+      if (!fs.existsSync(dir)) continue;
+      if (!fs.statSync(dir).isDirectory()) continue;
+
+      const files = fs.readdirSync(dir).filter(f => /\.(ttf|otf|woff2)$/i.test(f));
       for (const file of files) {
-        const fullPath = path.join(fontsDir, file);
+        const fullPath = path.join(dir, file);
         const familyName = `BotFont_${path.basename(file, path.extname(file)).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         const ok = GlobalFonts.registerFromPath(fullPath, familyName);
         if (ok) {
           loadedFamilies.push(`"${familyName}"`);
         }
       }
+    } catch {
+      // Ignore unreadable directories
     }
-  } catch {
-    // Ignore missing fonts directory; fall back to system/canvas fonts
   }
 
   return loadedFamilies;
