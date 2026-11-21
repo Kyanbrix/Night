@@ -28,6 +28,19 @@ const client = new Client({
 });
 const cooldowns = new Map();
 
+const BATTLE_ICONS = {
+  hp: '<:Hp:1572769347061940356>',
+  def: '<:Def:1572769405841055784>',
+  atk: '<:Swordx:1572769375318970368>'
+};
+
+const buildStatBar = (current, max, length = 10) => {
+  const safeMax = Math.max(1, Number(max) || 1);
+  const safeCurrent = Math.max(0, Math.min(safeMax, Number(current) || 0));
+  const filled = Math.max(0, Math.min(length, Math.round((safeCurrent / safeMax) * length)));
+  return `[${'█'.repeat(filled)}${'░'.repeat(length - filled)}]`;
+};
+
 client.once('ready', async () => {
   await initDatabase();
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
@@ -680,7 +693,7 @@ client.on('messageCreate', async message => {
           let userPower = 50;
           userTeam.forEach(c => {
             if (c) {
-              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, atk: 20, def: 10 };
+              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, atk: 20, def: 10, hpPer: 10, atkPer: 2, defPer: 1 };
               userPower += (statCfg.hp + c.level * statCfg.hpPer) + (statCfg.atk + c.level * statCfg.atkPer) * 3;
             }
           });
@@ -1868,7 +1881,7 @@ client.on('messageCreate', async message => {
 
           const getTeamChibis = (u) => (u.team || [null, null, null]).map(id => {
             if (!id) return null;
-            return u.inventory.chibis.find(c => (c.chibiId || c.id) === id);
+            return (u.inventory?.chibis || []).find(c => (c.chibiId || c.id) === id) || null;
           });
 
           const p1Team = getTeamChibis(p1User);
@@ -1878,10 +1891,10 @@ client.on('messageCreate', async message => {
             let totalPower = 50;
             const detailed = team.map(c => {
               if (!c) return { hp: 0, atk: 0, def: 0 };
-              const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
-              const hp = statCfg.hp + c.level * statCfg.hpPer;
-              const atk = statCfg.atk + c.level * statCfg.atkPer;
-              const def = statCfg.def + c.level * statCfg.defPer;
+              const statCfg = gameData.stats?.[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
+              const hp = Math.max(1, (statCfg.hp || 100) + (Number(c.level) || 1) * (statCfg.hpPer || 10));
+              const atk = Math.max(0, (statCfg.atk || 20) + (Number(c.level) || 1) * (statCfg.atkPer || 2));
+              const def = Math.max(0, (statCfg.def || 10) + (Number(c.level) || 1) * (statCfg.defPer || 1));
               totalPower += hp + atk * 3 + def * 2;
               return { hp, atk, def };
             });
@@ -1905,10 +1918,10 @@ client.on('messageCreate', async message => {
             return { win: Math.floor(Math.random() * 11) + 10, lose: 5 };
           };
 
-          const winReward = getBattlePoints(winUser.points);
-          const losePenalty = getBattlePoints(loseUser.points);
-          winUser.points += winReward.win;
-          loseUser.points = Math.max(0, loseUser.points - losePenalty.lose);
+          const winReward = getBattlePoints(winUser.points || 0);
+          const losePenalty = getBattlePoints(loseUser.points || 0);
+          winUser.points = (winUser.points || 0) + winReward.win;
+          loseUser.points = Math.max(0, (loseUser.points || 0) - losePenalty.lose);
 
           const p1CrystalWin = Math.floor(Math.random() * 7) + 10;
           const p1CrystalLose = Math.floor(Math.random() * 7) + 2;
@@ -1916,8 +1929,10 @@ client.on('messageCreate', async message => {
           const p2CrystalLose = Math.floor(Math.random() * 7) + 2;
 
           if (!db.config.eventCrystals) db.config.eventCrystals = {};
-          db.config.eventCrystals[winUser === p1User ? userId : opponent.id] = (db.config.eventCrystals[winUser === p1User ? userId : opponent.id] || 0) + (winUser === p1User ? p1CrystalWin : p2CrystalWin);
-          db.config.eventCrystals[loseUser === p1User ? userId : opponent.id] = (db.config.eventCrystals[loseUser === p1User ? userId : opponent.id] || 0) + (loseUser === p1User ? p1CrystalLose : p2CrystalLose);
+          const winnerId = isP1Winner ? userId : opponent.id;
+          const loserId = isP1Winner ? opponent.id : userId;
+          db.config.eventCrystals[winnerId] = (db.config.eventCrystals[winnerId] || 0) + (isP1Winner ? p1CrystalWin : p2CrystalWin);
+          db.config.eventCrystals[loserId] = (db.config.eventCrystals[loserId] || 0) + (isP1Winner ? p1CrystalLose : p2CrystalLose);
 
           const totalExpWon = addExpAndLevelUp(winUser, winTeam.find(Boolean), 400);
           updateUserRank(p1User);
@@ -1926,26 +1941,39 @@ client.on('messageCreate', async message => {
           await evaluateAndSyncUserBadges(opponent.id, p2User, message.guild);
           await saveUsers();
 
-          const p1Name = user.customNickname || message.author.username;
-          const p2Name = db.users[opponent.id].customNickname || opponent.username;
-          const hpIcon = callerHasBetaView ? BETA_EMOJIS.HP : '❤️';
-          const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '🗡️';
-          const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
+          const p1Name = p1User.customNickname || message.author.username;
+          const p2Name = p2User.customNickname || opponent.username;
 
           const renderTeamLineWithStats = (team, isWinnerTeam) => team.map((c, idx) => {
             if (!c) return toSmallCaps(`**[${idx + 1}]** *Empty Slot*`);
-            const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
-            const hp = statCfg.hp + c.level * statCfg.hpPer;
-            const atk = statCfg.atk + c.level * statCfg.atkPer;
-            const def = statCfg.def + c.level * statCfg.defPer;
-            return toSmallCaps(`**[${idx + 1}]** `) + `${rarityIconsMap[c.rarity] || '📦'}` + ` ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` (Lvl ${c.level}) — ${hpIcon} HP: \`${isWinnerTeam ? hp : 0}\` | ${atkIcon} ATK: \`${atk}\` | ${defIcon} DEF: \`${def}\``);
-          }).join('\n');
+            const statCfg = gameData.stats?.[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
+            const lvl = Math.max(1, Number(c.level) || 1);
+            const maxHp = Math.max(1, (statCfg.hp || 100) + lvl * (statCfg.hpPer || 10));
+            const atk = Math.max(0, (statCfg.atk || 20) + lvl * (statCfg.atkPer || 2));
+            const def = Math.max(0, (statCfg.def || 10) + lvl * (statCfg.defPer || 1));
+            const maxDef = Math.max(def, 220);
+
+            const currentHp = isWinnerTeam ? maxHp : 0;
+            const hpBar = buildStatBar(currentHp, maxHp, 10);
+            const defBar = buildStatBar(def, maxDef, 10);
+
+            const rarityBadge = rarityIconsMap[c.rarity] || '📦';
+            const shinyTag = c.isShiny ? ` ${SHINY_ICON}` : '';
+            const eventTag = c.rarity === 'SSRP' && EVENT_ICONS?.EVENT_BADGE ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
+
+            return (
+              `**[${idx + 1}]** ${rarityBadge} ${c.emoji || '✨'} **${c.name}**${shinyTag}${eventTag} (Lvl ${lvl})\n` +
+              `${BATTLE_ICONS.hp} ${hpBar} ${currentHp}/${maxHp}\n` +
+              `${BATTLE_ICONS.def} ${defBar} ${def}/${maxDef}\n` +
+              `${BATTLE_ICONS.atk}  ${atk}`
+            );
+          }).join('\n\n');
 
           const container = new ContainerBuilder().setAccentColor(isP1Winner ? 0xf1c40f : 0xe74c3c).addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              toSmallCaps(`# ⚔️ 3v3 Chibi Arena Clash Result\n\n🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n🛡️ ${p1Name}'s Team Lineup:\n`) +
+              toSmallCaps(`# ⚔️ 3v3 Chibi Arena Clash Result\n\n🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n🛡️ ${p1Name}'s Team Lineup:\n\n`) +
               renderTeamLineWithStats(p1Team, isP1Winner) +
-              toSmallCaps(`\n\n🛡️ ${p2Name}'s Team Lineup:\n`) +
+              toSmallCaps(`\n\n🛡️ ${p2Name}'s Team Lineup:\n\n`) +
               renderTeamLineWithStats(p2Team, !isP1Winner) +
               toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points, +${totalExpWon} EXP & Crystals! 💔 Loser lost -${losePenalty.lose} Points.`)
             )
