@@ -1,12 +1,45 @@
+
+const path = require('path');
+const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { BADGE_CATALOG } = require('./constants');
-const { getClanLogoDisplay } = require('./helpers');
+
+let getClanLogoDisplay = null;
+try {
+  ({ getClanLogoDisplay } = require('./helpers'));
+} catch {
+  getClanLogoDisplay = null;
+}
 
 const emojiCache = new Map();
 const imageCache = new Map();
 
-const EMOJI_FONT_STACK = '"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "DejaVu Sans", sans-serif';
-const TEXT_FONT_STACK = '"DejaVu Sans", "Liberation Sans", sans-serif';
+function registerBundledFonts() {
+  const loadedFamilies = [];
+  const fontsDir = path.join(__dirname, '..', 'fonts');
+
+  try {
+    if (fs.existsSync(fontsDir) && fs.statSync(fontsDir).isDirectory()) {
+      const files = fs.readdirSync(fontsDir).filter(f => /\.(ttf|otf|woff2)$/i.test(f));
+      for (const file of files) {
+        const fullPath = path.join(fontsDir, file);
+        const familyName = `BotFont_${path.basename(file, path.extname(file)).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const ok = GlobalFonts.registerFromPath(fullPath, familyName);
+        if (ok) {
+          loadedFamilies.push(`"${familyName}"`);
+        }
+      }
+    }
+  } catch {
+    // Ignore missing fonts directory; fall back to system/canvas fonts
+  }
+
+  return loadedFamilies;
+}
+
+const REGISTERED_FONTS = registerBundledFonts();
+const EMOJI_FONT_STACK = [...REGISTERED_FONTS, '"Noto Color Emoji"', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"DejaVu Sans"', 'sans-serif'].join(', ');
+const TEXT_FONT_STACK = [...REGISTERED_FONTS, '"DejaVu Sans"', '"Liberation Sans"', 'sans-serif'].join(', ');
 
 const SMALL_CAPS_MAP = {
   'ᴀ': 'A', 'ʙ': 'B', 'ᴄ': 'C', 'ᴅ': 'D', 'ᴇ': 'E', 'ꜰ': 'F', 'ɢ': 'G',
@@ -202,12 +235,18 @@ async function renderProfileCard({
   useBetaStyle = false,
   themeKey = 'crystal'
 }) {
+  const safeUserData = targetUserData && typeof targetUserData === 'object' ? targetUserData : {};
+  const safeSyncedBadges = Array.isArray(syncedBadges) ? syncedBadges : [];
+  const safeRarityCounts = rarityCounts && typeof rarityCounts === 'object' ? rarityCounts : {};
+  const safeRarityIconsMap = rarityIconsMap && typeof rarityIconsMap === 'object' ? rarityIconsMap : {};
+  const safeBetaEmojis = betaEmojis && typeof betaEmojis === 'object' ? betaEmojis : {};
+
   const width = 960;
   const height = 880;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  const canCustomizeBg = hasSupporterOrNitro(targetUserData, syncedBadges);
+  const canCustomizeBg = hasSupporterOrNitro(safeUserData, safeSyncedBadges);
   const selectedKey = canCustomizeBg && THEME_PALETTES[themeKey] ? themeKey : 'crystal';
   const palette = THEME_PALETTES[selectedKey];
 
@@ -259,7 +298,7 @@ async function renderProfileCard({
   const avX = 688;
   const avY = 74;
   const avSize = 184;
-  const avatarUrl = targetMember?.displayAvatarURL
+  const avatarUrl = typeof targetMember?.displayAvatarURL === 'function'
     ? targetMember.displayAvatarURL({ extension: 'png', size: 256 })
     : null;
   const avatarImg = await loadRemote(avatarUrl, imageCache);
@@ -301,10 +340,10 @@ async function renderProfileCard({
   ctx.fillText('★  USER BADGES', 82, 218);
   ctx.restore();
 
-  if (syncedBadges.length > 0) {
+  if (safeSyncedBadges.length > 0) {
     let bx = 82;
-    for (const badgeKey of syncedBadges.slice(0, 8)) {
-      const bIcon = BADGE_CATALOG[badgeKey]?.icon || '🏅';
+    for (const badgeKey of safeSyncedBadges.slice(0, 8)) {
+      const bIcon = BADGE_CATALOG?.[badgeKey]?.icon || '🏅';
       await drawIcon(ctx, bIcon, '🏅', bx, 236, 42);
       bx += 54;
     }
@@ -360,10 +399,10 @@ async function renderProfileCard({
   ly += 54;
 
   const statusRows = [
-    { icon: useBetaStyle ? betaEmojis.DICE : '🎲', fb: '🎲', text: `DICE: ${(targetUserData.dice || 0).toLocaleString()}` },
-    { icon: useBetaStyle ? betaEmojis.CASH : '💵', fb: '💵', text: `CASH: ${(targetUserData.cash || 0).toLocaleString()}` },
-    { icon: useBetaStyle ? betaEmojis.STREAK : '🔥', fb: '🔥', text: `STREAK: ${targetUserData.streak || 0}D` },
-    { icon: useBetaStyle ? betaEmojis.EXP : '⭐', fb: '⭐', text: `LEVEL: ${targetUserData.userLevel || 1}` }
+    { icon: useBetaStyle ? safeBetaEmojis.DICE : '🎲', fb: '🎲', text: `DICE: ${(Number(safeUserData.dice) || 0).toLocaleString()}` },
+    { icon: useBetaStyle ? safeBetaEmojis.CASH : '💵', fb: '💵', text: `CASH: ${(Number(safeUserData.cash) || 0).toLocaleString()}` },
+    { icon: useBetaStyle ? safeBetaEmojis.STREAK : '🔥', fb: '🔥', text: `STREAK: ${Number(safeUserData.streak) || 0}D` },
+    { icon: useBetaStyle ? safeBetaEmojis.EXP : '⭐', fb: '⭐', text: `LEVEL: ${Number(safeUserData.userLevel) || 1}` }
   ];
 
   for (const row of statusRows) {
@@ -384,29 +423,31 @@ async function renderProfileCard({
   ctx.fillText('RANK STATS', rightX + 46, ry + 22);
   ry += 54;
 
-  const hasClan = Boolean(targetUserData.clan && targetUserData.clan !== 'NONE');
-  const clanClean = hasClan ? normalizeText(targetUserData.clan.replace(/\*/g, '')) : 'NONE';
-  const clanLogo = hasClan ? getClanLogoDisplay(targetUserData.clanLogoId) : null;
+  const hasClan = Boolean(safeUserData.clan && safeUserData.clan !== 'NONE');
+  const clanClean = hasClan ? normalizeText(String(safeUserData.clan).replace(/\*/g, '')) : 'NONE';
+  const clanLogo = hasClan && typeof getClanLogoDisplay === 'function'
+    ? getClanLogoDisplay(safeUserData.clanLogoId)
+    : null;
 
-  await drawIcon(ctx, useBetaStyle ? betaEmojis.RANK : '🏅', '🏅', rightX, ry - 22, 30);
+  await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.RANK : '🏅', '🏅', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
   ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
   ctx.fillText('RANK:', rightX + 44, ry);
-  await drawIcon(ctx, targetUserData.rank, '★', rightX + 128, ry - 24, 34);
+  await drawIcon(ctx, safeUserData.rank, '★', rightX + 128, ry - 24, 34);
   ry += 48;
 
-  await drawIcon(ctx, useBetaStyle ? betaEmojis.TROPHY_PTS : '🏆', '🏆', rightX, ry - 22, 30);
+  await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.TROPHY_PTS : '🏆', '🏆', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
-  ctx.fillText(normalizeText(`POINTS: ${(targetUserData.points || 0).toLocaleString()}`), rightX + 44, ry);
+  ctx.fillText(normalizeText(`POINTS: ${(Number(safeUserData.points) || 0).toLocaleString()}`), rightX + 44, ry);
   ry += 48;
 
-  await drawIcon(ctx, useBetaStyle ? betaEmojis.GLOBAL : '🌐', '🌐', rightX, ry - 22, 30);
+  await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.GLOBAL : '🌐', '🌐', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
   ctx.fillText(normalizeText(`LEADERBOARD: ${leaderboardPos}`), rightX + 44, ry);
   ry += 48;
 
-  await drawIcon(ctx, useBetaStyle ? betaEmojis.CLAN_BADGE : '🛡️', '🛡️', rightX, ry - 22, 30);
+  await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.CLAN_BADGE : '🛡️', '🛡️', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
   ctx.fillText('CLAN:', rightX + 44, ry);
   let cx = rightX + 128;
@@ -425,21 +466,21 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
 
   const row1 = [
-    { key: 'C', label: `COMMON: ${rarityCounts.C || 0}`, x: 84 },
-    { key: 'U', label: `UNCOMMON: ${rarityCounts.U || 0}`, x: 355 },
-    { key: 'R', label: `RARE: ${rarityCounts.R || 0}`, x: 675 }
+    { key: 'C', label: `COMMON: ${Number(safeRarityCounts.C) || 0}`, x: 84 },
+    { key: 'U', label: `UNCOMMON: ${Number(safeRarityCounts.U) || 0}`, x: 355 },
+    { key: 'R', label: `RARE: ${Number(safeRarityCounts.R) || 0}`, x: 675 }
   ];
   const row2 = [
-    { key: 'SR', label: `SR: ${rarityCounts.SR || 0}`, x: 84 },
-    { key: 'SRR', label: `SRR: ${rarityCounts.SRR || 0}`, x: 285 },
-    { key: 'UTR', label: `UTR: ${rarityCounts.UTR || 0}`, x: 485 },
-    { key: 'SSRP', label: `SSRP: ${rarityCounts.SSRP || 0}`, x: 685 }
+    { key: 'SR', label: `SR: ${Number(safeRarityCounts.SR) || 0}`, x: 84 },
+    { key: 'SRR', label: `SRR: ${Number(safeRarityCounts.SRR) || 0}`, x: 285 },
+    { key: 'UTR', label: `UTR: ${Number(safeRarityCounts.UTR) || 0}`, x: 485 },
+    { key: 'SSRP', label: `SSRP: ${Number(safeRarityCounts.SSRP) || 0}`, x: 685 }
   ];
 
   const drawRarityRow = async (items, yPos) => {
     for (const item of items) {
-      const iconRaw = (useBetaStyle && betaEmojis.RARITIES?.[item.key])
-        || rarityIconsMap[item.key]
+      const iconRaw = (useBetaStyle && safeBetaEmojis.RARITIES?.[item.key])
+        || safeRarityIconsMap[item.key]
         || '📦';
       await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 22, 30);
       ctx.textAlign = 'left';
