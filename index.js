@@ -260,7 +260,7 @@ client.on('messageCreate', async message => {
       betaEmojis: BETA_EMOJIS,
       useBetaStyle: Boolean(callerHasBetaView),
       themeKey: activeThemeKey,
-      customBgUrl: canUsePerk ? (tData.customBg || null) : null
+      customBgUrl: tData.customBg || null
     });
 
     return new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
@@ -891,6 +891,28 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('✅ Cleared your custom profile background image!'));
       }
 
+      const downloadAttachmentAsDataUri = async (attachment) => {
+        try {
+          const res = await fetch(attachment.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 DiscordBot' }
+          });
+          if (!res.ok) return attachment.url;
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (!buf.length || buf.length > 2.5 * 1024 * 1024) {
+            return attachment.url;
+          }
+          let mime = (res.headers.get('content-type') || attachment.contentType || '').split(';')[0].trim().toLowerCase();
+          if (!mime.startsWith('image/')) {
+            const extMatch = (attachment.name || attachment.url || '').match(/\.(png|jpe?g|webp|gif)(\?.*)?$/i);
+            const ext = extMatch ? extMatch[1].toLowerCase() : 'png';
+            mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+          }
+          return `data:${mime};base64,${buf.toString('base64')}`;
+        } catch {
+          return attachment.url;
+        }
+      };
+
       const resolveImageFromAttachmentOrUrl = async (attachment, rawUrl) => {
         if (attachment) {
           const isImageAttachment = attachment.contentType?.startsWith('image/');
@@ -898,7 +920,8 @@ client.on('messageCreate', async message => {
           if (!isImageAttachment && !hasImageExt) {
             return { error: toSmallCaps('❌ Please upload a valid image file (`.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif`).') };
           }
-          return { url: attachment.url };
+          const persistedSource = await downloadAttachmentAsDataUri(attachment);
+          return { url: persistedSource };
         }
 
         let parsedUrl;
