@@ -4,11 +4,11 @@ const {
 } = require('discord.js');
 const mongoose = require('mongoose');
 const {
-  BADGE_CATALOG, BETA_EMOJIS, EVENT_ICONS, SEASON_LIST, SHINY_ICON, RARITY_HIERARCHY
+  BADGE_CATALOG, BETA_EMOJIS, EVENT_ICONS, EVENT_CHIBIS_POOL, SEASON_LIST, SHINY_ICON, RARITY_HIERARCHY
 } = require('../core/constants');
 const { gameData, db, saveUsers } = require('../core/database');
 const {
-  isTester, toSmallCaps, getRarityIconMap, updateUserRank, updatePeakRank,
+  isTester, toSmallCaps, updateUserRank, updatePeakRank,
   evaluateAndSyncUserBadges, ensureUser, getClanLogoDisplay,
   formatTimeRemaining, addExpAndLevelUp, parseOddsNumber
 } = require('../core/helpers');
@@ -606,20 +606,34 @@ async function execute(ctx) {
     if (!user.inventory?.chibis?.length) return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll to summon chibis.`));
     let sortBy = 'rarity', currentPage = 0;
     const itemsPerPage = 10;
+    const eventChibiNames = new Set([
+      ...(gameData.eventChibis || []).map(c => c.name),
+      ...(EVENT_CHIBIS_POOL || []).map(c => c.name)
+    ]);
 
     const getGroupedEntries = () => {
       const grouped = {};
       user.inventory.chibis.forEach(c => {
-        const key = `${c.rarity}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
+        const rarityKey = String(c.rarity || 'C').toUpperCase();
+        const isEventChibi = rarityKey === 'SSRP' || eventChibiNames.has(c.name) || Boolean(c.isEvent);
+        const key = `${rarityKey}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
         const uniqueId = c.chibiId || c.id;
         if (!grouped[key]) {
-          grouped[key] = { rarity: c.rarity, emoji: c.emoji || '✨', name: c.name, isShiny: c.isShiny, count: 0, firstId: uniqueId ? uniqueId.slice(-6) : 'unknown' };
+          grouped[key] = {
+            rarity: rarityKey,
+            emoji: c.emoji || '✨',
+            name: c.name,
+            isShiny: c.isShiny,
+            isEventChibi,
+            count: 0,
+            firstId: uniqueId ? uniqueId.slice(-6) : 'unknown'
+          };
         }
         grouped[key].count++;
       });
       const entries = Object.values(grouped);
       const rarityRank = { SSRP: 0, UGMR: 1, USRR: 2, STR: 3, UTR: 4, SRR: 5, SR: 6, R: 7, U: 8, C: 9 };
-      if (sortBy === 'rarity') entries.sort((a, b) => (rarityRank[a.rarity] || 99) - (rarityRank[b.rarity] || 99));
+      if (sortBy === 'rarity') entries.sort((a, b) => (rarityRank[a.rarity] ?? 99) - (rarityRank[b.rarity] ?? 99));
       else if (sortBy === 'alpha') entries.sort((a, b) => a.name.localeCompare(b.name));
       return entries;
     };
@@ -629,9 +643,10 @@ async function execute(ctx) {
       const totalPages = Math.max(1, Math.ceil(entries.length / itemsPerPage));
       if (page >= totalPages) page = totalPages - 1;
       const pageItems = entries.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-      const formatted = pageItems.map((e, idx) =>
-        `**${page * itemsPerPage + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}**${e.isShiny ? ` ${SHINY_ICON}` : ''}${e.rarity === 'SSRP' ? ` ${EVENT_ICONS.EVENT_BADGE}` : ''}`
-      ).join('\n') || toSmallCaps('Collection page empty.');
+      const formatted = pageItems.map((e, idx) => {
+        const eventTag = (e.rarity === 'SSRP' || e.isEventChibi) ? ` ${EVENT_ICONS.EVENT_BADGE}` : '';
+        return `**${page * itemsPerPage + idx + 1}.** \`[${e.firstId}]\` ${e.count}x ${rarityIconsMap[e.rarity] || '📦'} ${e.emoji} **${e.name}**${e.isShiny ? ` ${SHINY_ICON}` : ''}${eventTag}`;
+      }).join('\n') || toSmallCaps('Collection page empty.');
 
       const container = new ContainerBuilder().setAccentColor(0x9b59b6).addTextDisplayComponents(new TextDisplayBuilder().setContent(
         toSmallCaps(`# ${callerHasBetaView ? BETA_EMOJIS.COLLECTIONS : '📖'} ${user.customNickname || message.author.username}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\nSort: ${sortBy === 'rarity' ? 'Rarity' : 'Alphabetical'}\n\n`) +
@@ -671,11 +686,25 @@ async function execute(ctx) {
     if (args[0]?.toLowerCase() === 'buy' && args[1]) {
       const diceObj = (gameData.shopDice || []).find(d => d.id.toLowerCase() === args[1].toLowerCase() || d.name.toLowerCase().includes(args[1].toLowerCase()));
       if (!diceObj) return message.reply(toSmallCaps('❌ Dice not found!'));
-      if (diceObj.restriction === 'cash' && Number(user.cash || 0) < diceObj.cost) {
-        return message.reply(toSmallCaps(`❌ Need ${diceObj.costDisplay} Cash!`));
+      const syncedBadges = await syncAllBadges(userId, user, message.guild, client);
+
+      if (diceObj.restriction === 'cash' && Number(user.cash || 0) < Number(diceObj.cost || 0)) {
+        return message.reply(toSmallCaps(`❌ Need ${diceObj.costDisplay || diceObj.cost} Cash!`));
       }
-      if (diceObj.restriction === 'cash') user.cash = Number(user.cash || 0) - diceObj.cost;
+      if (diceObj.restriction === 'supporter' && !syncedBadges.includes('supporter') && !user.supporter && !user.betaSupporter) {
+        return message.reply(toSmallCaps('❌ This dice requires the **Supporter** badge!'));
+      }
+      if (diceObj.restriction === 'developer' && userId !== db.config.ownerId && !isTester(userId)) {
+        return message.reply(toSmallCaps('❌ This dice is restricted to **Developer / Beta Testers**!'));
+      }
+
+      if (diceObj.restriction === 'cash') user.cash = Number(user.cash || 0) - Number(diceObj.cost || 0);
+      if (!Array.isArray(user.ownedDice)) user.ownedDice = [];
+      if (!user.ownedDice.includes(diceObj.id)) user.ownedDice.push(diceObj.id);
       user.equippedDice = diceObj.id;
+      user.explicitlyEquippedDice = true;
+
+      await syncAllBadges(userId, user, message.guild, client);
       await saveUsers();
       return message.reply(toSmallCaps(`✅ Equipped ${diceObj.emoji} **${diceObj.name}** (+${diceObj.luckPercent}% Luck)!`));
     }
