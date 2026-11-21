@@ -16,10 +16,7 @@ try {
 
 const getClanLogoDisplay = helperMod?.getClanLogoDisplay || null;
 const formatCompactValue = helperMod?.formatCompactValue || ((n) => String(Number(n) || 0));
-const getUserRollLuckPercent = helperMod?.getUserRollLuckPercent || (() => ({
-  diceInfo: { emoji: '<:Zenithdice:1573808579042087044>', luckPercent: 1000 },
-  totalLuckPercent: 1000
-}));
+const getUserRollLuckPercent = helperMod?.getUserRollLuckPercent || null;
 
 const emojiCache = new Map();
 const imageCache = new Map();
@@ -203,9 +200,15 @@ const THEME_PALETTES = {
 };
 
 const REVAMPED_RARITY_ICONS = {
-  SRR: '<:Newsrr1:1573559263627055164>',
-  UTR: '<:Newutr1:1573559322527662090>',
-  STR: '<:Str:1573559367339614348>'
+  C: '<:Pcommon:1573802564200300687>',
+  U: '<:Puncommon:1573802607561015306>',
+  R: '<:Prare:1573802661134864464>',
+  SR: '<:Psr:1573802765459918889>',
+  SRR: '<:Psrr:1573802796040585358>',
+  UTR: '<a:Putr:1573802703090614342>',
+  STR: '<a:Pstr:1573802859491762237>',
+  USRR: '<a:Pusrr:1573802908846264380>',
+  UGMR: '<a:Pugmr:1573802950675923024>'
 };
 
 const REVAMPED_STAT_ICONS = {
@@ -423,7 +426,6 @@ async function renderProfileCard({
     ? await loadRemote(candidateBg.trim(), imageCache, 7000)
     : null;
 
-  // Base gradient background
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
   bgGrad.addColorStop(0, palette.bgTop);
   bgGrad.addColorStop(0.5, palette.bgMid);
@@ -431,11 +433,9 @@ async function renderProfileCard({
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // Custom background image behind the card frame & content
   if (customBgImg) {
     ctx.save();
     drawCoverImage(ctx, customBgImg, 0, 0, width, height);
-
     const scrim = ctx.createLinearGradient(0, 0, 0, height);
     scrim.addColorStop(0, 'rgba(9, 6, 20, 0.35)');
     scrim.addColorStop(0.5, 'rgba(9, 6, 20, 0.45)');
@@ -445,7 +445,6 @@ async function renderProfileCard({
     ctx.restore();
   }
 
-  // Ambient aura glows
   const auraLeft = ctx.createRadialGradient(190, 210, 15, 190, 210, 330);
   auraLeft.addColorStop(0, palette.glow);
   auraLeft.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -460,7 +459,6 @@ async function renderProfileCard({
 
   drawSparkles(ctx, width, height, palette.frameInner);
 
-  // Outer & inner beveled frame
   ctx.save();
   ctx.shadowColor = palette.frameOuter;
   ctx.shadowBlur = 24;
@@ -475,13 +473,11 @@ async function renderProfileCard({
   traceChamferBox(ctx, 36, 36, width - 72, height - 72, 20);
   ctx.stroke();
 
-  // Main translucent container
   ctx.fillStyle = customBgImg ? 'rgba(9, 6, 20, 0.28)' : palette.panelFill;
   traceChamferBox(ctx, 46, 46, width - 92, height - 92, 16);
   ctx.fill();
   ctx.restore();
 
-  // Top-right avatar frame
   const avX = 688;
   const avY = 74;
   const avSize = 184;
@@ -508,20 +504,17 @@ async function renderProfileCard({
   }
   ctx.restore();
 
-  // User identity, join date, Best roll & Timeplayed
   ctx.save();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
   const rawDisplay = displayName || targetMember?.username || 'Player';
-  const safeHandle = fitText(ctx, `@${rawDisplay}`, 265, 38, 'bold');
-  ctx.fillText(safeHandle, 82, 114);
+  ctx.fillText(fitText(ctx, `@${rawDisplay}`, 265, 38, 'bold'), 82, 114);
 
   ctx.fillStyle = palette.subText;
   ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
   ctx.fillText(normalizeText(`[${joinedDateStr}]`), 82, 152);
 
-  // Vertical separator bar between identity/join-date and Best roll / Timeplayed
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
   ctx.lineWidth = 4;
   ctx.beginPath();
@@ -532,7 +525,6 @@ async function renderProfileCard({
   const bestRollDisplay = safeUserData.bestRoll && String(safeUserData.bestRoll).trim()
     ? String(safeUserData.bestRoll).trim()
     : 'None';
-
   const computedTimePlayed = timePlayedStr
     || formatElapsedTimePlayed(safeUserData.firstPlayedAt || joinedDateStr);
 
@@ -544,7 +536,6 @@ async function renderProfileCard({
   ctx.font = `bold 20px ${TEXT_FONT_STACK}`;
   ctx.fillText(fitText(ctx, `Timeplayed: ${computedTimePlayed}`, 295, 20, 'bold'), 374, 148);
 
-  // USER BADGES row
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold 23px ${EMOJI_FONT_STACK}`;
   ctx.fillText('★  USER BADGES', 82, 218);
@@ -553,8 +544,7 @@ async function renderProfileCard({
   if (safeSyncedBadges.length > 0) {
     let bx = 82;
     for (const badgeKey of safeSyncedBadges.slice(0, 8)) {
-      const bIcon = BADGE_CATALOG?.[badgeKey]?.icon || '🏅';
-      await drawIcon(ctx, bIcon, '🏅', bx, 236, 42);
+      await drawIcon(ctx, BADGE_CATALOG?.[badgeKey]?.icon || '🏅', '🏅', bx, 236, 42);
       bx += 54;
     }
   } else {
@@ -566,7 +556,6 @@ async function renderProfileCard({
     ctx.restore();
   }
 
-  // Center pill header: USER STATS | RANK STATS
   const pillX = 195;
   const pillY = 312;
   const pillW = 570;
@@ -590,7 +579,6 @@ async function renderProfileCard({
   ctx.fillText('USER STATS   |   RANK STATS', pillX + pillW / 2, pillY + 35);
   ctx.restore();
 
-  // Vertical divider line
   ctx.save();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
   ctx.lineWidth = 2;
@@ -599,7 +587,6 @@ async function renderProfileCard({
   ctx.lineTo(480, 652);
   ctx.stroke();
 
-  // Left column: USER STATUS
   const leftX = 84;
   let ly = 402;
   ctx.textAlign = 'left';
@@ -609,26 +596,10 @@ async function renderProfileCard({
   ly += 54;
 
   const statusRows = [
-    {
-      icon: useBetaStyle ? safeBetaEmojis.DICE : '🎲',
-      fb: '🎲',
-      text: `DICE: ${formatCompactValue(Number(safeUserData.dice) || 0)}`
-    },
-    {
-      icon: REVAMPED_STAT_ICONS.CASH,
-      fb: '💵',
-      text: `CASH: ${formatCompactValue(Number(safeUserData.cash) || 0)}`
-    },
-    {
-      icon: REVAMPED_STAT_ICONS.STREAK,
-      fb: '🔥',
-      text: `STREAK: ${formatCompactValue(Number(safeUserData.streak) || 0)}D`
-    },
-    {
-      icon: REVAMPED_STAT_ICONS.LEVEL,
-      fb: '⭐',
-      text: `LEVEL: ${formatCompactValue(Number(safeUserData.userLevel) || 1)}`
-    }
+    { icon: useBetaStyle ? safeBetaEmojis.DICE : '🎲', fb: '🎲', text: `DICE: ${formatCompactValue(Number(safeUserData.dice) || 0)}` },
+    { icon: REVAMPED_STAT_ICONS.CASH, fb: '💵', text: `CASH: ${formatCompactValue(Number(safeUserData.cash) || 0)}` },
+    { icon: REVAMPED_STAT_ICONS.STREAK, fb: '🔥', text: `STREAK: ${formatCompactValue(Number(safeUserData.streak) || 0)}D` },
+    { icon: REVAMPED_STAT_ICONS.LEVEL, fb: '⭐', text: `LEVEL: ${formatCompactValue(Number(safeUserData.userLevel) || 1)}` }
   ];
 
   for (const row of statusRows) {
@@ -640,7 +611,6 @@ async function renderProfileCard({
     ly += 48;
   }
 
-  // Right column: RANK STATS
   const rightX = 515;
   let ry = 402;
   ctx.textAlign = 'left';
@@ -651,9 +621,7 @@ async function renderProfileCard({
 
   const hasClan = Boolean(safeUserData.clan && safeUserData.clan !== 'NONE');
   const clanClean = hasClan ? normalizeText(String(safeUserData.clan).replace(/\*/g, '')) : 'NONE';
-  const clanLogo = hasClan && typeof getClanLogoDisplay === 'function'
-    ? getClanLogoDisplay(safeUserData.clanLogoId)
-    : null;
+  const clanLogo = hasClan && typeof getClanLogoDisplay === 'function' ? getClanLogoDisplay(safeUserData.clanLogoId) : null;
 
   await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.RANK : '🏅', '🏅', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
@@ -684,7 +652,6 @@ async function renderProfileCard({
   ctx.textAlign = 'left';
   ctx.fillText(fitText(ctx, clanClean, 410 - (cx - rightX), 24, 'bold'), cx, ry);
 
-  // Divider between upper stats and bottom Collections Rarity | Attributes
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -692,32 +659,30 @@ async function renderProfileCard({
   ctx.lineTo(548, 836);
   ctx.stroke();
 
-  // Bottom-left header: Collections Rarity
   await drawIcon(ctx, '<:Chibicol:1573807211891654911>', '📦', 82, 682, 28);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
   ctx.fillText(normalizeText('COLLECTIONS RARITY'), 118, 703);
 
-  // Bottom-right header: Attributes
   await drawIcon(ctx, '<:Attributes:1572634228074614965>', '⚡', 572, 682, 28);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
   ctx.fillText(normalizeText('ATTRIBUTES'), 608, 703);
 
-  // Collections Rarity icon + count only (left side, 2 rows of 4)
   const rarityRow1 = [
-    { key: 'C', count: Number(safeRarityCounts.C) || 0, x: 82 },
-    { key: 'U', count: Number(safeRarityCounts.U) || 0, x: 196 },
-    { key: 'R', count: Number(safeRarityCounts.R) || 0, x: 310 },
-    { key: 'SR', count: Number(safeRarityCounts.SR) || 0, x: 424 }
+    { key: 'C', count: Number(safeRarityCounts.C) || 0, x: 76 },
+    { key: 'U', count: Number(safeRarityCounts.U) || 0, x: 171 },
+    { key: 'R', count: Number(safeRarityCounts.R) || 0, x: 266 },
+    { key: 'SR', count: Number(safeRarityCounts.SR) || 0, x: 361 },
+    { key: 'SRR', count: Number(safeRarityCounts.SRR) || 0, x: 456 }
   ];
   const rarityRow2 = [
-    { key: 'SRR', count: Number(safeRarityCounts.SRR) || 0, x: 82 },
-    { key: 'UTR', count: Number(safeRarityCounts.UTR) || 0, x: 196 },
-    { key: 'STR', count: Number(safeRarityCounts.STR) || 0, x: 310 },
-    { key: 'SSRP', count: Number(safeRarityCounts.SSRP) || 0, x: 424 }
+    { key: 'UTR', count: Number(safeRarityCounts.UTR) || 0, x: 76 },
+    { key: 'STR', count: Number(safeRarityCounts.STR) || 0, x: 171 },
+    { key: 'USRR', count: Number(safeRarityCounts.USRR) || 0, x: 266 },
+    { key: 'UGMR', count: Number(safeRarityCounts.UGMR) || 0, x: 361 }
   ];
 
   const drawRarityIconOnlyRow = async (items, yPos) => {
@@ -727,32 +692,38 @@ async function renderProfileCard({
         (useBetaStyle && safeBetaEmojis.RARITIES?.[item.key]) ||
         safeRarityIconsMap[item.key] ||
         '📦';
-      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 20, 28);
+      await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 19, 25);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold 20px ${TEXT_FONT_STACK}`;
-      ctx.fillText(normalizeText(formatCompactValue(item.count)), item.x + 33, yPos);
+      ctx.font = `bold 18px ${TEXT_FONT_STACK}`;
+      ctx.fillText(normalizeText(formatCompactValue(item.count)), item.x + 29, yPos);
     }
   };
 
   await drawRarityIconOnlyRow(rarityRow1, 754);
   await drawRarityIconOnlyRow(rarityRow2, 806);
 
-  // Attributes beside Collections Rarity: Current Dice & Total Luck
-  const luckSummary = getUserRollLuckPercent(safeUserData);
-  const currentDiceIcon = luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>';
-  const totalLuckFormatted = `${formatCompactValue(luckSummary?.totalLuckPercent ?? 1000)}%`;
+  const equippedDiceKey = safeUserData.equippedDice || safeUserData.currentDice || safeUserData.activeDice || null;
+  const luckSummary = typeof getUserRollLuckPercent === 'function' ? getUserRollLuckPercent(safeUserData) : null;
+  const hasEquippedDice = Boolean(equippedDiceKey);
+  const currentDiceIcon = hasEquippedDice ? (luckSummary?.diceInfo?.emoji || '<:Zenithdice:1573808579042087044>') : null;
+  const totalLuckVal = hasEquippedDice ? Number(luckSummary?.totalLuckPercent ?? 0) : 0;
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
   ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
   ctx.fillText(normalizeText('CURRENT DICE:'), 572, 754);
-  await drawIcon(ctx, currentDiceIcon, '🎲', 748, 732, 30);
+  if (hasEquippedDice && currentDiceIcon) {
+    await drawIcon(ctx, currentDiceIcon, '🎲', 748, 732, 30);
+  } else {
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('None', 748, 754);
+  }
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
   ctx.font = `bold 21px ${TEXT_FONT_STACK}`;
-  ctx.fillText(fitText(ctx, `TOTAL LUCK: ${totalLuckFormatted}`, 310, 21, 'bold'), 572, 806);
+  ctx.fillText(fitText(ctx, `TOTAL LUCK: ${formatCompactValue(totalLuckVal)}%`, 310, 21, 'bold'), 572, 806);
 
   ctx.restore();
 
