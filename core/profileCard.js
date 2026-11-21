@@ -1,9 +1,26 @@
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { BADGE_CATALOG } = require('./constants');
 const { getClanLogoDisplay } = require('./helpers');
 
 const emojiCache = new Map();
 const imageCache = new Map();
+
+const EMOJI_FONT_STACK = '"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "DejaVu Sans", sans-serif';
+const TEXT_FONT_STACK = '"DejaVu Sans", "Liberation Sans", sans-serif';
+
+const SMALL_CAPS_MAP = {
+  'ᴀ': 'A', 'ʙ': 'B', 'ᴄ': 'C', 'ᴅ': 'D', 'ᴇ': 'E', 'ꜰ': 'F', 'ɢ': 'G',
+  'ʜ': 'H', 'ɪ': 'I', 'ᴊ': 'J', 'ᴋ': 'K', 'ʟ': 'L', 'ᴍ': 'M', 'ɴ': 'N',
+  'ᴏ': 'O', 'ᴘ': 'P', 'ꞯ': 'Q', 'ʀ': 'R', 'ꜱ': 'S', 'ᴛ': 'T', 'ᴜ': 'U',
+  'ᴠ': 'V', 'ᴡ': 'W', 'x': 'X', 'ʏ': 'Y', 'ᴢ': 'Z'
+};
+
+function normalizeText(str) {
+  return String(str ?? '')
+    .split('')
+    .map(ch => SMALL_CAPS_MAP[ch] || ch)
+    .join('');
+}
 
 const THEME_PALETTES = {
   crystal: {
@@ -118,11 +135,14 @@ async function drawIcon(ctx, rawIcon, fallback, x, y, size) {
       return;
     }
   }
+  const cleanRaw = rawIcon && !rawIcon.includes('<') ? normalizeText(rawIcon) : null;
+  const glyph = fallback || cleanRaw || '•';
   ctx.save();
-  ctx.font = `bold ${Math.round(size * 0.72)}px sans-serif`;
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
+  ctx.font = `bold ${Math.round(size * 0.72)}px ${EMOJI_FONT_STACK}`;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(fallback || rawIcon || '•', x, y + size / 2);
+  ctx.fillText(glyph, x, y + size / 2);
   ctx.restore();
 }
 
@@ -159,13 +179,14 @@ function drawSparkles(ctx, w, h, color) {
 }
 
 function fitText(ctx, text, maxWidth, fontSize, weight = 'bold') {
+  const normalized = normalizeText(text);
   let size = fontSize;
-  ctx.font = `${weight} ${size}px sans-serif`;
-  while (size > 16 && ctx.measureText(text).width > maxWidth) {
+  ctx.font = `${weight} ${size}px ${TEXT_FONT_STACK}`;
+  while (size > 16 && ctx.measureText(normalized).width > maxWidth) {
     size -= 2;
-    ctx.font = `${weight} ${size}px sans-serif`;
+    ctx.font = `${weight} ${size}px ${TEXT_FONT_STACK}`;
   }
-  return text;
+  return normalized;
 }
 
 async function renderProfileCard({
@@ -262,18 +283,23 @@ async function renderProfileCard({
   ctx.restore();
 
   // User identity & join date
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
-  const safeHandle = fitText(ctx, `@${displayName || targetMember?.username || 'Player'}`, 560, 42, 'bold');
+  const rawDisplay = displayName || targetMember?.username || 'Player';
+  const safeHandle = fitText(ctx, `@${rawDisplay}`, 560, 42, 'bold');
   ctx.fillText(safeHandle, 82, 120);
 
   ctx.fillStyle = palette.subText;
-  ctx.font = 'bold 26px sans-serif';
-  ctx.fillText(`[${joinedDateStr}]`, 82, 162);
+  ctx.font = `bold 26px ${TEXT_FONT_STACK}`;
+  ctx.fillText(normalizeText(`[${joinedDateStr}]`), 82, 162);
 
   // USER BADGES row
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 23px sans-serif';
+  ctx.font = `bold 23px ${EMOJI_FONT_STACK}`;
   ctx.fillText('★  USER BADGES', 82, 218);
+  ctx.restore();
 
   if (syncedBadges.length > 0) {
     let bx = 82;
@@ -283,9 +309,12 @@ async function renderProfileCard({
       bx += 54;
     }
   } else {
+    ctx.save();
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#a1a1aa';
-    ctx.font = 'italic 22px sans-serif';
+    ctx.font = `italic 22px ${TEXT_FONT_STACK}`;
     ctx.fillText('None', 82, 264);
+    ctx.restore();
   }
 
   // Center pill header: USER STATS | RANK STATS
@@ -307,12 +336,13 @@ async function renderProfileCard({
   ctx.stroke();
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
   ctx.textAlign = 'center';
   ctx.fillText('USER STATS   |   RANK STATS', pillX + pillW / 2, pillY + 35);
   ctx.restore();
 
   // Vertical divider line
+  ctx.save();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -323,8 +353,9 @@ async function renderProfileCard({
   // Left column: USER STATUS
   const leftX = 84;
   let ly = 402;
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 26px sans-serif';
+  ctx.font = `bold 26px ${TEXT_FONT_STACK}`;
   ctx.fillText('USER STATUS', leftX + 46, ly + 22);
   ly += 54;
 
@@ -337,51 +368,58 @@ async function renderProfileCard({
 
   for (const row of statusRows) {
     await drawIcon(ctx, row.icon, row.fb, leftX, ly - 22, 30);
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.fillText(row.text, leftX + 44, ly);
+    ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
+    ctx.fillText(normalizeText(row.text), leftX + 44, ly);
     ly += 48;
   }
 
   // Right column: RANK STATS
   const rightX = 515;
   let ry = 402;
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 26px sans-serif';
+  ctx.font = `bold 26px ${TEXT_FONT_STACK}`;
   ctx.fillText('RANK STATS', rightX + 46, ry + 22);
   ry += 54;
 
   const hasClan = Boolean(targetUserData.clan && targetUserData.clan !== 'NONE');
-  const clanClean = hasClan ? targetUserData.clan.replace(/\*/g, '') : 'NONE';
+  const clanClean = hasClan ? normalizeText(targetUserData.clan.replace(/\*/g, '')) : 'NONE';
   const clanLogo = hasClan ? getClanLogoDisplay(targetUserData.clanLogoId) : null;
 
   await drawIcon(ctx, useBetaStyle ? betaEmojis.RANK : '🏅', '🏅', rightX, ry - 22, 30);
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = `bold 24px ${TEXT_FONT_STACK}`;
   ctx.fillText('RANK:', rightX + 44, ry);
   await drawIcon(ctx, targetUserData.rank, '★', rightX + 128, ry - 24, 34);
   ry += 48;
 
   await drawIcon(ctx, useBetaStyle ? betaEmojis.TROPHY_PTS : '🏆', '🏆', rightX, ry - 22, 30);
-  ctx.fillText(`POINTS: ${(targetUserData.points || 0).toLocaleString()}`, rightX + 44, ry);
+  ctx.textAlign = 'left';
+  ctx.fillText(normalizeText(`POINTS: ${(targetUserData.points || 0).toLocaleString()}`), rightX + 44, ry);
   ry += 48;
 
   await drawIcon(ctx, useBetaStyle ? betaEmojis.GLOBAL : '🌐', '🌐', rightX, ry - 22, 30);
-  ctx.fillText(`LEADERBOARD: ${leaderboardPos}`, rightX + 44, ry);
+  ctx.textAlign = 'left';
+  ctx.fillText(normalizeText(`LEADERBOARD: ${leaderboardPos}`), rightX + 44, ry);
   ry += 48;
 
   await drawIcon(ctx, useBetaStyle ? betaEmojis.CLAN_BADGE : '🛡️', '🛡️', rightX, ry - 22, 30);
+  ctx.textAlign = 'left';
   ctx.fillText('CLAN:', rightX + 44, ry);
   let cx = rightX + 128;
   if (clanLogo) {
     await drawIcon(ctx, clanLogo, '⚔️', cx, ry - 22, 30);
     cx += 38;
   }
+  ctx.textAlign = 'left';
   ctx.fillText(fitText(ctx, clanClean, 410 - (cx - rightX), 24, 'bold'), cx, ry);
 
   // Bottom section: COLLECTIONS RARITIES
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = `bold 24px ${EMOJI_FONT_STACK}`;
   ctx.textAlign = 'center';
   ctx.fillText('📦  COLLECTIONS RARITIES', width / 2, 704);
   ctx.textAlign = 'left';
@@ -404,14 +442,16 @@ async function renderProfileCard({
         || rarityIconsMap[item.key]
         || '📦';
       await drawIcon(ctx, iconRaw, '📦', item.x, yPos - 22, 30);
+      ctx.textAlign = 'left';
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 23px sans-serif';
-      ctx.fillText(item.label, item.x + 38, yPos);
+      ctx.font = `bold 23px ${TEXT_FONT_STACK}`;
+      ctx.fillText(normalizeText(item.label), item.x + 38, yPos);
     }
   };
 
   await drawRarityRow(row1, 756);
   await drawRarityRow(row2, 812);
+  ctx.restore();
 
   return canvas.toBuffer('image/png');
 }
