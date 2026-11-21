@@ -1,3 +1,4 @@
+
 const BADGE_CATALOG = {
   partner: { key: 'partner', category: 'Discord Category', name: 'Partner Badge', icon: '<:Partner_badge:1572633331244474369>', description: 'Owning by partnership' },
   staff: { key: 'staff', category: 'Discord Category', name: 'Staff Badge', icon: '<:Staff_badge:1572633388622549063>', description: 'You must admin or mod to have this' },
@@ -38,14 +39,43 @@ const BETA_EMOJIS = {
   CLAIM_BTN: '<:Claim:1572814245848940707>',
   RANKS_POS: { 1: '<:1st:1572796499979403334>', 2: '<:2nd:1572796465355690104>', 3: '<:3rd:1572796434867159161>' },
   RARITIES: {
-    C: '<:Newcommon:1572758041843998902>',
-    U: '<:Newuncommon:1572758105412997210>',
-    R: '<:Newrare:1572759318510571560>',
-    SR: '<:NewSR:1572759359258107996>',
-    UTR: '<:NewUTR:1572759426266566699>',
+    C: '<:Pcommon:1573802564200300687>',
+    U: '<:Puncommon:1573802607561015306>',
+    R: '<:Prare:1573802661134864464>',
+    SR: '<:Psr:1573802765459918889>',
+    SRR: '<:Psrr:1573802796040585358>',
+    UTR: '<a:Putr:1573802703090614342>',
+    STR: '<a:Pstr:1573802859491762237>',
+    USRR: '<a:Pusrr:1573802908846264380>',
+    UGMR: '<a:Pugmr:1573802950675923024>',
     SSRP: '<a:NewSSRP:1572759498198745248>'
   }
 };
+
+const RARITY_ICONS = {
+  C: '<:Pcommon:1573802564200300687>',
+  U: '<:Puncommon:1573802607561015306>',
+  R: '<:Prare:1573802661134864464>',
+  SR: '<:Psr:1573802765459918889>',
+  SRR: '<:Psrr:1573802796040585358>',
+  UTR: '<a:Putr:1573802703090614342>',
+  STR: '<a:Pstr:1573802859491762237>',
+  USRR: '<a:Pusrr:1573802908846264380>',
+  UGMR: '<a:Pugmr:1573802950675923024>',
+  SSRP: '<a:NewSSRP:1572759498198745248>'
+};
+
+const RARITY_RATES = [
+  { key: 'C', label: 'Common', emoji: '<:Pcommon:1573802564200300687>', normalPct: 35, shinyPct: 0.0952 },
+  { key: 'U', label: 'Uncommon', emoji: '<:Puncommon:1573802607561015306>', normalPct: 15, shinyPct: 0.0721 },
+  { key: 'R', label: 'Rare', emoji: '<:Prare:1573802661134864464>', normalPct: 8, shinyPct: 0.0572 },
+  { key: 'SR', label: 'SR', emoji: '<:Psr:1573802765459918889>', normalPct: 4, shinyPct: 0.0217 },
+  { key: 'SRR', label: 'SRR', emoji: '<:Psrr:1573802796040585358>', normalPct: 1, shinyPct: 0.0137 },
+  { key: 'UTR', label: 'UTR', emoji: '<a:Putr:1573802703090614342>', normalPct: 0.49, shinyPct: 0.0092 },
+  { key: 'STR', label: 'STR', emoji: '<a:Pstr:1573802859491762237>', normalPct: 0.1, shinyPct: 0.0028 },
+  { key: 'USRR', label: 'USRR', emoji: '<a:Pusrr:1573802908846264380>', normalPct: 0.0190, shinyPct: 0.0010 },
+  { key: 'UGMR', label: 'UGMR', emoji: '<a:Pugmr:1573802950675923024>', normalPct: 0.015, shinyPct: 0.0001 }
+];
 
 const CLAN_ROLE_HIERARCHY = { Leader: 4, 'Co-Leader': 3, Officer: 2, Deputy: 1, Member: 0 };
 
@@ -120,7 +150,7 @@ const TRIVIA_BANK = [
 ];
 
 const SHINY_ICON = '<a:Shinynew:1572053794332872886>';
-const RARITY_HIERARCHY = { SSRP: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
+const RARITY_HIERARCHY = { SSRP: 10, UGMR: 9, USRR: 8, STR: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 
 const ALL_VALID_COMMANDS = new Set([
   'start', 'help', 'status', 'roll', 'drop', 'slot', 'shop', 'rarities',
@@ -145,7 +175,7 @@ const TESTER_ONLY_COMMANDS = new Set([
 ]);
 
 module.exports = {
-  BADGE_CATALOG, BETA_EMOJIS, CLAN_ROLE_HIERARCHY, CLAN_LOGOS, EVENT_ICONS,
-  EVENT_NPCS, EVENT_CHIBIS_POOL, SEASON_LIST, TRIVIA_BANK, SHINY_ICON,
-  RARITY_HIERARCHY, ALL_VALID_COMMANDS, TESTER_ONLY_COMMANDS
+  BADGE_CATALOG, BETA_EMOJIS, RARITY_ICONS, RARITY_RATES, CLAN_ROLE_HIERARCHY,
+  CLAN_LOGOS, EVENT_ICONS, EVENT_NPCS, EVENT_CHIBIS_POOL, SEASON_LIST,
+  TRIVIA_BANK, SHINY_ICON, RARITY_HIERARCHY, ALL_VALID_COMMANDS, TESTER_ONLY_COMMANDS
 };
