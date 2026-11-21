@@ -207,6 +207,65 @@ client.on('messageCreate', async message => {
   const callerHasBetaView = canSeeUnreleasedBeta(userId) || Boolean(db.config.featuresPublished);
   const rarityIconsMap = getRarityIconMap(callerHasBetaView);
 
+  const getDisplayName = async (uId) => {
+    const uData = db.users[uId];
+    if (uData && uData.customNickname) return uData.customNickname;
+    try {
+      const fetched = await client.users.fetch(uId);
+      if (fetched) return fetched.username;
+    } catch {}
+    return 'Unknown User';
+  };
+
+  const buildProfileAttachmentForUser = async (targetUId, targetMemberObj, syncedBadgesList) => {
+    ensureUser(targetUId);
+    const tData = db.users[targetUId];
+    updateUserRank(tData);
+
+    const allSortedUsers = Object.entries(db.users)
+      .map(([uId, uData]) => ({ uId, points: uData.points || 0 }))
+      .sort((a, b) => b.points - a.points);
+    const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUId);
+    const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
+    const joinedDateStr = tData.joinedDate || 'N/A';
+    const displayName = tData.customNickname || targetMemberObj?.username || 'Player';
+
+    const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
+    if (tData.inventory && tData.inventory.chibis) {
+      tData.inventory.chibis.forEach(c => {
+        if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++;
+      });
+    }
+
+    const canUsePerk = hasSupporterOrNitro(tData, syncedBadgesList);
+    const activeThemeKey = canUsePerk && tData.profileBgTheme && THEME_PALETTES[tData.profileBgTheme]
+      ? tData.profileBgTheme
+      : 'crystal';
+
+    const cardBuffer = await renderProfileCard({
+      targetUserData: {
+        ...tData,
+        profileBg: null,
+        clanLogoId: tData.clan && db.clans[tData.clan]
+          ? db.clans[tData.clan].logoId
+          : null
+      },
+      targetMember: targetMemberObj,
+      displayName,
+      joinedDateStr,
+      leaderboardPos,
+      syncedBadges: syncedBadgesList,
+      rarityCounts,
+      rarityIconsMap: getRarityIconMap(false),
+      betaEmojis: BETA_EMOJIS,
+      useBetaStyle: Boolean(callerHasBetaView),
+      themeKey: activeThemeKey,
+      customBgUrl: canUsePerk ? (tData.customBg || null) : null
+    });
+
+    return new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
+  };
+
   try {
     const currentMs = Date.now();
     if (db.config.luckEventExpires && currentMs > db.config.luckEventExpires) {
@@ -825,13 +884,6 @@ client.on('messageCreate', async message => {
       }
 
       const subArg = (args[0] || '').trim().toLowerCase();
-      if (!subArg && !message.attachments?.first()) {
-        return message.reply(toSmallCaps(
-          `🖼️ **Custom Profile Background (Supporter & Nitro Perk)**\n` +
-          `Current BG: ${user.customBg ? 'Set ✅' : 'None'}\n` +
-          `Usage: \`${currentPrefix}setbg <image_url>\`, attach an image with \`${currentPrefix}setbg\`, or \`${currentPrefix}setbg clear\``
-        ));
-      }
 
       if (subArg === 'clear' || subArg === 'reset' || subArg === 'remove') {
         user.customBg = null;
@@ -839,40 +891,199 @@ client.on('messageCreate', async message => {
         return message.reply(toSmallCaps('✅ Cleared your custom profile background image!'));
       }
 
-      const attachment = message.attachments?.first();
-      const rawUrl = attachment?.url || args[0]?.trim();
+      const resolveImageFromAttachmentOrUrl = async (attachment, rawUrl) => {
+        if (attachment) {
+          const isImageAttachment = attachment.contentType?.startsWith('image/');
+          const hasImageExt = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(attachment.name || attachment.url || '');
+          if (!isImageAttachment && !hasImageExt) {
+            return { error: toSmallCaps('❌ Please upload a valid image file (`.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif`).') };
+          }
+          return { url: attachment.url };
+        }
 
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(rawUrl);
-      } catch {
-        return message.reply(toSmallCaps('❌ Please provide a valid image URL (`https://...`) or attach an image file!'));
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(rawUrl);
+        } catch {
+          return { error: toSmallCaps('❌ Please provide a valid image URL (`https://...`), attach an image, or click **Upload File**!') };
+        }
+
+        if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+          return { error: toSmallCaps('❌ Image URL must start with `http://` or `https://`.') };
+        }
+
+        let finalImageUrl = parsedUrl.toString();
+        const hasImageExt = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(parsedUrl.pathname);
+
+        if (!hasImageExt) {
+          try {
+            const pageRes = await fetch(finalImageUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            const contentType = pageRes.headers.get('content-type') || '';
+
+            if (contentType.startsWith('image/')) {
+              finalImageUrl = pageRes.url || finalImageUrl;
+            } else {
+              const html = await pageRes.text();
+              const ogMatch =
+                html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+                html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ||
+                html.match(/https:\/\/i\.ibb\.co\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)/i);
+
+              const extractedUrl = ogMatch ? (ogMatch[1] || ogMatch[0]).trim() : null;
+              if (!extractedUrl) {
+                return { error: toSmallCaps('❌ Could not find a direct image at that link. Use a direct `.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif` URL or click **Upload File**!') };
+              }
+              finalImageUrl = extractedUrl;
+            }
+          } catch {
+            return { error: toSmallCaps('❌ Could not load that link. Use a direct `.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif` URL or click **Upload File**!') };
+          }
+        }
+
+        return { url: finalImageUrl };
+      };
+
+      const attachPreviewButtonToMessage = async (targetMsg) => {
+        const previewRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('setbg_preview_card_btn')
+            .setLabel(toSmallCaps('Preview Card'))
+            .setStyle(ButtonStyle.Success)
+        );
+
+        await targetMsg.edit({
+          content: toSmallCaps(`✅ Custom profile background saved! Click **Preview Card** below or run \`${currentPrefix}p\`.`),
+          components: [previewRow]
+        }).catch(() => {});
+
+        const previewCollector = targetMsg.createMessageComponentCollector({ time: 60000, max: 1 });
+        let previewed = false;
+
+        previewCollector.on('collect', async pi => {
+          if (!pi.deferred && !pi.replied) await pi.deferUpdate().catch(() => {});
+          if (pi.user.id !== userId) {
+            return pi.followUp({ content: toSmallCaps('❌ Only the command sender can preview this card!'), ephemeral: true });
+          }
+          previewed = true;
+          await targetMsg.edit({ components: [] }).catch(() => {});
+          const cardAtt = await buildProfileAttachmentForUser(userId, message.author, syncedBadges);
+          await message.channel.send({ files: [cardAtt] }).catch(() => {});
+        });
+
+        previewCollector.on('end', async () => {
+          if (!previewed) {
+            await targetMsg.edit({ components: [] }).catch(() => {});
+          }
+        });
+      };
+
+      const directAttachment = message.attachments?.first();
+      if (directAttachment || subArg) {
+        const resolved = await resolveImageFromAttachmentOrUrl(directAttachment, args[0]?.trim());
+        if (resolved.error) {
+          return message.reply(resolved.error);
+        }
+        user.customBg = resolved.url;
+        await saveUsers();
+        const savedMsg = await message.reply(toSmallCaps('✅ Saving custom profile background...'));
+        await attachPreviewButtonToMessage(savedMsg);
+        return;
       }
 
-      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
-        return message.reply(toSmallCaps('❌ Image URL must start with `http://` or `https://`.'));
-      }
+      const uploadRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('setbg_upload_file_btn')
+          .setLabel(toSmallCaps('Upload File'))
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('setbg_clear_btn')
+          .setLabel(toSmallCaps('Clear BG'))
+          .setStyle(ButtonStyle.Secondary)
+      );
 
-      const isImageAttachment = attachment?.contentType?.startsWith('image/');
-      const hasImageExt = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(parsedUrl.pathname);
-      if (!isImageAttachment && !hasImageExt) {
-        return message.reply(toSmallCaps('❌ Please link or attach a direct image file (`.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif`).'));
-      }
+      const promptMsg = await message.reply({
+        content: toSmallCaps(
+          `🖼️ **Custom Profile Background (Supporter & Nitro Perk)**\n` +
+          `Current BG: ${user.customBg ? 'Set ✅' : 'None'}\n` +
+          `Click **Upload File** below, attach an image with \`${currentPrefix}setbg\`, or pass an image URL.`
+        ),
+        components: [uploadRow]
+      });
 
-      user.customBg = parsedUrl.toString();
-      await saveUsers();
-      return message.reply(toSmallCaps(`✅ Custom profile background saved! Run \`${currentPrefix}p\` to preview it.`));
+      const btnCollector = promptMsg.createMessageComponentCollector({ time: 30000, max: 1 });
+      let clicked = false;
+
+      btnCollector.on('collect', async i => {
+        if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+        if (i.user.id !== userId) {
+          return i.followUp({ content: toSmallCaps('❌ Only the command sender can use these buttons!'), ephemeral: true });
+        }
+        clicked = true;
+
+        if (i.customId === 'setbg_clear_btn') {
+          user.customBg = null;
+          await saveUsers();
+          await promptMsg.edit({
+            content: toSmallCaps('✅ Cleared your custom profile background image!'),
+            components: []
+          }).catch(() => {});
+          return;
+        }
+
+        if (i.customId === 'setbg_upload_file_btn') {
+          await promptMsg.edit({
+            content: toSmallCaps('📤 **Upload File Mode Active:** Please send or attach your background image in this channel within **30 seconds** (or type `cancel`).'),
+            components: []
+          }).catch(() => {});
+
+          const msgCollector = message.channel.createMessageCollector({
+            filter: m => m.author.id === userId && (m.attachments.size > 0 || m.content.trim().toLowerCase() === 'cancel'),
+            time: 30000,
+            max: 1
+          });
+
+          let received = false;
+
+          msgCollector.on('collect', async m => {
+            received = true;
+            if (m.content.trim().toLowerCase() === 'cancel') {
+              await m.delete().catch(() => {});
+              return promptMsg.edit({ content: toSmallCaps('❌ Background upload cancelled.'), components: [] }).catch(() => {});
+            }
+
+            const uploadedAtt = m.attachments.first();
+            const resolved = await resolveImageFromAttachmentOrUrl(uploadedAtt, null);
+            await m.delete().catch(() => {});
+
+            if (resolved.error) {
+              return promptMsg.edit({ content: resolved.error, components: [] }).catch(() => {});
+            }
+
+            user.customBg = resolved.url;
+            await saveUsers();
+            await attachPreviewButtonToMessage(promptMsg);
+          });
+
+          msgCollector.on('end', async () => {
+            if (!received) {
+              await promptMsg.edit({
+                content: toSmallCaps(`⏳ Upload timed out. Run \`${currentPrefix}setbg\` again to try once more.`),
+                components: []
+              }).catch(() => {});
+            }
+          });
+        }
+      });
+
+      btnCollector.on('end', async () => {
+        if (!clicked) {
+          await promptMsg.edit({ components: [] }).catch(() => {});
+        }
+      });
+      return;
     }
-
-    const getDisplayName = async (uId) => {
-      const uData = db.users[uId];
-      if (uData && uData.customNickname) return uData.customNickname;
-      try {
-        const fetched = await client.users.fetch(uId);
-        if (fetched) return fetched.username;
-      } catch {}
-      return 'Unknown User';
-    };
 
     if (command === 'seasons') {
       const currentSeasonNum = db.config.seasonNumber || 1;
@@ -1801,49 +2012,10 @@ client.on('messageCreate', async message => {
       }
 
       const targetMember = targetUserMention || message.author;
-      const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => ({ uId, points: uData.points || 0 })).sort((a, b) => b.points - a.points);
-      const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
-      const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
-      const joinedDateStr = targetUserData.joinedDate || 'N/A';
-      const displayName = targetUserData.customNickname || targetMember.username;
-
-      const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
-      if (targetUserData.inventory && targetUserData.inventory.chibis) {
-        targetUserData.inventory.chibis.forEach(c => {
-          if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++;
-        });
-      }
-
       const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
       await saveUsers();
 
-      const canUseBgPerk = hasSupporterOrNitro(targetUserData, syncedBadges);
-      const activeThemeKey = canUseBgPerk && targetUserData.profileBgTheme && THEME_PALETTES[targetUserData.profileBgTheme]
-        ? targetUserData.profileBgTheme
-        : 'crystal';
-
-      const cardBuffer = await renderProfileCard({
-        targetUserData: {
-          ...targetUserData,
-          profileBg: null,
-          clanLogoId: targetUserData.clan && db.clans[targetUserData.clan]
-            ? db.clans[targetUserData.clan].logoId
-            : null
-        },
-        targetMember,
-        displayName,
-        joinedDateStr,
-        leaderboardPos,
-        syncedBadges,
-        rarityCounts,
-        rarityIconsMap: getRarityIconMap(false),
-        betaEmojis: BETA_EMOJIS,
-        useBetaStyle: Boolean(callerHasBetaView),
-        themeKey: activeThemeKey,
-        customBgUrl: canUseBgPerk ? (targetUserData.customBg || null) : null
-      });
-
-      const attachment = new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
+      const attachment = await buildProfileAttachmentForUser(targetUserId, targetMember, syncedBadges);
       return message.reply({ files: [attachment] });
     }
 
