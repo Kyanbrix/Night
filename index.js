@@ -1,7 +1,7 @@
 const {
   Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
   ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SectionBuilder, ThumbnailBuilder,
-  MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, PermissionsBitField
+  AttachmentBuilder, MessageFlags, PermissionsBitField
 } = require('discord.js');
 const fetch = require('node-fetch');
 const mongoose = require('mongoose');
@@ -18,58 +18,7 @@ const {
   getClanLogoListText, getClanMemberRole, pushClanMail, parseDurationToMs, formatTimeRemaining,
   addExpAndLevelUp, parseOddsNumber
 } = require('./core/helpers');
-
-const PROFILE_BG_PRESETS = {
-  'neon-night': { label: 'Neon Anime Night', previewUrl: null },
-  'neon-anime-night': { label: 'Neon Anime Night', previewUrl: null },
-  'sakura-rain': { label: 'Sakura Rain', previewUrl: null },
-  'celestial-galaxy': { label: 'Celestial Galaxy', previewUrl: null },
-  'cyber-grid': { label: 'Cyber Grid', previewUrl: null },
-  'cozy-cafe': { label: 'Cozy Cafe', previewUrl: null }
-};
-
-const isValidHttpProfileBgUrl = (rawUrl) => {
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'https:') return false;
-    const cleanPath = parsed.pathname.toLowerCase();
-    const validExt = ['.gif', '.png', '.jpg', '.jpeg', '.webp'].some(ext => cleanPath.endsWith(ext));
-    const allowedHosts = ['giphy.com', 'tenor.com', 'discordapp.com', 'discordapp.net'];
-    const hostAllowed = allowedHosts.some(h => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`));
-    return validExt || hostAllowed;
-  } catch {
-    return false;
-  }
-};
-
-const parseProfileBgInput = (rawValue) => {
-  const token = String(rawValue || '').split('|')[0].trim();
-  if (!token) return null;
-  if (token.toLowerCase().startsWith('preset:')) {
-    const presetKey = token.slice('preset:'.length).trim().toLowerCase();
-    const presetObj = PROFILE_BG_PRESETS[presetKey];
-    if (!presetObj) return null;
-    return { stored: `preset:${presetKey}`, kind: 'preset', label: presetObj.label, url: presetObj.previewUrl };
-  }
-  if (isValidHttpProfileBgUrl(token)) {
-    return { stored: token, kind: 'url', label: 'Custom GIF', url: token };
-  }
-  return null;
-};
-
-const resolveStoredProfileBg = (storedBg) => {
-  if (!storedBg || typeof storedBg !== 'string') return null;
-  const trimmed = storedBg.trim();
-  if (trimmed.toLowerCase().startsWith('preset:')) {
-    const presetKey = trimmed.slice('preset:'.length).trim().toLowerCase();
-    const presetObj = PROFILE_BG_PRESETS[presetKey];
-    return { kind: 'preset', label: presetObj ? presetObj.label : presetKey, url: presetObj ? presetObj.previewUrl : null };
-  }
-  if (isValidHttpProfileBgUrl(trimmed)) {
-    return { kind: 'url', label: 'Custom GIF', url: trimmed };
-  }
-  return null;
-};
+const { renderProfileCard, THEME_PALETTES, hasSupporterOrNitro } = require('./core/profileCard');
 
 const client = new Client({
   intents: [
@@ -681,6 +630,8 @@ client.on('messageCreate', async message => {
           let rewardCrystal = 0;
           let npcDropText = '*None*';
 
+          if (!db.config.eventCrystals) db.config.eventCrystals = {};
+
           if (isUserWinner) {
             rewardCrystal = 17;
             db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
@@ -767,6 +718,7 @@ client.on('messageCreate', async message => {
             return i.followUp({ content: toSmallCaps(`❌ You need **${item.cost}** ${EVENT_ICONS.CRYSTAL}, but you only have **${userCrystals}** ${EVENT_ICONS.CRYSTAL}!`), ephemeral: true });
           }
 
+          if (!db.config.eventCrystals) db.config.eventCrystals = {};
           db.config.eventCrystals[userId] -= item.cost;
           const generatedId = new mongoose.Types.ObjectId().toString();
           if (!user.inventory.chibis) user.inventory.chibis = [];
@@ -819,23 +771,45 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'profilebg') {
+      if (!Array.isArray(user.badges)) user.badges = [];
+      const syncedBadges = await evaluateAndSyncUserBadges(userId, user, message.guild);
+      const canUseBgPerk = hasSupporterOrNitro(user, syncedBadges);
+
       const input = args.join(' ').trim();
       if (!input) {
-        return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}profilebg [preset:neon-anime-night | https://image-url] (or \`${currentPrefix}profilebg clear\` to remove)`));
+        const currentTheme = user.profileBgTheme && THEME_PALETTES[user.profileBgTheme] ? user.profileBgTheme : 'crystal';
+        const availableThemes = Object.keys(THEME_PALETTES).map(k => `\`${k}\``).join(', ');
+        return message.reply(toSmallCaps(
+          `🎨 **Profile Background Customizer (Supporter & Nitro Perk)**\n` +
+          `Current Theme: **${currentTheme}** | Status: ${canUseBgPerk ? '✅ Unlocked' : '🔒 Locked (Requires Supporter or Nitro badge)'}\n` +
+          `Themes: ${availableThemes}\n` +
+          `Usage: \`${currentPrefix}profilebg <theme>\` or \`${currentPrefix}profilebg clear\``
+        ));
       }
-      if (input.toLowerCase() === 'clear') {
+
+      if (input.toLowerCase() === 'clear' || input.toLowerCase() === 'reset') {
         user.profileBg = null;
+        user.profileBgTheme = 'crystal';
         await saveUsers();
-        return message.reply(toSmallCaps('✅ Cleared your custom profile background!'));
+        return message.reply(toSmallCaps('✅ Cleared your custom profile background and reset to default!'));
       }
-      const parsedBg = parseProfileBgInput(input);
-      if (!parsedBg) {
-        return message.reply(toSmallCaps('❌ Please provide a valid `preset:<name>` from the customizer or an `https://` direct image/GIF URL (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, or Giphy/Tenor/Discord CDN).'));
+
+      if (!canUseBgPerk) {
+        return message.reply(
+          toSmallCaps('❌ Customizing your profile background is only available for users with the **Supporter** or **Nitro** badge!')
+        );
       }
-      user.profileBg = parsedBg.stored;
+
+      const chosenTheme = input.toLowerCase();
+      if (!THEME_PALETTES[chosenTheme]) {
+        const validThemes = Object.keys(THEME_PALETTES).map(k => `\`${k}\``).join(', ');
+        return message.reply(toSmallCaps(`❌ Unknown theme! Choose from: ${validThemes} or use \`${currentPrefix}profilebg clear\`.`));
+      }
+
+      user.profileBg = null;
+      user.profileBgTheme = chosenTheme;
       await saveUsers();
-      const confirmationLabel = parsedBg.kind === 'preset' ? `Preset: ${parsedBg.label}` : 'Custom GIF URL';
-      return message.reply(toSmallCaps(`✅ Successfully updated your profile background (${confirmationLabel})!`));
+      return message.reply(toSmallCaps(`✅ Successfully updated your profile background theme to **${chosenTheme}**!`));
     }
 
     const getDisplayName = async (uId) => {
@@ -854,7 +828,7 @@ client.on('messageCreate', async message => {
       const timeRemainingMs = Math.max(0, (db.config.seasonExpires || Date.now()) - Date.now());
       const seasonTimerStr = formatTimeRemaining(timeRemainingMs);
       const seasonLines = Object.entries(SEASON_LIST).map(([num, s]) => {
-        const activeMarker = parseInt(num) === currentSeasonNum ? ' 🟢 (Active)' : '';
+        const activeMarker = parseInt(num, 10) === currentSeasonNum ? ' 🟢 (Active)' : '';
         return toSmallCaps(`• ${s.name}${activeMarker}\n  Begin In: ${s.start}`);
       }).join('\n\n');
 
@@ -915,6 +889,7 @@ client.on('messageCreate', async message => {
         `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
         `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
         `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
+        `\`${currentPrefix}profilebg\` — Customize profile background (Supporter/Nitro)\n` +
         `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
         `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
         `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
@@ -961,7 +936,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'slot') {
-      const bet = parseInt(args[0]);
+      const bet = parseInt(args[0], 10);
       if (isNaN(bet) || bet <= 0) {
         return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}slot [bet_amount] (e.g. ${currentPrefix}slot 5)`));
       }
@@ -1049,7 +1024,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === 'roll') {
-      const qty = Math.min(parseInt(args[0]) || 1, gameData.settings.maxRollQuantity);
+      const qty = Math.min(parseInt(args[0], 10) || 1, gameData.settings.maxRollQuantity);
       const boost = args[1] ? args[1].toLowerCase() : null;
 
       if (qty < 1) return message.reply(toSmallCaps('❌ Quantity must be at least 1.'));
@@ -1542,7 +1517,7 @@ client.on('messageCreate', async message => {
 
     if (command === 'equipteam') {
       const chibiIdArg = args[0];
-      const slot = parseInt(args[1]);
+      const slot = parseInt(args[1], 10);
       if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
         return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}equipteam [chibi_id or short id] [slot 1-3]\nExample: ${currentPrefix}equipteam a1b2c3 1`));
       }
@@ -1773,73 +1748,12 @@ client.on('messageCreate', async message => {
       }
 
       const targetMember = targetUserMention || message.author;
-      const avatarUrl = targetMember.displayAvatarURL({ extension: 'png', size: 256 });
-      const resolvedBg = resolveStoredProfileBg(targetUserData.profileBg);
       const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => ({ uId, points: uData.points || 0 })).sort((a, b) => b.points - a.points);
       const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
       const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
-
-      let clanDisplayStr = 'NONE';
-      if (targetUserData.clan && db.clans[targetUserData.clan]) {
-        const cObj = db.clans[targetUserData.clan];
-        clanDisplayStr = `${getClanLogoDisplay(cObj.logoId)} ${targetUserData.clan.replace(/\*/g, '')}`;
-      }
-
       const joinedDateStr = targetUserData.joinedDate || 'N/A';
       const displayName = targetUserData.customNickname || targetMember.username;
 
-      if ((isTester(userId) && isTester(targetUserId)) || Boolean(db.config.featuresPublished)) {
-        const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
-        await saveUsers();
-
-        const badgeIconsRow = syncedBadges.length > 0
-          ? syncedBadges.map(bKey => BADGE_CATALOG[bKey]?.icon).filter(Boolean).join(' ')
-          : '*None*';
-
-        const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
-        if (targetUserData.inventory && targetUserData.inventory.chibis) {
-          targetUserData.inventory.chibis.forEach(c => {
-            if (rarityCounts[c.rarity] !== undefined) rarityCounts[c.rarity]++;
-          });
-        }
-
-        const bgFooterLine = resolvedBg ? toSmallCaps(`\n\n🎞️ Backdrop: **${resolvedBg.label}** (GIF Active)`) : '';
-        const betaHeader = `${BETA_EMOJIS.USERS} **@${displayName}**\n` + toSmallCaps(`[${joinedDateStr}]\n\n`) + `${BETA_EMOJIS.TOTAL_BADGE} ` + toSmallCaps('User Badges\n') + `${badgeIconsRow}\n\n`;
-        const boxedStats =
-          '```\nUSER STATS | RANK STATS\n```\n' +
-          `${BETA_EMOJIS.STATS} ` + toSmallCaps('User Status\n') +
-          `${BETA_EMOJIS.DICE} ` + toSmallCaps(`Dice: **${(targetUserData.dice || 0).toLocaleString()}**\n`) +
-          `${BETA_EMOJIS.CASH} ` + toSmallCaps('Cash: **0**\n') +
-          `${BETA_EMOJIS.STREAK} ` + toSmallCaps(`Streak: **${targetUserData.streak || 0}D**\n`) +
-          `${BETA_EMOJIS.EXP} ` + toSmallCaps(`Level: **${targetUserData.userLevel || 1}**\n\n`) +
-          `${BETA_EMOJIS.RANK} ` + toSmallCaps('Rank Stats\n') +
-          `${BETA_EMOJIS.RANK} ` + toSmallCaps('Rank: ') + `${targetUserData.rank}\n` +
-          `${BETA_EMOJIS.TROPHY_PTS} ` + toSmallCaps(`Points: **${(targetUserData.points || 0).toLocaleString()}**\n`) +
-          `${BETA_EMOJIS.GLOBAL} ` + toSmallCaps(`Leaderboard: **${leaderboardPos}**\n`) +
-          `${BETA_EMOJIS.CLAN_BADGE} ` + toSmallCaps(`Clan: **${clanDisplayStr}**\n\n`);
-
-        const betaCollections =
-          `${BETA_EMOJIS.INV} ` + toSmallCaps('Collections Rarities\n') +
-          `${BETA_EMOJIS.RARITIES.C} ` + toSmallCaps(`Common: **${rarityCounts.C}**\n`) +
-          `${BETA_EMOJIS.RARITIES.U} ` + toSmallCaps(`Uncommon: **${rarityCounts.U}**\n`) +
-          `${BETA_EMOJIS.RARITIES.R} ` + toSmallCaps(`Rare: **${rarityCounts.R}**\n`) +
-          `${BETA_EMOJIS.RARITIES.SR} ` + toSmallCaps(`SR: **${rarityCounts.SR}**\n`) +
-          `${rarityIconsMap['SRR'] || '📦'} ` + toSmallCaps(`SRR: **${rarityCounts.SRR}**\n`) +
-          `${BETA_EMOJIS.RARITIES.UTR} ` + toSmallCaps(`UTR: **${rarityCounts.UTR}**\n`) +
-          `${BETA_EMOJIS.RARITIES.SSRP} ` + toSmallCaps(`SSRP: **${rarityCounts.SSRP}**`) +
-          bgFooterLine;
-
-        const section = new SectionBuilder()
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(betaHeader + boxedStats + betaCollections))
-          .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
-        const container = new ContainerBuilder().setAccentColor(0x1abc9c).addSectionComponents(section);
-        if (resolvedBg && resolvedBg.url) {
-          container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(resolvedBg.url)));
-        }
-        return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-      }
-
-      const mainRarityIconsMap = getRarityIconMap(false);
       const rarityCounts = { SSRP: 0, UTR: 0, SRR: 0, SR: 0, R: 0, U: 0, C: 0 };
       if (targetUserData.inventory && targetUserData.inventory.chibis) {
         targetUserData.inventory.chibis.forEach(c => {
@@ -1847,42 +1761,36 @@ client.on('messageCreate', async message => {
         });
       }
 
-      const targetUserMaxExp = gameData.settings.userExpBase + (targetUserData.userLevel - 1) * gameData.settings.userExpPerLevel;
-      const bestRollIconPart = targetUserData.bestChibi ? targetUserData.bestChibi : 'NONE';
-      const bestRollOddsPart = targetUserData.bestRoll && targetUserData.bestRoll !== 'None' ? `1 IN ${targetUserData.bestRoll}` : 'NONE';
+      const syncedBadges = await evaluateAndSyncUserBadges(targetUserId, targetUserData, message.guild);
+      await saveUsers();
 
-      let customStatusDisplay = '';
-      if (targetUserData.customStatus && targetUserData.customStatus.text) {
-        const totalSecs = Math.floor((Date.now() - targetUserData.customStatus.timestamp) / 1000);
-        const hrs = Math.floor(totalSecs / 3600);
-        const mins = Math.floor((totalSecs % 3600) / 60);
-        const secs = totalSecs % 60;
-        const timeFormatted = hrs > 0
-          ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-          : `${mins}:${String(secs).padStart(2, '0')}`;
-        customStatusDisplay = toSmallCaps(`\n🎮 **${targetUserData.customStatus.text}**\n🎮 ${timeFormatted}\n`);
-      }
+      const canUseBgPerk = hasSupporterOrNitro(targetUserData, syncedBadges);
+      const activeThemeKey = canUseBgPerk && targetUserData.profileBgTheme && THEME_PALETTES[targetUserData.profileBgTheme]
+        ? targetUserData.profileBgTheme
+        : 'crystal';
 
-      const bgFooterLine = resolvedBg ? toSmallCaps(`\n\n🎞️ **BACKDROP:** ${resolvedBg.label}`) : '';
-      const profileHeader = toSmallCaps(`👤 **! ${displayName}**\n@${targetMember.username}  •  JOINED ${joinedDateStr}\n`) + customStatusDisplay + '\n';
-      const statsSection = toSmallCaps('## 📊 STATS\n\nRANKS: ') + `${targetUserData.rank}` + toSmallCaps(`  |  🎲: **${targetUserData.dice || 0}**\n`) +
-        toSmallCaps(`POINTS: **${targetUserData.points.toLocaleString()}**  |  GLOBAL RANK: **${leaderboardPos}**\nSTREAK: **${targetUserData.streak || 0}D**  |  CLAN: **${clanDisplayStr}**\nLEVEL: **${targetUserData.userLevel}** (${targetUserData.userExp}/${targetUserMaxExp})\n\n`);
-      const collectionSection = toSmallCaps(
-        '## 📦 COLLECTIONS\n\n' +
-        `${mainRarityIconsMap['C'] || '📦'} C: **${rarityCounts.C}**  |  ${mainRarityIconsMap['UTR'] || '📦'} UTR: **${rarityCounts.UTR}**\n` +
-        `${mainRarityIconsMap['U'] || '📦'} U: **${rarityCounts.U}**  |  ${mainRarityIconsMap['SSRP'] || '🌟'} SSRP: **${rarityCounts.SSRP}**\n` +
-        `${mainRarityIconsMap['R'] || '📦'} R: **${rarityCounts.R}**\n${mainRarityIconsMap['SR'] || '📦'} SR: **${rarityCounts.SR}**\n${mainRarityIconsMap['SRR'] || '📦'} SRR: **${rarityCounts.SRR}**\n\n` +
-        `🎲 **BEST ROLL:** ${bestRollIconPart} & ${bestRollOddsPart}`
-      ) + bgFooterLine;
+      const cardBuffer = await renderProfileCard({
+        targetUserData: {
+          ...targetUserData,
+          profileBg: null,
+          clanLogoId: targetUserData.clan && db.clans[targetUserData.clan]
+            ? db.clans[targetUserData.clan].logoId
+            : null
+        },
+        targetMember,
+        displayName,
+        joinedDateStr,
+        leaderboardPos,
+        syncedBadges,
+        rarityCounts,
+        rarityIconsMap: getRarityIconMap(false),
+        betaEmojis: BETA_EMOJIS,
+        useBetaStyle: Boolean(callerHasBetaView),
+        themeKey: activeThemeKey
+      });
 
-      const section = new SectionBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(profileHeader + statsSection + collectionSection))
-        .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
-      const container = new ContainerBuilder().setAccentColor(0x36393f).addSectionComponents(section);
-      if (resolvedBg && resolvedBg.url) {
-        container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(resolvedBg.url)));
-      }
-      return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+      const attachment = new AttachmentBuilder(cardBuffer, { name: 'profile-card.png' });
+      return message.reply({ files: [attachment] });
     }
 
     if (command === 'clanlist') {
@@ -2396,7 +2304,7 @@ client.on('messageCreate', async message => {
               const msgs = await ti.channel.awaitMessages({ filter: m => m.author.id === ti.user.id, max: 1, time: 20000 }).catch(() => null);
               const m = msgs?.first();
               if (!m) return;
-              const amt = parseInt(m.content);
+              const amt = parseInt(m.content, 10);
               const uObj = db.users[ti.user.id];
               await m.delete().catch(() => {});
               if (isNaN(amt) || amt <= 0) return ti.followUp({ content: toSmallCaps('❌ Invalid dice amount!'), ephemeral: true });
@@ -2539,8 +2447,8 @@ client.on('messageCreate', async message => {
 
     if (command === 'adminsetclanrewards') {
       if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can configure clan rewards!'));
-      const rankPos = parseInt(args[0]);
-      const qty = parseInt(args[1]);
+      const rankPos = parseInt(args[0], 10);
+      const qty = parseInt(args[1], 10);
       const rarity = args[2]?.toUpperCase();
       const emoji = args[3];
       if (![1, 2, 3].includes(rankPos) || isNaN(qty) || !rarity || !emoji) {
@@ -2623,7 +2531,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'admingivecrystal') {
         const target = message.mentions.users.first();
-        const amount = parseInt(args[1]);
+        const amount = parseInt(args[1], 10);
         if (!target || isNaN(amount)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingivecrystal [@user] [amount]`));
         ensureUser(target.id);
         if (!db.config.eventCrystals) db.config.eventCrystals = {};
@@ -2633,7 +2541,7 @@ client.on('messageCreate', async message => {
       }
 
       if (command === 'adminsetlbseason') {
-        const seasonNum = parseInt(args[0]);
+        const seasonNum = parseInt(args[0], 10);
         if (isNaN(seasonNum) || seasonNum < 1) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlbseason [season_number]`));
         db.config.seasonNumber = seasonNum;
         await saveUsers();
@@ -2713,7 +2621,7 @@ client.on('messageCreate', async message => {
       if (command === 'admingiveitem') {
         const target = message.mentions.users.first();
         const itemType = args[1]?.toLowerCase();
-        const quantity = parseInt(args[2]);
+        const quantity = parseInt(args[2], 10);
         if (!target || !['dice', 'spray', 'clover'].includes(itemType) || isNaN(quantity)) {
           return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}admingiveitem [@user] [dice|spray|clover] [quantity]`));
         }
@@ -2739,7 +2647,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'adminsetpoints') {
         const target = message.mentions.users.first();
-        const pts = parseInt(args[1]);
+        const pts = parseInt(args[1], 10);
         if (!target || isNaN(pts)) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetpoints [@user] [points]`));
         ensureUser(target.id);
         db.users[target.id].points = pts;
@@ -2761,7 +2669,7 @@ client.on('messageCreate', async message => {
 
       if (command === 'adminsetlevel') {
         const target = message.mentions.users.first();
-        const lvl = parseInt(args[1]);
+        const lvl = parseInt(args[1], 10);
         if (!target || isNaN(lvl) || lvl < 1) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetlevel [@user] [level]`));
         ensureUser(target.id);
         db.users[target.id].userLevel = lvl;
