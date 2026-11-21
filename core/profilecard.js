@@ -1,4 +1,3 @@
-
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
@@ -145,10 +144,14 @@ function hasSupporterOrNitro(userData, syncedBadges = []) {
   return active.has('nitro') || active.has('support') || active.has('supporter');
 }
 
-function isValidImageUrl(rawUrl) {
-  if (!rawUrl || typeof rawUrl !== 'string') return false;
+function isValidImageSource(rawSrc) {
+  if (!rawSrc || typeof rawSrc !== 'string') return false;
+  const trimmed = rawSrc.trim();
+  if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(trimmed)) {
+    return true;
+  }
   try {
-    const parsed = new URL(rawUrl.trim());
+    const parsed = new URL(trimmed);
     return parsed.protocol === 'https:' || parsed.protocol === 'http:';
   } catch {
     return false;
@@ -184,26 +187,46 @@ function getEmojiCdnUrl(raw) {
 }
 
 async function loadRemote(url, cache, timeoutMs = 6000) {
-  if (!url) return null;
-  if (cache.has(url)) return cache.get(url);
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('data:image/')) {
+    if (cache.has(trimmed)) return cache.get(trimmed);
+    try {
+      const commaIdx = trimmed.indexOf(',');
+      if (commaIdx === -1) return null;
+      const base64Data = trimmed.slice(commaIdx + 1);
+      const buf = Buffer.from(base64Data, 'base64');
+      if (!buf.length) return null;
+      const img = await loadImage(buf);
+      cache.set(trimmed, img);
+      return img;
+    } catch (err) {
+      console.warn('[profilecard] Failed to decode data URI image:', err?.message || err);
+      return null;
+    }
+  }
+
+  if (cache.has(trimmed)) return cache.get(trimmed);
 
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const fetcher = typeof fetch === 'function' ? fetch : require('node-fetch');
-    const res = await fetcher(url, {
+    const res = await fetcher(trimmed, {
       signal: ctrl.signal,
       headers: { 'User-Agent': 'Mozilla/5.0 DiscordBot' }
     });
     clearTimeout(timer);
     if (!res.ok) {
-      console.warn(`[profilecard] HTTP ${res.status} fetching image: ${url}`);
+      console.warn(`[profilecard] HTTP ${res.status} fetching image: ${trimmed}`);
       return null;
     }
 
     const contentType = (res.headers.get('content-type') || '').toLowerCase();
     if (contentType.includes('text/html') || contentType.includes('application/json')) {
-      console.warn(`[profilecard] Non-image content-type (${contentType}) for URL: ${url}`);
+      console.warn(`[profilecard] Non-image content-type (${contentType}) for URL: ${trimmed}`);
       return null;
     }
 
@@ -211,10 +234,10 @@ async function loadRemote(url, cache, timeoutMs = 6000) {
     if (!buf.length) return null;
 
     const img = await loadImage(buf);
-    cache.set(url, img);
+    cache.set(trimmed, img);
     return img;
   } catch (err) {
-    console.warn(`[profilecard] Failed to load image ${url}:`, err?.message || err);
+    console.warn(`[profilecard] Failed to load image ${trimmed}:`, err?.message || err);
     return null;
   }
 }
@@ -317,7 +340,7 @@ async function renderProfileCard({
     || safeUserData.backgroundUrl
     || null;
 
-  const customBgImg = isValidImageUrl(candidateBg)
+  const customBgImg = isValidImageSource(candidateBg)
     ? await loadRemote(candidateBg.trim(), imageCache, 7000)
     : null;
 
