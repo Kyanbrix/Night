@@ -40,19 +40,10 @@ function normalizeGameData(raw) {
         { name: 'Golden Dice Chest', emoji: '🧰', dice: 12, weight: 10 },
         { name: 'Mythic Dice Jackpot', emoji: '💎', dice: 25, weight: 2 }
       ];
-  data.chibis = Array.isArray(data.chibis) ? data.chibis : [];
-  for (const rate of RARITY_RATES) {
-    const existsForRarity = data.chibis.some(c => c && c.rarity === rate.key);
-    if (!existsForRarity) {
-      data.chibis.push({
-        name: `${rate.label} Chibi`,
-        rarity: rate.key,
-        emoji: rate.emoji || RARITY_ICONS[rate.key] || '✨',
-        odds: `${rate.normalPct}%`,
-        shinyOdds: `${rate.shinyPct}%`
-      });
-    }
-  }
+  data.chibis = Array.isArray(data.chibis)
+    ? data.chibis.filter(c => c && String(c.name || '').toLowerCase() !== 'str_aegis')
+    : [];
+  data.eventChibis = Array.isArray(data.eventChibis) ? data.eventChibis : [];
   data.stats = { ...DEFAULT_STATS, ...(data.stats || {}) };
   for (const tierKey of Object.keys(DEFAULT_STATS)) {
     data.stats[tierKey] = {
@@ -128,6 +119,37 @@ const db = {
   bannedUsers: {}, tradeHistories: {}, config: JSON.parse(JSON.stringify(DEFAULT_CONFIG))
 };
 
+function sanitizeUserInventories(usersObj) {
+  let changed = false;
+  for (const u of Object.values(usersObj || {})) {
+    if (!u || typeof u !== 'object') continue;
+    const chibis = u.inventory?.chibis;
+    if (Array.isArray(chibis)) {
+      const removedIds = new Set();
+      const filtered = chibis.filter(c => {
+        if (!c || typeof c !== 'object') return true;
+        if (String(c.name || '').toLowerCase() === 'str_aegis') {
+          if (c.chibiId) removedIds.add(c.chibiId);
+          if (c.id) removedIds.add(c.id);
+          changed = true;
+          return false;
+        }
+        return true;
+      });
+      if (changed) {
+        u.inventory.chibis = filtered;
+        if (Array.isArray(u.team)) {
+          u.team = u.team.map(slotId => (slotId && removedIds.has(slotId) ? null : slotId));
+        }
+        if (u.equippedChibi && removedIds.has(u.equippedChibi)) {
+          u.equippedChibi = null;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 async function initDatabase() {
   try {
     const mongoUri = process.env.MONGO_URI;
@@ -150,14 +172,14 @@ async function initDatabase() {
     db.tradeHistories = state.tradeHistories || {};
     db.config = { ...db.config, ...(state.config || {}) };
 
-    let prefixCleaned = false;
+    let needsSave = sanitizeUserInventories(db.users);
     for (const [gId, pref] of Object.entries(db.guildPrefixes)) {
       if (typeof pref === 'string' && /^[a-zA-Z]$/.test(pref)) {
         delete db.guildPrefixes[gId];
-        prefixCleaned = true;
+        needsSave = true;
       }
     }
-    if (prefixCleaned) await saveUsers();
+    if (needsSave) await saveUsers();
   } catch (err) {
     console.error('Database connection error:', err);
     process.exit(1);
