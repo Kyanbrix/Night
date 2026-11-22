@@ -317,15 +317,40 @@ async function execute(ctx) {
 
   if (command === 'ownerresetdata') {
     if (!isOwner()) return message.reply(toSmallCaps('❌ Only the bot owner can execute data resets!'));
+    const resetNow = Date.now();
     for (const uId of Object.keys(db.users)) {
       db.users[uId] = {
-        started: false, joinedDate: new Date().toLocaleDateString(), dice: 10, points: 0,
-        rank: '<:unranked:1571314276071907519>', clan: null, customNickname: null,
-        highestSeasonRank: '<:unranked:1571314276071907519>', highestSeasonPoints: 0,
-        inventory: { chibis: [], items: { spray: 0, clover: 0 } }, team: [null, null, null],
-        equippedChibi: null, bestRoll: 'None', bestRollTier: 0, bestRollVal: 0, bestChibi: null,
-        userLevel: 1, userExp: 0, lastDrop: 0, todayDrops: 0, lastDaily: 0, streak: 0,
-        permissions: (uId === db.config.ownerId ? true : false), customStatus: null, badges: [], clanMail: []
+        started: false,
+        joinedDate: new Date(resetNow).toLocaleDateString(),
+        firstPlayedAt: resetNow,
+        dice: 10,
+        points: 0,
+        rank: '<:unranked:1571314276071907519>',
+        clan: null,
+        customNickname: null,
+        highestSeasonRank: '<:unranked:1571314276071907519>',
+        highestSeasonPoints: 0,
+        inventory: { chibis: [], items: { spray: 0, clover: 0 } },
+        team: [null, null, null],
+        equippedChibi: null,
+        equippedDice: null,
+        bestRoll: 'None',
+        bestRollTier: 0,
+        bestRollVal: 0,
+        bestChibi: null,
+        userLevel: 1,
+        userExp: 0,
+        lastDrop: 0,
+        todayDrops: 0,
+        lastDaily: 0,
+        streak: 0,
+        permissions: (uId === db.config.ownerId ? true : false),
+        customStatus: null,
+        badges: [],
+        clanMail: [],
+        customBg: null,
+        profileBg: null,
+        profileBgTheme: 'crystal'
       };
     }
     db.clans = {};
