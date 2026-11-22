@@ -394,32 +394,67 @@
       "shinyOdds": "1 in 100T"
     },
     {
-      "name": "Kizzl",
-      "rarity": "STR",
-      "emoji": "<:Kizzo:1574053872509648926>",
-      "odds": "1 in 100B",
+      "name": "Rekka"
+      "rarity": "UTR"
+      "emoji": "<:Rekka:1574053948304793650>"
+      "odds": "1 in 50B"
       "shinyOdds": "1 in 250T"
+    },
+    {
+      "name": "Merlwin"
+      "rarity": "UTR"
+      "emoji": "<:Merlwin:1574053995876458577>"
+      "odds": "1 in 150B"
+      "shinyOdds": "1 in 450T"
+    },
+    {
+      "name": "Kizzl",
+      "rarity": "UTR",
+      "emoji": "<:Kizzo:1574053872509648926>",
+      "odds": "1 in 300B",
+      "shinyOdds": "1 in 850T"
     },
     {
       "name": "God_Ze ",
       "rarity": "STR",
       "emoji": "<:God_Zen:1574054048271962132>",
-      "odds": "1 in 250B",
-      "shinyOdds": "1 in 500T"
+      "odds": "1 in 650B",
+      "shinyOdds": "1 in 5Qa"  
     },
     {
-      "name": "Usrr_Sovereign",
-      "rarity": "USRR",
-      "emoji": "<a:Pusrr:1573802908846264380>",
-      "odds": "1 in 500T",
-      "shinyOdds": "1 in 10Qa"
+      "name": "God_Brine"
+      "rarity": "STR"
+      "emoji": "<:God_Brine:1574054146519335002>"
+      "odds": "1 in 1T"
+      "shinyOdds": "1 in 25Qa"
     },
     {
       "name": "Godess_Eyya",
-      "rarity": "UGMR",
+      "rarity": "USRR",
       "emoji": "<:Godess_Eyya:1574054191708766339>",
-      "odds": "1 in 1Qi",
-      "shinyOdds": "1 in 10Sx"
+      "odds": "1 in 15T",
+      "shinyOdds": "1 in 50Qa"
+    },
+    {
+      "name": "Godess_Lunar"
+      "rarity": "USRR"
+      "emoji": "<:Godess_Lunar:1574054297623335044>"
+      "odds": "1 in 30T"
+      "shinyOdds": "1 in 250Qa"
+    },
+    {
+      "name": "Godess_Kagami"
+      "rarity": "USRR"
+      "emoji": "<:Godess_Kagami:1574054360374050846>"
+      "odds": "1 in 100T"
+      "shinyOdds": "1 in 500Qa"
+    },
+    {
+      "name": "Sakutoro_Chan",
+      "rarity": "UGMR",
+      "emoji": "<:Sakuto_chan:1574054848523935814>",
+      "odds": "1 in 1Qa",
+      "shinyOdds": "1 in 5Qi"
     }
   ],
   "stats": {
@@ -467,33 +502,33 @@
   "dropTable": [
     {
       "name": "Normal Drop",
-      "emoji": "📉",
-      "dice": 1,
-      "weight": 60
+      "emoji": "<a:Cat22:1574061458738774167>",
+      "dice": 2,
+      "weight": 40
     },
     {
       "name": "Rare Drop",
-      "emoji": "🎉",
-      "dice": 3,
-      "weight": 10
+      "emoji": "<a:Frg3:1574061442737504469>",
+      "dice": 5,
+      "weight": 15
     },
     {
       "name": "Epic Drop",
-      "emoji": "💎",
-      "dice": 5,
-      "weight": 3
+      "emoji": "<a:Frg2:1574061432683761694>",
+      "dice": 25,
+      "weight": 5
     },
     {
       "name": "Legendary Drop",
-      "emoji": "🍀",
-      "dice": 10,
-      "weight": 1
+      "emoji": "<a:Frg1:1574061417089466469>",
+      "dice": 50,
+      "weight": 3
     },
     {
       "name": "Extreme Drop",
-      "emoji": "☠️",
-      "dice": 50,
-      "weight": 0.001
+      "emoji": "<a:Frg01:1574061907802067074>",
+      "dice": 100,
+      "weight": 0.1
     }
   ]
 }
