@@ -20,7 +20,6 @@ const {
 } = require('./core/helpers');
 const { renderProfileCard, THEME_PALETTES, hasSupporterOrNitro } = require('./core/profilecard');
 
-// Serialize database saves so concurrent commands never clobber writes
 let saveQueue = Promise.resolve();
 const saveUsers = () => {
   saveQueue = saveQueue.then(() => rawSaveUsers()).catch(err => {
@@ -40,7 +39,6 @@ const client = new Client({
 
 const cooldowns = new Map();
 
-// Revamped rarity definitions (normal % and shiny % chances)
 const REVAMPED_RARITY_CONFIG = [
   { key: 'C', label: 'Common', emoji: '<:Pcommon:1573802564200300687>', normalPct: 35, shinyPct: 0.0952, weight: 35 },
   { key: 'U', label: 'Uncommon', emoji: '<:Puncommon:1573802607561015306>', normalPct: 15, shinyPct: 0.0721, weight: 15 },
@@ -83,6 +81,27 @@ const buildStatBar = (current, max, length = 10) => {
   const filled = Math.max(0, Math.min(length, Math.round((safeCurrent / safeMax) * length)));
   return `[${'█'.repeat(filled)}${'░'.repeat(length - filled)}]`;
 };
+
+function resolveCatalogBadgeKey(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const cleaned = rawKey.trim().toLowerCase();
+  if (BADGE_CATALOG?.[cleaned]) return cleaned;
+
+  const aliases = {
+    nitrouser: 'nitro',
+    support: 'supporter',
+    creator: 'developer'
+  };
+  const mapped = aliases[cleaned];
+  if (mapped && BADGE_CATALOG?.[mapped]) return mapped;
+  return null;
+}
+
+function formatBadgeCatalogLines(categoryName) {
+  const entries = Object.values(BADGE_CATALOG || {}).filter(b => b.category === categoryName);
+  if (!entries.length) return '*None*';
+  return entries.map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
+}
 
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}! Bot is ready.`);
@@ -481,7 +500,7 @@ client.on('messageCreate', async message => {
           `4. **Interactive Start Button (\`${currentPrefix}start\`)**\n` +
           `   • Pressable ${BETA_EMOJIS.START_BTN} Start button awarding **x50 Dice**\n` +
           `5. **Badge System & Owner Grant (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)**\n` +
-          `   • Discord & Event/Stats badges with automatic requirement unlocks`
+          `   • Obtainable, Utility & Event badges with automatic requirement unlocks`
         ))
       );
       return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -493,21 +512,25 @@ client.on('messageCreate', async message => {
       const badgeKeyArg = args[1] ? args[1].toLowerCase() : null;
 
       if (!target || !badgeKeyArg) {
-        const discordLines = Object.values(BADGE_CATALOG).filter(b => b.category === 'Discord Category')
-          .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
-        const eventLines = Object.values(BADGE_CATALOG).filter(b => b.category === 'Event & Stats Category')
-          .map(b => `${b.icon} **\`${b.key}\`** — ${b.description}`).join('\n');
+        const obtainableLines = formatBadgeCatalogLines('Obtainable Badges');
+        const utilityLines = formatBadgeCatalogLines('Utility Badges');
+        const eventLines = formatBadgeCatalogLines('Event Badges');
 
         const container = new ContainerBuilder().setAccentColor(0x9b59b6).addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            toSmallCaps(`# 🏅 Available Badges Catalog (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)\n\n**Usage:** \`${currentPrefix}admingivebadges [@user] [badge_key]\`\n\n**Discord Category:**\n`) +
-            discordLines + toSmallCaps('\n\n**Event & Stats Category:**\n') + eventLines
+            toSmallCaps(`# 🏅 Available Badges Catalog (\`${currentPrefix}admingivebadges\` / \`${currentPrefix}agb\`)\n\n**Usage:** \`${currentPrefix}admingivebadges [@user] [badge_key]\`\n\n**Obtainable Badges:**\n`) +
+            obtainableLines +
+            toSmallCaps('\n\n**Utility Badges:**\n') +
+            utilityLines +
+            toSmallCaps('\n\n**Event Badges:**\n') +
+            eventLines
           )
         );
         return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
       }
 
-      const badgeDef = BADGE_CATALOG[badgeKeyArg];
+      const resolvedKey = resolveCatalogBadgeKey(badgeKeyArg);
+      const badgeDef = resolvedKey ? BADGE_CATALOG[resolvedKey] : null;
       if (!badgeDef) {
         return message.reply(toSmallCaps(`❌ Unknown badge key \`${badgeKeyArg}\`! Type \`${currentPrefix}agb\` with no arguments to see all valid badge keys.`));
       }
@@ -524,6 +547,7 @@ client.on('messageCreate', async message => {
         targetData.badges.push(badgeDef.key);
         actionText = `Granted ${badgeDef.icon} **${badgeDef.name}** to <@${target.id}>!`;
       }
+      await evaluateAndSyncUserBadges(target.id, targetData, message.guild);
       await saveUsers();
       return message.reply(toSmallCaps(`✅ ${actionText}`));
     }
@@ -2886,6 +2910,7 @@ client.on('messageCreate', async message => {
       if (!selection.deferred && !selection.replied) await selection.deferUpdate().catch(() => {});
 
       const template = EVENT_CHIBIS_POOL.find(c => c.id === selection.values[0]);
+      if (!template) return promptMsg.edit({ content: toSmallCaps('❌ Selected chibi not found.'), components: [] }).catch(() => {});
       const generatedId = new mongoose.Types.ObjectId().toString();
       if (!db.users[target.id].inventory.chibis) db.users[target.id].inventory.chibis = [];
       db.users[target.id].inventory.chibis.push({
