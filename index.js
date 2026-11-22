@@ -82,6 +82,12 @@ const buildStatBar = (current, max, length = 10) => {
   return `[${'█'.repeat(filled)}${'░'.repeat(length - filled)}]`;
 };
 
+function trackPeakPoints(u) {
+  if (!u) return;
+  u.highestSeasonPoints = Math.max(Number(u.highestSeasonPoints) || 0, Number(u.points) || 0);
+  updatePeakRank(u);
+}
+
 function resolveCatalogBadgeKey(rawKey) {
   if (!rawKey || typeof rawKey !== 'string') return null;
   const cleaned = rawKey.trim().toLowerCase();
@@ -784,14 +790,13 @@ client.on('messageCreate', async message => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your adventure encounter!'), ephemeral: true });
         handled = true;
+        collector.stop();
 
         if (i.customId === 'decline_npc_fight') {
-          collector.stop();
           return advMsg.edit({ content: toSmallCaps(`🏃 You fled from ${randomNpc.name}. Safe travels!`), components: [] }).catch(() => {});
         }
 
         if (i.customId === 'accept_npc_fight') {
-          collector.stop();
           const npcAtk = Math.floor(Math.random() * 36) + 10;
           const npcHp = Math.floor(Math.random() * 1329) + 400;
           const npcDef = Math.floor(Math.random() * 66) + 40;
@@ -799,7 +804,7 @@ client.on('messageCreate', async message => {
 
           const getTeamChibis = (u) => (u.team || [null, null, null]).map(id => {
             if (!id) return null;
-            return u.inventory.chibis.find(c => (c.chibiId || c.id) === id);
+            return u.inventory?.chibis?.find(c => (c.chibiId || c.id) === id);
           });
 
           const userTeam = getTeamChibis(user);
@@ -873,14 +878,17 @@ client.on('messageCreate', async message => {
     if (command === 'eshop') {
       if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
       const crystals = db.config.eventCrystals?.[userId] || 0;
-      const shopItems = Object.values(db.config.eventShop).sort((a, b) => a.cost - b.cost);
+      const shopItems = Object.values(db.config.eventShop || {}).sort((a, b) => a.cost - b.cost);
+      if (!shopItems.length) {
+        return message.reply(toSmallCaps('❌ There are no items available in the Event Crystal Shop right now.'));
+      }
       const shopLines = shopItems.map((item, idx) =>
         toSmallCaps(`**[${idx + 1}]** ${item.emoji} **${item.name}** — **${item.cost.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}`)
       ).join('\n');
 
       const selectMenu = new StringSelectMenuBuilder().setCustomId('eshop_buy_select')
         .setPlaceholder(toSmallCaps('Select an event chibi to purchase'))
-        .addOptions(shopItems.map(item => ({ label: `${item.name} (${item.cost} Crystals)`.slice(0, 100), value: item.id })));
+        .addOptions(shopItems.slice(0, 25).map(item => ({ label: `${item.name} (${item.cost} Crystals)`.slice(0, 100), value: item.id })));
       const row = new ActionRowBuilder().addComponents(selectMenu);
 
       const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(
@@ -916,6 +924,9 @@ client.on('messageCreate', async message => {
           await saveUsers();
           return i.followUp({ content: toSmallCaps(`✅ Successfully purchased ${item.emoji} **${item.name}**! It has been added directly to your collections with the Event badge ${EVENT_ICONS.EVENT_BADGE}.`), ephemeral: true });
         }
+      });
+      collector.on('end', async () => {
+        await shopMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }
@@ -1403,6 +1414,7 @@ client.on('messageCreate', async message => {
       const winnings = Math.round(bet * payoutMultiplier);
       user.dice = Number(user.dice || 0) + winnings;
       user.points = Number(user.points || 0) + pointsWon;
+      trackPeakPoints(user);
       updateUserRank(user);
       await saveUsers();
 
@@ -2054,6 +2066,7 @@ client.on('messageCreate', async message => {
         if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
         if (i.user.id !== opponent.id) return i.followUp({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
         handled = true;
+        collector.stop();
 
         if (i.customId === 'accept_battle') {
           const p1User = user;
@@ -2102,6 +2115,7 @@ client.on('messageCreate', async message => {
           const losePenalty = getBattlePoints(loseUser.points || 0);
           winUser.points = (winUser.points || 0) + winReward.win;
           loseUser.points = Math.max(0, (loseUser.points || 0) - losePenalty.lose);
+          trackPeakPoints(winUser);
 
           const p1CrystalWin = Math.floor(Math.random() * 7) + 10;
           const p1CrystalLose = Math.floor(Math.random() * 7) + 2;
@@ -2189,13 +2203,16 @@ client.on('messageCreate', async message => {
     if (command === 'trivia') {
       const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
       await message.reply(toSmallCaps(`🧩 Trivia Challenge:\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`));
+      let answered = false;
       const collector = message.channel.createMessageCollector({ filter: m => m.author.id === userId, time: 15000, max: 1 });
 
       collector.on('collect', async m => {
+        answered = true;
         const userAnswer = m.content.toLowerCase().trim();
         if (selected.a.some(ans => userAnswer.includes(ans))) {
           const awardedPoints = Math.floor(Math.random() * 4) + 17;
           user.points = Number(user.points || 0) + awardedPoints;
+          trackPeakPoints(user);
           const awardedExp = addExpAndLevelUp(user, null, 450);
           const triviaCrystals = Math.floor(Math.random() * 6) + 5;
           if (!db.config.eventCrystals) db.config.eventCrystals = {};
@@ -2203,9 +2220,15 @@ client.on('messageCreate', async message => {
           updateUserRank(user);
           await evaluateAndSyncUserBadges(userId, user, message.guild);
           await saveUsers();
-          m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
+          await m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
         } else {
-          m.reply(toSmallCaps(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`));
+          await m.reply(toSmallCaps(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`));
+        }
+      });
+
+      collector.on('end', async () => {
+        if (!answered) {
+          await message.channel.send(toSmallCaps(`⏳ Time's up! The answer was **${selected.a[0]}**.`)).catch(() => {});
         }
       });
       return;
@@ -3035,7 +3058,6 @@ client.on('messageCreate', async message => {
       }
 
       if (command === 'adminsetnn') {
-        if (!isAdmin()) return message.reply(toSmallCaps('❌ Only administrators can use this command!'));
         const target = message.mentions.users.first();
         const newNN = args.slice(1).join(' ');
         if (!target || !newNN) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}adminsetnn [@user] [nickname]`));
@@ -3062,10 +3084,10 @@ client.on('messageCreate', async message => {
       }
 
       if (command === 'adminclearlb') {
-        if (!isAdmin()) return message.reply(toSmallCaps('❌ Only administrators can clear the leaderboard!'));
         for (const uId of Object.keys(db.users)) {
           db.users[uId].points = 0;
           db.users[uId].highestSeasonPoints = 0;
+          updatePeakRank(db.users[uId]);
           db.users[uId].customNickname = null;
           updateUserRank(db.users[uId]);
         }
