@@ -12,7 +12,7 @@ const {
   evaluateAndSyncUserBadges, ensureUser, getClanLogoDisplay,
   formatTimeRemaining, addExpAndLevelUp, parseOddsNumber
 } = require('../core/helpers');
-const { renderProfileCard } = require('../core/profileCard');
+const { renderProfileCard } = require('../core/profilecard');
 
 const CORE_CMDS = [
   'start', 'rarities', 'customnn', 'profilebg', 'seasons', 'higheststats', 'help', 'status',
@@ -143,7 +143,7 @@ async function execute(ctx) {
         pressed = true;
         user.started = true;
         user.joinedDate = new Date().toLocaleDateString();
-        user.dice += 50;
+        user.dice = Number(user.dice || 0) + 50;
         if (!db.config.ownerId) db.config.ownerId = userId;
         if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
         updateUserRank(user);
@@ -166,7 +166,7 @@ async function execute(ctx) {
 
     user.started = true;
     user.joinedDate = new Date().toLocaleDateString();
-    user.dice += 20;
+    user.dice = Number(user.dice || 0) + 20;
     if (!db.config.ownerId) db.config.ownerId = userId;
     if (!db.config.mainGuildId && message.guild) db.config.mainGuildId = message.guild.id;
     updateUserRank(user);
@@ -204,7 +204,7 @@ async function execute(ctx) {
   }
 
   if (command === 'customnn') {
-    const newNickname = args.join(' ');
+    const newNickname = args.join(' ').trim();
     if (!newNickname) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}customnn [nickname] (Max 12 characters)`));
     if (newNickname.length > 12) return message.reply(toSmallCaps('❌ Nickname cannot exceed 12 characters!'));
     user.customNickname = newNickname;
@@ -396,7 +396,7 @@ async function execute(ctx) {
   }
 
   if (command === 'status') {
-    const uptimeSec = Math.floor(client.uptime / 1000);
+    const uptimeSec = Math.floor((client.uptime || 0) / 1000);
     return message.reply({
       components: [new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
         `# 🤖 Bot System Status & Info\n\n📶 Latency / Ping: ${client.ws.ping}ms\n⏱️ Uptime: ${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m ${uptimeSec % 60}s\n` +
@@ -409,9 +409,9 @@ async function execute(ctx) {
   if (command === 'slot') {
     const bet = parseInt(args[0], 10);
     if (isNaN(bet) || bet <= 0) return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}slot [bet_amount] (e.g. ${currentPrefix}slot 5)`));
-    if (user.dice < bet) return message.reply(toSmallCaps(`❌ You don't have enough dice! You have ${user.dice} 🎲, but your bet is ${bet} 🎲.`));
+    if (Number(user.dice || 0) < bet) return message.reply(toSmallCaps(`❌ You don't have enough dice! You have ${user.dice || 0} 🎲, but your bet is ${bet} 🎲.`));
 
-    user.dice -= bet;
+    user.dice = Number(user.dice || 0) - bet;
     await saveUsers();
 
     let availableChibiEmojis = ['📦', '✨', '⭐', '🌟', '💎', '🔥', '💖'];
@@ -443,8 +443,8 @@ async function execute(ctx) {
     }
 
     const winnings = Math.round(bet * payoutMultiplier);
-    user.dice += winnings;
-    user.points += pointsWon;
+    user.dice = Number(user.dice || 0) + winnings;
+    user.points = Number(user.points || 0) + pointsWon;
     updateUserRank(user);
     await saveUsers();
 
@@ -461,10 +461,11 @@ async function execute(ctx) {
   if (command === 'daily') {
     const twentyFourHours = 24 * 60 * 60 * 1000;
     const fortyEightHours = 48 * 60 * 60 * 1000;
-    if (currentMs - user.lastDaily < twentyFourHours) {
-      return message.reply(toSmallCaps(`⏳ You have already claimed your daily reward! Please wait another ${Math.ceil((twentyFourHours - (currentMs - user.lastDaily)) / 1000 / 60)} minutes.`));
+    const lastDaily = Number(user.lastDaily || 0);
+    if (lastDaily > 0 && currentMs - lastDaily < twentyFourHours) {
+      return message.reply(toSmallCaps(`⏳ You have already claimed your daily reward! Please wait another ${Math.ceil((twentyFourHours - (currentMs - lastDaily)) / 1000 / 60)} minutes.`));
     }
-    user.streak = (!user.lastDaily || currentMs - user.lastDaily > fortyEightHours) ? 1 : (user.streak || 0) + 1;
+    user.streak = (!lastDaily || currentMs - lastDaily > fortyEightHours) ? 1 : (Number(user.streak) || 0) + 1;
     user.lastDaily = currentMs;
 
     let multiplier = 1;
@@ -473,17 +474,20 @@ async function execute(ctx) {
     else if (user.streak >= 10) multiplier = 2;
 
     const rewardDice = 1 * multiplier;
-    user.dice += rewardDice;
+    user.dice = Number(user.dice || 0) + rewardDice;
     updateUserRank(user);
     await saveUsers();
     return message.reply(toSmallCaps(`🎁 Daily Reward Claimed!\n🔥 Streak: ${user.streak} Days\n🎲 Reward: +${rewardDice}x Dice (x${multiplier} multiplier active! Total: ${user.dice} 🎲)`));
   }
 
   if (command === 'roll') {
-    const qty = Math.min(parseInt(args[0], 10) || 1, gameData.settings.maxRollQuantity);
+    const maxQty = Number(gameData.settings?.maxRollQuantity) || 50;
+    const qty = Math.min(parseInt(args[0], 10) || 1, maxQty);
     const boost = args[1] ? args[1].toLowerCase() : null;
     if (qty < 1) return message.reply(toSmallCaps('❌ Quantity must be at least 1.'));
-    if (user.dice < qty) return message.reply(toSmallCaps(`❌ You don't have enough dice! You need ${qty} 🎲, but you have ${user.dice} 🎲.`));
+    if (Number(user.dice || 0) < qty) return message.reply(toSmallCaps(`❌ You don't have enough dice! You need ${qty} 🎲, but you have ${user.dice || 0} 🎲.`));
+    if (!user.inventory) user.inventory = { chibis: [], items: { spray: 0, clover: 0 } };
+    if (!Array.isArray(user.inventory.chibis)) user.inventory.chibis = [];
     if (!user.inventory.items) user.inventory.items = { spray: 0, clover: 0 };
 
     if (boost === 'spray') {
@@ -494,25 +498,27 @@ async function execute(ctx) {
       user.inventory.items.clover--;
     }
 
-    user.dice -= qty;
+    user.dice = Number(user.dice || 0) - qty;
     const resultsSummary = [];
-    let activeLuckMultiplier = db.config.globalLuckMultiplier || 1.0;
+    let activeLuckMultiplier = Number(db.config?.globalLuckMultiplier) || 1.0;
     if (boost === 'spray') activeLuckMultiplier *= 1.5;
 
     let totalExpGained = 0;
-    const primaryChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === (user.team[0] || user.equippedChibi));
+    const teamArr = Array.isArray(user.team) ? user.team : [null, null, null];
+    const primaryChibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === (teamArr[0] || user.equippedChibi));
     const baseRarityChances = {
       C: { normal: 20, shiny: 1 }, U: { normal: 12, shiny: 0.10 }, R: { normal: 7, shiny: 0.5 },
       SR: { normal: 1, shiny: 0.1 }, SRR: { normal: 0.10, shiny: 0.0010 }, UTR: { normal: 0.001, shiny: 0.0001 }
     };
 
     for (let i = 0; i < qty; i++) {
-      const adjustedRarities = gameData.rarities.map(r => {
-        const cfg = baseRarityChances[r.key] || { normal: r.weight, shiny: 0.1 };
+      const adjustedRarities = (gameData.rarities || []).map(r => {
+        const cfg = baseRarityChances[r.key] || { normal: r.weight || 1, shiny: 0.1 };
         const mult = r.key !== 'C' ? activeLuckMultiplier : 1;
         return { ...r, normW: cfg.normal * mult, shinyW: cfg.shiny * mult };
       });
       const totalWeight = adjustedRarities.reduce((sum, r) => sum + r.normW, 0);
+      if (totalWeight <= 0) continue;
       let randW = Math.random() * totalWeight;
       let chosenRarityObj = adjustedRarities[0];
       for (const r of adjustedRarities) {
@@ -520,7 +526,7 @@ async function execute(ctx) {
         randW -= r.normW;
       }
 
-      const availableChibis = gameData.chibis.filter(c => c.rarity === chosenRarityObj.key);
+      const availableChibis = (gameData.chibis || []).filter(c => c.rarity === chosenRarityObj.key);
       if (!availableChibis.length) continue;
       const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
       const normalVal = parseOddsNumber(chibiTemplate.odds);
@@ -551,7 +557,7 @@ async function execute(ctx) {
         user.bestRollTier = currentTier;
         user.bestRollVal = currentRollVal;
         user.bestRoll = chibiTemplate.shinyOdds || chibiTemplate.odds;
-        user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity]} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
+        user.bestChibi = `${rarityIconsMap[chibiTemplate.rarity] || ''} ${chibiTemplate.emoji} ${chibiTemplate.name} ${isShiny ? SHINY_ICON : ''}`;
       }
     }
 
@@ -564,7 +570,7 @@ async function execute(ctx) {
     return message.reply({
       components: [new ContainerBuilder().setAccentColor(0x57f287).addTextDisplayComponents(new TextDisplayBuilder().setContent(
         toSmallCaps(`# ${diceIcon} Chibi Roll Results\n\n`) +
-        resultsSummary.map(r => `${rarityIconsMap[r.chibi.rarity]} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${r.duplicated ? '(🍀 Duplicated!)' : ''}`).join('\n') +
+        resultsSummary.map(r => `${rarityIconsMap[r.chibi.rarity] || '📦'} ${r.chibi.emoji} **${r.chibi.name}** ${r.isShiny ? SHINY_ICON : ''} ${r.duplicated ? '(🍀 Duplicated!)' : ''}`).join('\n') +
         toSmallCaps(`\n\n✨ Gained +${totalExpGained} EXP!`) + luckNotice + toSmallCaps(`\n${diceIcon} Remaining Dice: ${user.dice}`)
       ))],
       flags: MessageFlags.IsComponentsV2
@@ -572,28 +578,34 @@ async function execute(ctx) {
   }
 
   if (command === 'drop') {
-    const cooldownMs = gameData.settings.dropCooldownSeconds * 1000;
-    if (currentMs - user.lastDrop < cooldownMs) {
-      return message.reply(toSmallCaps(`⏳ Please wait ${Math.ceil((cooldownMs - (currentMs - user.lastDrop)) / 1000)} more seconds before claiming your next Chibi Drop!`));
+    const cooldownMs = (Number(gameData.settings?.dropCooldownSeconds) || 10) * 1000;
+    const lastDrop = Number(user.lastDrop || 0);
+    if (lastDrop > 0 && currentMs - lastDrop < cooldownMs) {
+      return message.reply(toSmallCaps(`⏳ Please wait ${Math.ceil((cooldownMs - (currentMs - lastDrop)) / 1000)} more seconds before claiming your next Chibi Drop!`));
     }
     user.lastDrop = currentMs;
-    user.todayDrops = (user.todayDrops || 0) + 1;
+    user.todayDrops = (Number(user.todayDrops) || 0) + 1;
 
-    const totalDropWeight = gameData.dropTable.reduce((sum, d) => sum + d.weight, 0);
+    const dropTable = Array.isArray(gameData.dropTable) && gameData.dropTable.length > 0
+      ? gameData.dropTable
+      : [{ name: 'Lucky Dice Drop', emoji: '🎲', dice: 3, weight: 1 }];
+    const totalDropWeight = dropTable.reduce((sum, d) => sum + (Number(d.weight) || 1), 0);
     let randD = Math.random() * totalDropWeight;
-    let chosenDrop = gameData.dropTable[0];
-    for (const d of gameData.dropTable) {
-      if (randD < d.weight) { chosenDrop = d; break; }
-      randD -= d.weight;
+    let chosenDrop = dropTable[0];
+    for (const d of dropTable) {
+      const w = Number(d.weight) || 1;
+      if (randD < w) { chosenDrop = d; break; }
+      randD -= w;
     }
-    user.dice += chosenDrop.dice;
+    const dropDice = Number(chosenDrop.dice) || 1;
+    user.dice = Number(user.dice || 0) + dropDice;
     updateUserRank(user);
     await saveUsers();
-    return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${chosenDrop.dice}x Dice** ${callerHasBetaView ? BETA_EMOJIS.DICE : '🎲'}! Total dice: ${user.dice}`));
+    return message.reply(toSmallCaps(`${chosenDrop.emoji} ${chosenDrop.name}! You received **${dropDice}x Dice** ${callerHasBetaView ? BETA_EMOJIS.DICE : '🎲'}! Total dice: ${user.dice}`));
   }
 
   if (command === 'inventory') {
-    if (!user.inventory.items) user.inventory.items = { spray: 0, clover: 0 };
+    if (!user.inventory?.items) user.inventory = { ...(user.inventory || {}), chibis: user.inventory?.chibis || [], items: { spray: 0, clover: 0 } };
     return message.reply({
       components: [new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
         `# 🎒 ${user.customNickname || message.author.username}'s Inventory\n\n${callerHasBetaView ? BETA_EMOJIS.DICE : '🎲'} Dice: ${user.dice || 0}\n` +
@@ -628,7 +640,7 @@ async function execute(ctx) {
             isShiny: c.isShiny,
             isEventChibi,
             count: 0,
-            firstId: uniqueId ? uniqueId.slice(-6) : 'unknown'
+            firstId: uniqueId ? String(uniqueId).slice(-6) : 'unknown'
           };
         }
         grouped[key].count++;
@@ -681,6 +693,10 @@ async function execute(ctx) {
       const updated = renderColContainer(currentPage);
       await colMsg.edit({ components: [updated.container, ...getColRows(currentPage, updated.totalPages)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
+    colCollector.on('end', async () => {
+      const finalState = renderColContainer(currentPage);
+      await colMsg.edit({ components: [finalState.container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    });
     return true;
   }
 
@@ -696,7 +712,7 @@ async function execute(ctx) {
       if (diceObj.restriction === 'supporter' && !syncedBadges.includes('supporter') && !user.supporter && !user.betaSupporter) {
         return message.reply(toSmallCaps('❌ This dice requires the **Supporter** badge!'));
       }
-      if (diceObj.restriction === 'developer' && userId !== db.config.ownerId && !isTester(userId)) {
+      if (diceObj.restriction === 'developer' && userId !== db.config?.ownerId && !isTester(userId)) {
         return message.reply(toSmallCaps('❌ This dice is restricted to **Developer / Beta Testers**!'));
       }
 
@@ -731,20 +747,25 @@ async function execute(ctx) {
     collector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
       if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your shop session!'), ephemeral: true });
-      if (!user.inventory.items) user.inventory.items = { spray: 0, clover: 0 };
+      if (!user.inventory?.items) user.inventory = { ...(user.inventory || {}), chibis: user.inventory?.chibis || [], items: { spray: 0, clover: 0 } };
 
       if (i.customId === 'buy_spray') {
-        if (user.dice < 5) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
-        user.dice -= 5; user.inventory.items.spray += 30;
+        if (Number(user.dice || 0) < 5) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+        user.dice = Number(user.dice || 0) - 5;
+        user.inventory.items.spray = (Number(user.inventory.items.spray) || 0) + 30;
         updateUserRank(user); await saveUsers();
         return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Spray! Uses: ${user.inventory.items.spray}`), ephemeral: true });
       }
       if (i.customId === 'buy_clover') {
-        if (user.dice < 15) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
-        user.dice -= 15; user.inventory.items.clover += 50;
+        if (Number(user.dice || 0) < 15) return i.followUp({ content: toSmallCaps('❌ Not enough dice!'), ephemeral: true });
+        user.dice = Number(user.dice || 0) - 15;
+        user.inventory.items.clover = (Number(user.inventory.items.clover) || 0) + 50;
         updateUserRank(user); await saveUsers();
         return i.followUp({ content: toSmallCaps(`✅ Successfully purchased Clover! Uses: ${user.inventory.items.clover}`), ephemeral: true });
       }
+    });
+    collector.on('end', async () => {
+      await shopMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
     return true;
   }
@@ -756,11 +777,11 @@ async function execute(ctx) {
 
   if (command === 'points') {
     updateUserRank(user); await saveUsers();
-    return message.reply(toSmallCaps(`💰 Your current points balance is: **${user.points}** (Rank: `) + `${user.rank}` + ')');
+    return message.reply(toSmallCaps(`💰 Your current points balance is: **${user.points || 0}** (Rank: `) + `${user.rank}` + ')');
   }
 
   if (command === 'ranks') {
-    const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => { updateUserRank(uData); return { uId, ...uData }; }).sort((a, b) => b.points - a.points);
+    const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => { updateUserRank(uData); return { uId, ...uData }; }).sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
     const itemsPerPage = 10;
     let currentPage = 0;
     const totalPages = Math.max(1, Math.ceil(allSortedUsers.length / itemsPerPage));
@@ -770,7 +791,7 @@ async function execute(ctx) {
     const seasonTimerStr = formatTimeRemaining(Math.min(maxSeasonMs, Math.max(0, (db.config.seasonExpires || (Date.now() + maxSeasonMs)) - Date.now())));
     const userGlobalIndex = allSortedUsers.findIndex(u => u.uId === userId);
     const userRankPos = userGlobalIndex !== -1 ? userGlobalIndex + 1 : 'Unranked';
-    const userPointsDisplay = user.points || 0;
+    const userPointsDisplay = Number(user.points) || 0;
     const userRankIcon = user.rank || '<:unranked:1571314276071907519>';
 
     const getRanksRow = (page) => new ActionRowBuilder().addComponents(
@@ -787,7 +808,7 @@ async function execute(ctx) {
           if (u.clan && db.clans[u.clan]) {
             clanSubLine = `\n   ${getClanLogoDisplay(db.clans[u.clan].logoId)} ` + toSmallCaps(u.clan.replace(/\*/g, ''));
           }
-          return toSmallCaps(`**${page * itemsPerPage + idx + 1}.** @${username} | `) + `${u.rank}` + toSmallCaps(` | ${BETA_EMOJIS.TROPHY_PTS} ${(u.points || 0).toLocaleString()}`) + clanSubLine;
+          return toSmallCaps(`**${page * itemsPerPage + idx + 1}.** @${username} | `) + `${u.rank}` + toSmallCaps(` | ${BETA_EMOJIS.TROPHY_PTS} ${(Number(u.points) || 0).toLocaleString()}`) + clanSubLine;
         }));
         return new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `${BETA_EMOJIS.CRR_TROPHY} ` + toSmallCaps(`**Chibi Global Leaderboard [${seasonMeta.name}]**\n`) +
@@ -804,7 +825,7 @@ async function execute(ctx) {
         if (u.clan && db.clans[u.clan]) {
           clanInfo = ` | ${getClanLogoDisplay(db.clans[u.clan].logoId)} ${u.clan.replace(/\*/g, '')}`.trim();
         }
-        return toSmallCaps(`**${page * itemsPerPage + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${u.points.toLocaleString()}**`) + clanInfo;
+        return toSmallCaps(`**${page * itemsPerPage + idx + 1}.** **${username}** — Rank: `) + `${u.rank}` + toSmallCaps(` | Points: **${(Number(u.points) || 0).toLocaleString()}**`) + clanInfo;
       }));
       return new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(new TextDisplayBuilder().setContent(
         toSmallCaps(`# 🏆 Chibi Global Leaderboard Season ${seasonNum}\nEnd Season: ${seasonTimerStr}\n\n(Page ${page + 1}/${totalPages})\n\n`) +
@@ -822,12 +843,15 @@ async function execute(ctx) {
       if (i.customId === 'rank_next' && currentPage < totalPages - 1) currentPage++;
       await ranksMsg.edit({ components: [await renderRanksContainer(currentPage), getRanksRow(currentPage)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
+    ranksCollector.on('end', async () => {
+      await ranksMsg.edit({ components: [await renderRanksContainer(currentPage)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    });
     return true;
   }
 
   if (command === 'ccranks') {
     const clanEntries = Object.entries(db.clans).map(([name, clan]) => ({
-      name, clan, totalPoints: clan.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0)
+      name, clan, totalPoints: clan.members.reduce((acc, mId) => acc + (Number(db.users[mId]?.points) || 0), 0)
     })).sort((a, b) => b.totalPoints - a.totalPoints);
 
     const maxClanSeasonMs = 30 * 24 * 60 * 60 * 1000;
@@ -837,7 +861,7 @@ async function execute(ctx) {
     const formatReward = (rNum) => {
       const rw = rewards[rNum];
       if (!rw) return '100x 🎲 Dice (Consolation)';
-      const sampleChibi = gameData.chibis.find(c => c.rarity === rw.rarity) || gameData.chibis[0];
+      const sampleChibi = (gameData.chibis || []).find(c => c.rarity === rw.rarity) || (gameData.chibis || [])[0];
       return `${rw.qty} ${rarityIconsMap[rw.rarity] || '📦'} ${sampleChibi ? sampleChibi.emoji : rw.chibiEmoji}`;
     };
 
@@ -849,7 +873,7 @@ async function execute(ctx) {
     if (user.clan && db.clans[user.clan]) {
       const uClanObj = db.clans[user.clan];
       const uClanRankIdx = clanEntries.findIndex(c => c.name === user.clan);
-      const uClanPoints = uClanObj.members.reduce((acc, mId) => acc + (db.users[mId]?.points || 0), 0);
+      const uClanPoints = uClanObj.members.reduce((acc, mId) => acc + (Number(db.users[mId]?.points) || 0), 0);
       userClanLine = toSmallCaps(
         `${uClanRankIdx !== -1 ? `#${uClanRankIdx + 1}` : 'Unranked'}. ${getClanLogoDisplay(uClanObj.logoId)} ${user.clan.replace(/\*/g, '')} | ` +
         `Leader: **${await getDisplayName(uClanObj.leader)}** | Members: ${uClanObj.members.length} | Points: **${uClanPoints.toLocaleString()}**`
@@ -858,7 +882,7 @@ async function execute(ctx) {
 
     const content = callerHasBetaView
       ? `${BETA_EMOJIS.GLOBAL} ` + toSmallCaps('**Top 10 Global Clan Leaderboard**\n') + `${BETA_EMOJIS.END_SEASON}: ` + toSmallCaps(`${clanTimerStr}\n\n`) +
-        `${BETA_EMOJIS.RANKS_POS[1]}: ${formatReward(1)}\n${BETA_EMOJIS.RANKS_POS[2]}: ${formatReward(2)}\n${BETA_EMOJIS.RANKS_POS[3]}: ${formatReward(3)}\n\n` +
+        `${BETA_EMOJIS.RANKS_POS?.[1] || '🥇'}: ${formatReward(1)}\n${BETA_EMOJIS.RANKS_POS?.[2] || '🥈'}: ${formatReward(2)}\n${BETA_EMOJIS.RANKS_POS?.[3] || '🥉'}: ${formatReward(3)}\n\n` +
         toSmallCaps('-----------------------------------\n\n') + (top10Lines.join('\n') || toSmallCaps('No clans registered yet.')) +
         toSmallCaps('\n\n-----------------------------------\n**Your Clan Status:**\n') + userClanLine
       : toSmallCaps(`# 🏛️ Top 10 Global Clan Leaderboard\nEnds: ${clanTimerStr}\n\n**Clan Rewards:**\n1st: ${formatReward(1)}\n2nd: ${formatReward(2)}\n3rd: ${formatReward(3)}\n\n-----------------------------------\n\n`) +
@@ -871,7 +895,7 @@ async function execute(ctx) {
   }
 
   if (command === 'tradehistory') {
-    if (!db.tradeHistories[userId]?.length) return message.reply(toSmallCaps('📜 You have no recorded trade history yet.'));
+    if (!db.tradeHistories?.[userId]?.length) return message.reply(toSmallCaps('📜 You have no recorded trade history yet.'));
     const historyLines = await Promise.all(db.tradeHistories[userId].slice(-10).reverse().map(async (entry, index) => toSmallCaps(
       `**${index + 1}.** Partner: **${await getDisplayName(entry.partnerId)}**\n   Date: ${new Date(entry.timestamp).toLocaleString()}`
     )));
@@ -908,7 +932,7 @@ async function execute(ctx) {
           const getOfferText = (offer) => {
             const parts = [];
             if (offer.dice > 0) parts.push(`**${offer.dice} 🎲 Dice**`);
-            if (offer.chibi) parts.push(`${rarityIconsMap[offer.chibi.rarity]} ${offer.chibi.emoji} **${offer.chibi.name}** (Lv.${offer.chibi.level})`);
+            if (offer.chibi) parts.push(`${rarityIconsMap[offer.chibi.rarity] || '📦'} ${offer.chibi.emoji} **${offer.chibi.name}** (Lv.${offer.chibi.level})`);
             return parts.length > 0 ? parts.join(' + ') : '*Empty*';
           };
           return {
@@ -950,13 +974,13 @@ async function execute(ctx) {
             const uObj = db.users[ti.user.id];
             await m.delete().catch(() => {});
             if (isNaN(amt) || amt <= 0) return ti.followUp({ content: toSmallCaps('❌ Invalid dice amount!'), ephemeral: true });
-            if (uObj.dice < amt) return ti.followUp({ content: toSmallCaps(`❌ You don't have enough dice! You have ${uObj.dice} 🎲.`), ephemeral: true });
+            if (Number(uObj.dice || 0) < amt) return ti.followUp({ content: toSmallCaps(`❌ You don't have enough dice! You have ${uObj.dice || 0} 🎲.`), ephemeral: true });
             currentOffer.dice = amt;
             return reqMsg.edit({ embeds: [getEmbed()], components: tradeRows }).catch(() => {});
           }
           if (ti.customId === 'trade_offer_chibi') {
             const uObj = db.users[ti.user.id];
-            if (!uObj.inventory.chibis?.length) return ti.followUp({ content: toSmallCaps('❌ You have no chibis in your inventory to offer!'), ephemeral: true });
+            if (!uObj.inventory?.chibis?.length) return ti.followUp({ content: toSmallCaps('❌ You have no chibis in your inventory to offer!'), ephemeral: true });
             const menuRow = new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder().setCustomId('trade_select_chibi').setPlaceholder(toSmallCaps('Select a Chibi to offer')).addOptions(
                 uObj.inventory.chibis.slice(0, 25).map(c => ({ label: `${c.name} (${c.rarity}) Lv.${c.level}`.slice(0, 100), value: c.chibiId || c.id }))
@@ -978,21 +1002,28 @@ async function execute(ctx) {
             if ((!p1Offer.dice && !p1Offer.chibi) || (!p2Offer.dice && !p2Offer.chibi)) {
               return ti.followUp({ content: toSmallCaps('❌ Both players must offer at least something (dice or chibi) before confirming!'), ephemeral: true });
             }
-            if (u1.dice < p1Offer.dice || u2.dice < p2Offer.dice) {
+            if (Number(u1.dice || 0) < p1Offer.dice || Number(u2.dice || 0) < p2Offer.dice) {
               return ti.followUp({ content: toSmallCaps('❌ One of the players no longer has enough dice for this trade!'), ephemeral: true });
             }
 
-            if (p1Offer.dice > 0) { u1.dice -= p1Offer.dice; u2.dice += p1Offer.dice; }
+            if (p1Offer.dice > 0) {
+              u1.dice = Number(u1.dice || 0) - p1Offer.dice;
+              u2.dice = Number(u2.dice || 0) + p1Offer.dice;
+            }
             if (p1Offer.chibi) {
               const idx = u1.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p1Offer.chibi.chibiId || p1Offer.chibi.id));
               if (idx !== -1) u2.inventory.chibis.push(u1.inventory.chibis.splice(idx, 1)[0]);
             }
-            if (p2Offer.dice > 0) { u2.dice -= p2Offer.dice; u1.dice += p2Offer.dice; }
+            if (p2Offer.dice > 0) {
+              u2.dice = Number(u2.dice || 0) - p2Offer.dice;
+              u1.dice = Number(u1.dice || 0) + p2Offer.dice;
+            }
             if (p2Offer.chibi) {
               const idx = u2.inventory.chibis.findIndex(c => (c.chibiId || c.id) === (p2Offer.chibi.chibiId || p2Offer.chibi.id));
               if (idx !== -1) u1.inventory.chibis.push(u2.inventory.chibis.splice(idx, 1)[0]);
             }
 
+            if (!db.tradeHistories) db.tradeHistories = {};
             if (!db.tradeHistories[userId]) db.tradeHistories[userId] = [];
             if (!db.tradeHistories[target.id]) db.tradeHistories[target.id] = [];
             const tradeTimestamp = Date.now();
@@ -1046,7 +1077,7 @@ async function execute(ctx) {
     }
 
     const targetMember = targetUserMention || message.author;
-    const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => ({ uId, points: uData.points || 0 })).sort((a, b) => b.points - a.points);
+    const allSortedUsers = Object.entries(db.users).map(([uId, uData]) => ({ uId, points: Number(uData.points) || 0 })).sort((a, b) => b.points - a.points);
     const globalIndex = allSortedUsers.findIndex(u => u.uId === targetUserId);
     const leaderboardPos = globalIndex !== -1 ? `#${globalIndex + 1}` : 'Unranked';
     const joinedDateStr = targetUserData.joinedDate || 'N/A';
