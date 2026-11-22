@@ -394,17 +394,17 @@
       "shinyOdds": "1 in 100T"
     },
     {
-      "name": "Rekka"
-      "rarity": "UTR"
-      "emoji": "<:Rekka:1574053948304793650>"
-      "odds": "1 in 50B"
+      "name": "Rekka",
+      "rarity": "UTR",
+      "emoji": "<:Rekka:1574053948304793650>",
+      "odds": "1 in 50B",
       "shinyOdds": "1 in 250T"
     },
     {
-      "name": "Merlwin"
-      "rarity": "UTR"
-      "emoji": "<:Merlwin:1574053995876458577>"
-      "odds": "1 in 150B"
+      "name": "Merlwin",
+      "rarity": "UTR",
+      "emoji": "<:Merlwin:1574053995876458577>",
+      "odds": "1 in 150B",
       "shinyOdds": "1 in 450T"
     },
     {
@@ -415,17 +415,17 @@
       "shinyOdds": "1 in 850T"
     },
     {
-      "name": "God_Ze ",
+      "name": "God_Ze",
       "rarity": "STR",
       "emoji": "<:God_Zen:1574054048271962132>",
       "odds": "1 in 650B",
-      "shinyOdds": "1 in 5Qa"  
+      "shinyOdds": "1 in 5Qa"
     },
     {
-      "name": "God_Brine"
-      "rarity": "STR"
-      "emoji": "<:God_Brine:1574054146519335002>"
-      "odds": "1 in 1T"
+      "name": "God_Brine",
+      "rarity": "STR",
+      "emoji": "<:God_Brine:1574054146519335002>",
+      "odds": "1 in 1T",
       "shinyOdds": "1 in 25Qa"
     },
     {
@@ -436,17 +436,17 @@
       "shinyOdds": "1 in 50Qa"
     },
     {
-      "name": "Godess_Lunar"
-      "rarity": "USRR"
-      "emoji": "<:Godess_Lunar:1574054297623335044>"
-      "odds": "1 in 30T"
+      "name": "Godess_Lunar",
+      "rarity": "USRR",
+      "emoji": "<:Godess_Lunar:1574054297623335044>",
+      "odds": "1 in 30T",
       "shinyOdds": "1 in 250Qa"
     },
     {
-      "name": "Godess_Kagami"
-      "rarity": "USRR"
-      "emoji": "<:Godess_Kagami:1574054360374050846>"
-      "odds": "1 in 100T"
+      "name": "Godess_Kagami",
+      "rarity": "USRR",
+      "emoji": "<:Godess_Kagami:1574054360374050846>",
+      "odds": "1 in 100T",
       "shinyOdds": "1 in 500Qa"
     },
     {
