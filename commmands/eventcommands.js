@@ -4,10 +4,17 @@ const {
 } = require('discord.js');
 const mongoose = require('mongoose');
 const { BETA_EMOJIS, EVENT_ICONS, EVENT_NPCS, EVENT_CHIBIS_POOL, SHINY_ICON } = require('../core/constants');
-const { gameData, db, saveUsers } = require('../core/database');
+const database = require('../core/database');
+const { gameData, db, saveUsers } = database;
 const { toSmallCaps, evaluateAndSyncUserBadges, addExpAndLevelUp } = require('../core/helpers');
 
 const EVENT_CMDS = ['event', 'ecrystal', 'eadventure', 'eshop'];
+
+async function persistConfig() {
+  if (typeof database.saveConfig === 'function') {
+    await database.saveConfig().catch(() => {});
+  }
+}
 
 async function execute(ctx) {
   const { command, message, userId, currentPrefix, user, callerHasBetaView } = ctx;
@@ -72,7 +79,8 @@ async function execute(ctx) {
         const npcAtk = Math.floor(Math.random() * 36) + 10;
         const npcHp = Math.floor(Math.random() * 1329) + 400;
         const npcDef = Math.floor(Math.random() * 66) + 40;
-        const npcRandomChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
+        const eventPool = (gameData.eventChibis?.length ? gameData.eventChibis : EVENT_CHIBIS_POOL);
+        const npcRandomChibi = eventPool[Math.floor(Math.random() * eventPool.length)];
 
         const userTeam = (user.team || [null, null, null]).map(id => id ? user.inventory.chibis.find(c => (c.chibiId || c.id) === id) : null);
         let userPower = 50;
@@ -86,17 +94,17 @@ async function execute(ctx) {
         const isUserWinner = userPower >= (npcHp + npcAtk * 3 + npcDef * 2) * (0.85 + Math.random() * 0.3);
         if (!db.config.eventCrystals) db.config.eventCrystals = {};
 
-        let rewardCrystal = isUserWinner ? 17 : 8;
+        const rewardCrystal = isUserWinner ? 17 : 8;
         let npcDropText = isUserWinner ? 'NO SHINY DROP (0.1% CHANCE)' : 'DEFEATED (NO DROP)';
         db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + rewardCrystal;
 
-        if (isUserWinner && Math.random() * 100 <= 0.1) {
-          const droppedEventChibi = EVENT_CHIBIS_POOL[Math.floor(Math.random() * EVENT_CHIBIS_POOL.length)];
+        if (isUserWinner && Math.random() * 100 <= 0.1 && eventPool.length > 0) {
+          const droppedEventChibi = eventPool[Math.floor(Math.random() * eventPool.length)];
           const generatedId = new mongoose.Types.ObjectId().toString();
           if (!user.inventory.chibis) user.inventory.chibis = [];
           user.inventory.chibis.push({
             id: generatedId, chibiId: generatedId, name: droppedEventChibi.name, rarity: 'SSRP',
-            emoji: droppedEventChibi.emoji, isShiny: true, level: 1, exp: 0, date: new Date().toLocaleDateString()
+            emoji: droppedEventChibi.emoji, isShiny: true, isEvent: true, level: 1, exp: 0, date: new Date().toLocaleDateString()
           });
           npcDropText = `RECEIVED SHINY ${SHINY_ICON} ${droppedEventChibi.emoji} ${droppedEventChibi.name}`;
         }
@@ -104,6 +112,7 @@ async function execute(ctx) {
         const awardedExp = addExpAndLevelUp(user, userTeam.find(Boolean), 350);
         await evaluateAndSyncUserBadges(userId, user, message.guild);
         await saveUsers();
+        await persistConfig();
 
         const resultContainer = new ContainerBuilder().setAccentColor(isUserWinner ? 0x2ecc71 : 0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(
           `# ⚔️ ADVENTURE BATTLE RESULT\n\nOPPONENT: ${randomNpc.icon} ${randomNpc.name}\nNPC CHIBI: ${npcRandomChibi.emoji} ${npcRandomChibi.name}\n` +
@@ -124,12 +133,19 @@ async function execute(ctx) {
   if (command === 'eshop') {
     if (!db.config.eventActive) return message.reply(toSmallCaps('❌ Beta Event is inactive!'));
     const crystals = db.config.eventCrystals?.[userId] || 0;
-    const shopItems = Object.values(db.config.eventShop).sort((a, b) => a.cost - b.cost);
+
+    const shopMap = (db.config.eventShop && Object.keys(db.config.eventShop).length > 0)
+      ? db.config.eventShop
+      : Object.fromEntries((gameData.eventChibis || EVENT_CHIBIS_POOL || []).map(c => [String(c.id), c]));
+
+    const shopItems = Object.values(shopMap).sort((a, b) => a.cost - b.cost);
+    if (!shopItems.length) return message.reply(toSmallCaps('❌ The Event Shop is currently empty!'));
+
     const shopLines = shopItems.map((item, idx) => toSmallCaps(`**[${idx + 1}]** ${item.emoji} **${item.name}** — **${item.cost.toLocaleString()}** ${EVENT_ICONS.CRYSTAL}`)).join('\n');
 
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder().setCustomId('eshop_buy_select').setPlaceholder(toSmallCaps('Select an event chibi to purchase')).addOptions(
-        shopItems.map(item => ({ label: `${item.name} (${item.cost} Crystals)`.slice(0, 100), value: item.id }))
+        shopItems.slice(0, 25).map(item => ({ label: `${item.name} (${item.cost} Crystals)`.slice(0, 100), value: String(item.id) }))
       )
     );
 
@@ -144,7 +160,7 @@ async function execute(ctx) {
       if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your eshop session!'), ephemeral: true });
       if (i.customId !== 'eshop_buy_select') return;
 
-      const item = db.config.eventShop[i.values[0]];
+      const item = shopMap[i.values[0]];
       const userCrystals = db.config.eventCrystals?.[userId] || 0;
       if (!item) return i.followUp({ content: toSmallCaps('❌ Item not found!'), ephemeral: true });
       if (userCrystals < item.cost) {
@@ -157,11 +173,12 @@ async function execute(ctx) {
       if (!user.inventory.chibis) user.inventory.chibis = [];
       user.inventory.chibis.push({
         id: generatedId, chibiId: generatedId, name: item.name, rarity: 'SSRP',
-        emoji: item.emoji, isShiny: false, level: 1, exp: 0, date: new Date().toLocaleDateString()
+        emoji: item.emoji, isShiny: false, isEvent: true, level: 1, exp: 0, date: new Date().toLocaleDateString()
       });
 
       await evaluateAndSyncUserBadges(userId, user, message.guild);
       await saveUsers();
+      await persistConfig();
       return i.followUp({ content: toSmallCaps(`✅ Successfully purchased ${item.emoji} **${item.name}**! It has been added directly to your collections with the Event badge ${EVENT_ICONS.EVENT_BADGE}.`), ephemeral: true });
     });
     return true;
