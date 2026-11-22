@@ -521,6 +521,7 @@ async function execute(ctx) {
       }
 
       const availableChibis = gameData.chibis.filter(c => c.rarity === chosenRarityObj.key);
+      if (!availableChibis.length) continue;
       const chibiTemplate = availableChibis[Math.floor(Math.random() * availableChibis.length)];
       const normalVal = parseOddsNumber(chibiTemplate.odds);
       const targetShinyChance = (baseRarityChances[chosenRarityObj.key]?.shiny || 0.1) * (activeLuckMultiplier > 1 ? activeLuckMultiplier : 1);
@@ -603,7 +604,8 @@ async function execute(ctx) {
   }
 
   if (command === 'collections') {
-    if (!user.inventory?.chibis?.length) return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll to summon chibis.`));
+    const validChibis = (user.inventory?.chibis || []).filter(c => c && String(c.name || '').toLowerCase() !== 'str_aegis');
+    if (!validChibis.length) return message.reply(toSmallCaps(`📖 Your collection is empty! Use ${currentPrefix}roll to summon chibis.`));
     let sortBy = 'rarity', currentPage = 0;
     const itemsPerPage = 10;
     const eventChibiNames = new Set([
@@ -613,7 +615,7 @@ async function execute(ctx) {
 
     const getGroupedEntries = () => {
       const grouped = {};
-      user.inventory.chibis.forEach(c => {
+      validChibis.forEach(c => {
         const rarityKey = String(c.rarity || 'C').toUpperCase();
         const isEventChibi = rarityKey === 'SSRP' || eventChibiNames.has(c.name) || Boolean(c.isEvent);
         const key = `${rarityKey}_${c.name}_${c.isShiny ? 'shiny' : 'normal'}`;
@@ -650,7 +652,7 @@ async function execute(ctx) {
 
       const container = new ContainerBuilder().setAccentColor(0x9b59b6).addTextDisplayComponents(new TextDisplayBuilder().setContent(
         toSmallCaps(`# ${callerHasBetaView ? BETA_EMOJIS.COLLECTIONS : '📖'} ${user.customNickname || message.author.username}'s Chibi Collection (Page ${page + 1}/${totalPages})\n\nSort: ${sortBy === 'rarity' ? 'Rarity' : 'Alphabetical'}\n\n`) +
-        formatted + toSmallCaps(`\n\n*Unique Types: ${new Set(user.inventory.chibis.map(c => c.name)).size} | Total Owned: ${user.inventory.chibis.length}*`)
+        formatted + toSmallCaps(`\n\n*Unique Types: ${new Set(validChibis.map(c => c.name)).size} | Total Owned: ${validChibis.length}*`)
       ));
       return { container, totalPages };
     };
