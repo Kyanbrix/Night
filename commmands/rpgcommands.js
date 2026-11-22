@@ -5,21 +5,25 @@ const {
 const fetch = require('node-fetch');
 const { BETA_EMOJIS, EVENT_ICONS, TRIVIA_BANK, SHINY_ICON } = require('../core/constants');
 const { gameData, db, saveUsers } = require('../core/database');
-const { toSmallCaps, updateUserRank, updatePeakRank, evaluateAndSyncUserBadges, ensureUser, addExpAndLevelUp } = require('../core/helpers');
+const {
+  toSmallCaps, updateUserRank, updatePeakRank, evaluateAndSyncUserBadges, ensureUser, addExpAndLevelUp
+} = require('../core/helpers');
 
 const RPG_CMDS = ['cstats', 'equipteam', 'battle', 'meme', 'trivia'];
 const DEFAULT_STAT = { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
 
 function getChibiStats(chibi) {
   const cfg = gameData.stats?.[chibi.rarity]?.[chibi.isShiny ? 'shiny' : 'normal'] || DEFAULT_STAT;
+  const lvl = Math.max(1, Number(chibi.level) || 1);
   return {
-    hp: cfg.hp + chibi.level * cfg.hpPer,
-    atk: cfg.atk + chibi.level * cfg.atkPer,
-    def: cfg.def + chibi.level * cfg.defPer
+    hp: (Number(cfg.hp) || DEFAULT_STAT.hp) + lvl * (Number(cfg.hpPer) || DEFAULT_STAT.hpPer),
+    atk: (Number(cfg.atk) || DEFAULT_STAT.atk) + lvl * (Number(cfg.atkPer) || DEFAULT_STAT.atkPer),
+    def: (Number(cfg.def) || DEFAULT_STAT.def) + lvl * (Number(cfg.defPer) || DEFAULT_STAT.defPer)
   };
 }
 
 function trackPeakPoints(u) {
+  if (!u) return;
   u.highestSeasonPoints = Math.max(Number(u.highestSeasonPoints) || 0, Number(u.points) || 0);
   updatePeakRank(u);
 }
@@ -29,21 +33,27 @@ async function execute(ctx) {
   if (!RPG_CMDS.includes(command)) return false;
 
   if (command === 'cstats') {
-    if (!user.inventory?.chibis?.length) return message.reply(toSmallCaps('❌ You have no chibis in your inventory!'));
+    if (!user.inventory?.chibis?.length) {
+      return message.reply(toSmallCaps('❌ You have no chibis in your inventory!'));
+    }
 
     const hpIcon = callerHasBetaView ? BETA_EMOJIS.HP : '❤️';
     const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '🗡️';
     const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
 
     const teamLines = (user.team || [null, null, null]).map((chibiId, index) => {
-      if (!chibiId) return toSmallCaps(`**[${index + 1}]** *Empty Slot* (Use ${currentPrefix}equipteam [id] ${index + 1})`);
+      if (!chibiId) {
+        return toSmallCaps(`**[${index + 1}]** *Empty Slot* (Use ${currentPrefix}equipteam [id] ${index + 1})`);
+      }
       const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiId);
-      if (!chibi) return toSmallCaps(`**[${index + 1}]** *Chibi missing from inventory*`);
+      if (!chibi) {
+        return toSmallCaps(`**[${index + 1}]** *Chibi missing from inventory*`);
+      }
 
       const stats = getChibiStats(chibi);
       const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
       const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
-      const maxExp = baseExp + (chibi.level - 1) * perLvl;
+      const maxExp = baseExp + (Math.max(1, Number(chibi.level) || 1) - 1) * perLvl;
       const shortId = String(chibi.chibiId || chibi.id).slice(-6);
 
       return (
@@ -55,17 +65,22 @@ async function execute(ctx) {
     });
 
     return message.reply({
-      components: [new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        toSmallCaps(`# 📜 ${user.customNickname || message.author.username}'s Team Card\n\n`) +
-        teamLines.join('\n') +
-        toSmallCaps(`\n\n*Tip: Use ${currentPrefix}equipteam [id] [1-3] to assign chibis to your team slots!*`)
-      ))],
+      components: [
+        new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            toSmallCaps(`# 📜 ${user.customNickname || message.author.username}'s Team Card\n\n`) +
+            teamLines.join('\n') +
+            toSmallCaps(`\n\n*Tip: Use ${currentPrefix}equipteam [id] [1-3] to assign chibis to your team slots!*`)
+          )
+        )
+      ],
       flags: MessageFlags.IsComponentsV2
     });
   }
 
   if (command === 'equipteam') {
-    const chibiIdArg = args[0], slot = parseInt(args[1], 10);
+    const chibiIdArg = args[0];
+    const slot = parseInt(args[1], 10);
     if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
       return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}equipteam [chibi_id or short id] [slot 1-3]\nExample: ${currentPrefix}equipteam a1b2c3 1`));
     }
@@ -73,7 +88,9 @@ async function execute(ctx) {
       const uId = String(c.chibiId || c.id || '');
       return uId === chibiIdArg || uId.endsWith(chibiIdArg);
     });
-    if (!chibi) return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}collections for correct IDs.`));
+    if (!chibi) {
+      return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}collections for correct IDs.`));
+    }
 
     if (!Array.isArray(user.team)) user.team = [null, null, null];
     const chibiUniqueId = chibi.chibiId || chibi.id;
@@ -121,7 +138,9 @@ async function execute(ctx) {
 
     collector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
-      if (i.user.id !== opponent.id) return i.followUp({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
+      if (i.user.id !== opponent.id) {
+        return i.followUp({ content: toSmallCaps('This battle challenge is not for you!'), ephemeral: true });
+      }
       handled = true;
       collector.stop();
 
@@ -129,9 +148,13 @@ async function execute(ctx) {
         return battleMsg.edit({ content: toSmallCaps(`❌ <@${opponent.id}> declined the 3v3 arena clash.`), components: [] }).catch(() => {});
       }
 
-      const p1User = user, p2User = db.users[opponent.id];
-      const getTeamChibis = (u) => (u.team || [null, null, null]).map(id => id ? (u.inventory?.chibis || []).find(c => (c.chibiId || c.id) === id) : null);
-      const p1Team = getTeamChibis(p1User), p2Team = getTeamChibis(p2User);
+      const p1User = user;
+      const p2User = db.users[opponent.id];
+      const getTeamChibis = (u) => (u.team || [null, null, null]).map(id =>
+        id ? (u.inventory?.chibis || []).find(c => (c.chibiId || c.id) === id) : null
+      );
+      const p1Team = getTeamChibis(p1User);
+      const p2Team = getTeamChibis(p2User);
 
       const getTeamCombatStats = (team) => {
         let totalPower = 50;
@@ -144,29 +167,32 @@ async function execute(ctx) {
         return { totalPower, detailed };
       };
 
-      const p1Stats = getTeamCombatStats(p1Team), p2Stats = getTeamCombatStats(p2Team);
+      const p1Stats = getTeamCombatStats(p1Team);
+      const p2Stats = getTeamCombatStats(p2Team);
       const isP1Winner = p1Stats.totalPower * (0.85 + Math.random() * 0.3) >= p2Stats.totalPower * (0.85 + Math.random() * 0.3);
       const winner = isP1Winner ? message.author : opponent;
       const winUser = isP1Winner ? p1User : p2User;
       const loseUser = isP1Winner ? p2User : p1User;
 
       const getBattlePoints = (pts) => {
-        if (pts >= 8002) return { win: Math.floor(Math.random() * 31) + 120, lose: 75 };
-        if (pts >= 5501) return { win: Math.floor(Math.random() * 31) + 90, lose: 50 };
-        if (pts >= 4001) return { win: Math.floor(Math.random() * 31) + 70, lose: 30 };
-        if (pts >= 2501) return { win: Math.floor(Math.random() * 31) + 50, lose: 20 };
-        if (pts >= 1000) return { win: Math.floor(Math.random() * 21) + 20, lose: 10 };
+        const safePts = Number(pts) || 0;
+        if (safePts >= 8002) return { win: Math.floor(Math.random() * 31) + 120, lose: 75 };
+        if (safePts >= 5501) return { win: Math.floor(Math.random() * 31) + 90, lose: 50 };
+        if (safePts >= 4001) return { win: Math.floor(Math.random() * 31) + 70, lose: 30 };
+        if (safePts >= 2501) return { win: Math.floor(Math.random() * 31) + 50, lose: 20 };
+        if (safePts >= 1000) return { win: Math.floor(Math.random() * 21) + 20, lose: 10 };
         return { win: Math.floor(Math.random() * 11) + 10, lose: 5 };
       };
 
-      const winReward = getBattlePoints(winUser.points), losePenalty = getBattlePoints(loseUser.points);
+      const winReward = getBattlePoints(winUser.points);
+      const losePenalty = getBattlePoints(loseUser.points);
       winUser.points = (Number(winUser.points) || 0) + winReward.win;
       loseUser.points = Math.max(0, (Number(loseUser.points) || 0) - losePenalty.lose);
       trackPeakPoints(winUser);
 
       if (!db.config.eventCrystals) db.config.eventCrystals = {};
-      const winId = winUser === p1User ? userId : opponent.id;
-      const loseId = loseUser === p1User ? userId : opponent.id;
+      const winId = isP1Winner ? userId : opponent.id;
+      const loseId = isP1Winner ? opponent.id : userId;
       db.config.eventCrystals[winId] = (db.config.eventCrystals[winId] || 0) + Math.floor(Math.random() * 7) + 10;
       db.config.eventCrystals[loseId] = (db.config.eventCrystals[loseId] || 0) + Math.floor(Math.random() * 7) + 2;
 
@@ -191,18 +217,22 @@ async function execute(ctx) {
         );
       }).join('\n');
 
-      const container = new ContainerBuilder().setAccentColor(isP1Winner ? 0xf1c40f : 0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        toSmallCaps(`# ⚔️ 3v3 Chibi Arena Clash Result\n\n🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n🛡️ ${user.customNickname || message.author.username}'s Team Lineup:\n`) +
-        renderTeamLineWithStats(p1Team, p1Stats.detailed, isP1Winner) +
-        toSmallCaps(`\n\n🛡️ ${db.users[opponent.id].customNickname || opponent.username}'s Team Lineup:\n`) +
-        renderTeamLineWithStats(p2Team, p2Stats.detailed, !isP1Winner) +
-        toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points, +${totalExpWon} EXP & Crystals! 💔 Loser lost -${losePenalty.lose} Points.`)
-      ));
+      const container = new ContainerBuilder().setAccentColor(isP1Winner ? 0xf1c40f : 0xe74c3c).addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          toSmallCaps(`# ⚔️ 3v3 Chibi Arena Clash Result\n\n🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n🛡️ ${user.customNickname || message.author.username}'s Team Lineup:\n`) +
+          renderTeamLineWithStats(p1Team, p1Stats.detailed, isP1Winner) +
+          toSmallCaps(`\n\n🛡️ ${db.users[opponent.id].customNickname || opponent.username}'s Team Lineup:\n`) +
+          renderTeamLineWithStats(p2Team, p2Stats.detailed, !isP1Winner) +
+          toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points, +${totalExpWon} EXP & Crystals! 💔 Loser lost -${losePenalty.lose} Points.`)
+        )
+      );
       await battleMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
 
     collector.on('end', async () => {
-      if (!handled) await battleMsg.edit({ content: toSmallCaps('⏳ Arena clash request timed out (5s elapsed) and was automatically cancelled.'), components: [] }).catch(() => {});
+      if (!handled) {
+        await battleMsg.edit({ content: toSmallCaps('⏳ Arena clash request timed out (5s elapsed) and was automatically cancelled.'), components: [] }).catch(() => {});
+      }
     });
     return true;
   }
@@ -213,7 +243,11 @@ async function execute(ctx) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return message.reply({
-        components: [new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(`# ${data.title || 'Meme'}\n*(r/${data.subreddit || 'memes'})*`)))],
+        components: [
+          new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(toSmallCaps(`# ${data.title || 'Meme'}\n*(r/${data.subreddit || 'memes'})*`))
+          )
+        ],
         flags: MessageFlags.IsComponentsV2
       });
     } catch {
