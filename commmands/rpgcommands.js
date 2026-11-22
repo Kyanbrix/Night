@@ -5,9 +5,24 @@ const {
 const fetch = require('node-fetch');
 const { BETA_EMOJIS, EVENT_ICONS, TRIVIA_BANK, SHINY_ICON } = require('../core/constants');
 const { gameData, db, saveUsers } = require('../core/database');
-const { toSmallCaps, updateUserRank, evaluateAndSyncUserBadges, ensureUser, addExpAndLevelUp } = require('../core/helpers');
+const { toSmallCaps, updateUserRank, updatePeakRank, evaluateAndSyncUserBadges, ensureUser, addExpAndLevelUp } = require('../core/helpers');
 
 const RPG_CMDS = ['cstats', 'equipteam', 'battle', 'meme', 'trivia'];
+const DEFAULT_STAT = { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
+
+function getChibiStats(chibi) {
+  const cfg = gameData.stats?.[chibi.rarity]?.[chibi.isShiny ? 'shiny' : 'normal'] || DEFAULT_STAT;
+  return {
+    hp: cfg.hp + chibi.level * cfg.hpPer,
+    atk: cfg.atk + chibi.level * cfg.atkPer,
+    def: cfg.def + chibi.level * cfg.defPer
+  };
+}
+
+function trackPeakPoints(u) {
+  u.highestSeasonPoints = Math.max(Number(u.highestSeasonPoints) || 0, Number(u.points) || 0);
+  updatePeakRank(u);
+}
 
 async function execute(ctx) {
   const { command, args, message, userId, currentPrefix, user, callerHasBetaView, rarityIconsMap } = ctx;
@@ -25,17 +40,17 @@ async function execute(ctx) {
       const chibi = user.inventory.chibis.find(c => (c.chibiId || c.id) === chibiId);
       if (!chibi) return toSmallCaps(`**[${index + 1}]** *Chibi missing from inventory*`);
 
-      const statCfg = gameData.stats[chibi.rarity]?.[chibi.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
+      const stats = getChibiStats(chibi);
       const baseExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
       const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
       const maxExp = baseExp + (chibi.level - 1) * perLvl;
-      const shortId = (chibi.chibiId || chibi.id).slice(-6);
+      const shortId = String(chibi.chibiId || chibi.id).slice(-6);
 
       return (
         `**[${index + 1}]** \`[${shortId}]\` ${rarityIconsMap[chibi.rarity] || '🌟'} ${chibi.emoji} **${chibi.name}**` +
         `${chibi.isShiny ? ` ${SHINY_ICON}` : ''}${chibi.rarity === 'SSRP' ? ` ${EVENT_ICONS.EVENT_BADGE}` : ''}\n` +
         `Lvl ${chibi.level} [\`${chibi.exp}/${maxExp}\`]\n` +
-        `${hpIcon} HP: \`${statCfg.hp + chibi.level * statCfg.hpPer}\` | ${defIcon} DEF: \`${statCfg.def + chibi.level * statCfg.defPer}\` | ${atkIcon} ATK: \`${statCfg.atk + chibi.level * statCfg.atkPer}\`\n`
+        `${hpIcon} HP: \`${stats.hp}\` | ${defIcon} DEF: \`${stats.def}\` | ${atkIcon} ATK: \`${stats.atk}\`\n`
       );
     });
 
@@ -54,18 +69,17 @@ async function execute(ctx) {
     if (!chibiIdArg || isNaN(slot) || slot < 1 || slot > 3) {
       return message.reply(toSmallCaps(`❌ Usage: ${currentPrefix}equipteam [chibi_id or short id] [slot 1-3]\nExample: ${currentPrefix}equipteam a1b2c3 1`));
     }
-    const chibi = user.inventory.chibis.find(c => {
-      const uId = c.chibiId || c.id;
+    const chibi = (user.inventory?.chibis || []).find(c => {
+      const uId = String(c.chibiId || c.id || '');
       return uId === chibiIdArg || uId.endsWith(chibiIdArg);
     });
     if (!chibi) return message.reply(toSmallCaps(`❌ Chibi ID not found in your inventory! Check ${currentPrefix}collections for correct IDs.`));
 
+    if (!Array.isArray(user.team)) user.team = [null, null, null];
     const chibiUniqueId = chibi.chibiId || chibi.id;
-    if (user.team.includes(chibiUniqueId)) {
-      const existingSlot = user.team.indexOf(chibiUniqueId) + 1;
-      if (existingSlot !== slot) {
-        return message.reply(toSmallCaps(`❌ This Chibi is already equipped in Team Slot ${existingSlot}! You cannot equip the same Chibi in multiple slots.`));
-      }
+    const existingIdx = user.team.indexOf(chibiUniqueId);
+    if (existingIdx !== -1 && existingIdx + 1 !== slot) {
+      return message.reply(toSmallCaps(`❌ This Chibi is already equipped in Team Slot ${existingIdx + 1}! You cannot equip the same Chibi in multiple slots.`));
     }
 
     const wasEmpty = !user.team[slot - 1];
@@ -79,7 +93,11 @@ async function execute(ctx) {
     await evaluateAndSyncUserBadges(userId, user, message.guild);
     await saveUsers();
 
-    return message.reply(toSmallCaps('✅ Successfully equipped ') + `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` + toSmallCaps(` to Team Slot ${slot}!${expMsg}`));
+    return message.reply(
+      toSmallCaps('✅ Successfully equipped ') +
+      `${chibi.emoji} **${chibi.name}** ${chibi.isShiny ? SHINY_ICON : ''}` +
+      toSmallCaps(` to Team Slot ${slot}!${expMsg}`)
+    );
   }
 
   if (command === 'battle') {
@@ -112,19 +130,16 @@ async function execute(ctx) {
       }
 
       const p1User = user, p2User = db.users[opponent.id];
-      const getTeamChibis = (u) => (u.team || [null, null, null]).map(id => id ? u.inventory.chibis.find(c => (c.chibiId || c.id) === id) : null);
+      const getTeamChibis = (u) => (u.team || [null, null, null]).map(id => id ? (u.inventory?.chibis || []).find(c => (c.chibiId || c.id) === id) : null);
       const p1Team = getTeamChibis(p1User), p2Team = getTeamChibis(p2User);
 
       const getTeamCombatStats = (team) => {
         let totalPower = 50;
         const detailed = team.map(c => {
-          if (!c) return { hp: 0, atk: 0, def: 0 };
-          const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
-          const hp = statCfg.hp + c.level * statCfg.hpPer;
-          const atk = statCfg.atk + c.level * statCfg.atkPer;
-          const def = statCfg.def + c.level * statCfg.defPer;
-          totalPower += hp + atk * 3 + def * 2;
-          return { hp, atk, def };
+          if (!c) return null;
+          const stats = getChibiStats(c);
+          totalPower += stats.hp + stats.atk * 3 + stats.def * 2;
+          return stats;
         });
         return { totalPower, detailed };
       };
@@ -145,8 +160,9 @@ async function execute(ctx) {
       };
 
       const winReward = getBattlePoints(winUser.points), losePenalty = getBattlePoints(loseUser.points);
-      winUser.points += winReward.win;
-      loseUser.points = Math.max(0, loseUser.points - losePenalty.lose);
+      winUser.points = (Number(winUser.points) || 0) + winReward.win;
+      loseUser.points = Math.max(0, (Number(loseUser.points) || 0) - losePenalty.lose);
+      trackPeakPoints(winUser);
 
       if (!db.config.eventCrystals) db.config.eventCrystals = {};
       const winId = winUser === p1User ? userId : opponent.id;
@@ -155,7 +171,8 @@ async function execute(ctx) {
       db.config.eventCrystals[loseId] = (db.config.eventCrystals[loseId] || 0) + Math.floor(Math.random() * 7) + 2;
 
       const totalExpWon = addExpAndLevelUp(winUser, (isP1Winner ? p1Team : p2Team).find(Boolean), 400);
-      updateUserRank(p1User); updateUserRank(p2User);
+      updateUserRank(p1User);
+      updateUserRank(p2User);
       await evaluateAndSyncUserBadges(userId, p1User, message.guild);
       await evaluateAndSyncUserBadges(opponent.id, p2User, message.guild);
       await saveUsers();
@@ -164,21 +181,21 @@ async function execute(ctx) {
       const atkIcon = callerHasBetaView ? BETA_EMOJIS.ATK : '🗡️';
       const defIcon = callerHasBetaView ? BETA_EMOJIS.DEF : '🛡️';
 
-      const renderTeamLineWithStats = (team, isWinnerTeam) => team.map((c, idx) => {
+      const renderTeamLineWithStats = (team, detailed, isWinnerTeam) => team.map((c, idx) => {
         if (!c) return toSmallCaps(`**[${idx + 1}]** *Empty Slot*`);
-        const statCfg = gameData.stats[c.rarity]?.[c.isShiny ? 'shiny' : 'normal'] || { hp: 100, hpPer: 10, atk: 20, atkPer: 2, def: 10, defPer: 1 };
-        const hp = statCfg.hp + c.level * statCfg.hpPer;
-        const atk = statCfg.atk + c.level * statCfg.atkPer;
-        const def = statCfg.def + c.level * statCfg.defPer;
-        return toSmallCaps(`**[${idx + 1}]** `) + `${rarityIconsMap[c.rarity] || '📦'} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''}` +
-          toSmallCaps(` (Lvl ${c.level}) — ${hpIcon} HP: \`${isWinnerTeam ? hp : 0}\` | ${atkIcon} ATK: \`${atk}\` | ${defIcon} DEF: \`${def}\``);
+        const stats = detailed[idx] || getChibiStats(c);
+        return (
+          toSmallCaps(`**[${idx + 1}]** `) +
+          `${rarityIconsMap[c.rarity] || '📦'} ${c.emoji} **${c.name}** ${c.isShiny ? SHINY_ICON : ''}` +
+          toSmallCaps(` (Lvl ${c.level}) — ${hpIcon} HP: \`${isWinnerTeam ? stats.hp : 0}\` | ${atkIcon} ATK: \`${stats.atk}\` | ${defIcon} DEF: \`${stats.def}\``)
+        );
       }).join('\n');
 
       const container = new ContainerBuilder().setAccentColor(isP1Winner ? 0xf1c40f : 0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(
         toSmallCaps(`# ⚔️ 3v3 Chibi Arena Clash Result\n\n🏆 Winner: <@${winner.id}> triumphs in a fierce 3v3 showdown!\n\n🛡️ ${user.customNickname || message.author.username}'s Team Lineup:\n`) +
-        renderTeamLineWithStats(p1Team, isP1Winner) +
+        renderTeamLineWithStats(p1Team, p1Stats.detailed, isP1Winner) +
         toSmallCaps(`\n\n🛡️ ${db.users[opponent.id].customNickname || opponent.username}'s Team Lineup:\n`) +
-        renderTeamLineWithStats(p2Team, !isP1Winner) +
+        renderTeamLineWithStats(p2Team, p2Stats.detailed, !isP1Winner) +
         toSmallCaps(`\n\n📊 Match Rewards: ✨ Victor earned +${winReward.win} Points, +${totalExpWon} EXP & Crystals! 💔 Loser lost -${losePenalty.lose} Points.`)
       ));
       await battleMsg.edit({ content: '', components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -191,33 +208,47 @@ async function execute(ctx) {
   }
 
   if (command === 'meme') {
-    const data = await (await fetch('https://meme-api.com/gimme')).json();
-    return message.reply({
-      components: [new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(`# ${data.title}\n*(r/${data.subreddit})*`)))],
-      flags: MessageFlags.IsComponentsV2
-    });
+    try {
+      const res = await fetch('https://meme-api.com/gimme');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return message.reply({
+        components: [new ContainerBuilder().setAccentColor(0xe74c3c).addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps(`# ${data.title || 'Meme'}\n*(r/${data.subreddit || 'memes'})*`)))],
+        flags: MessageFlags.IsComponentsV2
+      });
+    } catch {
+      return message.reply(toSmallCaps('❌ Could not fetch a meme right now. Please try again later!'));
+    }
   }
 
   if (command === 'trivia') {
     const selected = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
     await message.reply(toSmallCaps(`🧩 Trivia Challenge:\n${selected.q}\n*(Type your answer in chat within 15 seconds!)*`));
 
+    let answered = false;
     const collector = message.channel.createMessageCollector({ filter: m => m.author.id === userId, time: 15000, max: 1 });
     collector.on('collect', async m => {
+      answered = true;
       const userAnswer = m.content.toLowerCase().trim();
       if (selected.a.some(ans => userAnswer.includes(ans))) {
         const awardedPoints = Math.floor(Math.random() * 4) + 17;
         const awardedExp = addExpAndLevelUp(user, null, 450);
         const triviaCrystals = Math.floor(Math.random() * 6) + 5;
-        user.points += awardedPoints;
+        user.points = (Number(user.points) || 0) + awardedPoints;
+        trackPeakPoints(user);
         if (!db.config.eventCrystals) db.config.eventCrystals = {};
         db.config.eventCrystals[userId] = (db.config.eventCrystals[userId] || 0) + triviaCrystals;
         updateUserRank(user);
         await evaluateAndSyncUserBadges(userId, user, message.guild);
         await saveUsers();
-        m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
+        await m.reply(toSmallCaps(`🎉 Correct! You earned +${awardedPoints} Points, +${awardedExp} EXP & +${triviaCrystals} Event Crystals ${EVENT_ICONS.CRYSTAL}!`));
       } else {
-        m.reply(toSmallCaps(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`));
+        await m.reply(toSmallCaps(`❌ Incorrect! The correct answer was **${selected.a[0]}**.`));
+      }
+    });
+    collector.on('end', async () => {
+      if (!answered) {
+        await message.channel.send(toSmallCaps(`⏳ Time's up! The answer was **${selected.a[0]}**.`)).catch(() => {});
       }
     });
     return true;
