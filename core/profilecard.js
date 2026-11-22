@@ -1,22 +1,32 @@
+
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { BADGE_CATALOG } = require('./constants');
 
 let helperMod = null;
-try {
-  helperMod = require('./Helper');
-} catch {
+for (const candidate of ['./Helper', './helpers', './helper', './Helpers']) {
   try {
-    helperMod = require('./helpers');
+    helperMod = require(candidate);
+    break;
   } catch {
-    helperMod = null;
+    // Try next candidate path
   }
 }
 
-const getClanLogoDisplay = helperMod?.getClanLogoDisplay || null;
-const formatCompactValue = helperMod?.formatCompactValue || ((n) => String(Number(n) || 0));
-const getUserRollLuckPercent = helperMod?.getUserRollLuckPercent || null;
+const getClanLogoDisplay = typeof helperMod?.getClanLogoDisplay === 'function' ? helperMod.getClanLogoDisplay : null;
+const formatCompactValue = typeof helperMod?.formatCompactValue === 'function'
+  ? helperMod.formatCompactValue
+  : (n) => String(Number(n) || 0);
+const getUserRollLuckPercent = typeof helperMod?.getUserRollLuckPercent === 'function'
+  ? helperMod.getUserRollLuckPercent
+  : null;
+const getEquippedDiceInfo = typeof helperMod?.getEquippedDiceInfo === 'function'
+  ? helperMod.getEquippedDiceInfo
+  : null;
+const shopDiceMap = helperMod?.SHOP_DICE_MAP && typeof helperMod.SHOP_DICE_MAP === 'object'
+  ? helperMod.SHOP_DICE_MAP
+  : null;
 
 const emojiCache = new Map();
 const imageCache = new Map();
@@ -38,8 +48,7 @@ function registerBundledFonts() {
     checkedDirs.add(dir);
 
     try {
-      if (!fs.existsSync(dir)) continue;
-      if (!fs.statSync(dir).isDirectory()) continue;
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
 
       const files = fs.readdirSync(dir).filter(f => /\.(ttf|otf|woff2)$/i.test(f));
       for (const file of files) {
@@ -222,7 +231,14 @@ function hasSupporterOrNitro(userData, syncedBadges = []) {
     ...(Array.isArray(userData?.badges) ? userData.badges : []),
     ...(Array.isArray(syncedBadges) ? syncedBadges : [])
   ]);
-  return active.has('nitrouser') || active.has('supporter') || active.has('nitro') || active.has('support');
+  return (
+    active.has('nitrouser') ||
+    active.has('supporter') ||
+    active.has('nitro') ||
+    active.has('support') ||
+    Boolean(userData?.supporter) ||
+    Boolean(userData?.betaSupporter)
+  );
 }
 
 function isValidImageSource(rawSrc) {
@@ -402,20 +418,45 @@ function resolveBadgeList(userData = {}, syncedBadges = []) {
   return uniqueKeys;
 }
 
-function resolveEquippedDiceState(safeUserData) {
-  const rawDiceVal = safeUserData.equippedDice ?? safeUserData.currentDice ?? safeUserData.activeDice ?? null;
-  if (rawDiceVal === null || rawDiceVal === undefined || rawDiceVal === false) {
-    return { hasEquippedDice: false, diceKey: null };
-  }
-  const cleaned = String(rawDiceVal).trim().toLowerCase();
+function normalizeDiceKey(rawVal) {
+  if (rawVal === null || rawVal === undefined || rawVal === false) return null;
+  const cleaned = String(rawVal).trim().toLowerCase().replace(/\s+dice$/i, '');
   if (!cleaned || cleaned === 'none' || cleaned === 'null' || cleaned === 'undefined' || cleaned === 'false') {
-    return { hasEquippedDice: false, diceKey: null };
+    return null;
   }
-  const ownedDice = Array.isArray(safeUserData.ownedDice) ? safeUserData.ownedDice.map(d => String(d).toLowerCase()) : null;
-  if (ownedDice && ownedDice.length > 0 && !ownedDice.includes(cleaned) && safeUserData.explicitlyEquippedDice !== true) {
-    return { hasEquippedDice: false, diceKey: null };
+  return cleaned;
+}
+
+function resolveEquippedDiceState(safeUserData) {
+  const candidateKeys = [
+    safeUserData.equippedDice,
+    safeUserData.currentDice,
+    safeUserData.activeDice,
+    safeUserData.selectedDice,
+    safeUserData.diceKey
+  ];
+
+  const ownedDice = Array.isArray(safeUserData.ownedDice)
+    ? safeUserData.ownedDice.map(d => normalizeDiceKey(d)).filter(Boolean)
+    : [];
+
+  for (const rawCandidate of candidateKeys) {
+    const key = normalizeDiceKey(rawCandidate);
+    if (!key) continue;
+
+    if (ownedDice.length > 0 && !ownedDice.includes(key)) {
+      continue;
+    }
+
+    const diceInfo = shopDiceMap?.[key] || (getEquippedDiceInfo ? getEquippedDiceInfo({ ...safeUserData, equippedDice: key }) : null);
+    return {
+      hasEquippedDice: true,
+      diceKey: key,
+      diceInfo
+    };
   }
-  return { hasEquippedDice: true, diceKey: cleaned };
+
+  return { hasEquippedDice: false, diceKey: null, diceInfo: null };
 }
 
 async function renderProfileCard({
@@ -452,6 +493,7 @@ async function renderProfileCard({
     || safeUserData.customBg
     || safeUserData.bgUrl
     || safeUserData.backgroundUrl
+    || safeUserData.profileBg
     || null;
 
   const customBgImg = isValidImageSource(candidateBg)
@@ -655,7 +697,7 @@ async function renderProfileCard({
 
   const hasClan = Boolean(safeUserData.clan && safeUserData.clan !== 'NONE');
   const clanClean = hasClan ? normalizeText(String(safeUserData.clan).replace(/\*/g, '')) : 'NONE';
-  const clanLogo = hasClan && typeof getClanLogoDisplay === 'function' ? getClanLogoDisplay(safeUserData.clanLogoId) : null;
+  const clanLogo = hasClan && getClanLogoDisplay ? getClanLogoDisplay(safeUserData.clanLogoId) : null;
 
   await drawIcon(ctx, useBetaStyle ? safeBetaEmojis.RANK : '🏅', '🏅', rightX, ry - 22, 30);
   ctx.textAlign = 'left';
@@ -737,12 +779,14 @@ async function renderProfileCard({
   await drawRarityIconOnlyRow(rarityRow1, 754);
   await drawRarityIconOnlyRow(rarityRow2, 806);
 
-  const { hasEquippedDice } = resolveEquippedDiceState(safeUserData);
-  const luckSummary = hasEquippedDice && typeof getUserRollLuckPercent === 'function'
-    ? getUserRollLuckPercent(safeUserData)
+  const { hasEquippedDice, diceKey, diceInfo } = resolveEquippedDiceState(safeUserData);
+  const luckSummary = hasEquippedDice && getUserRollLuckPercent
+    ? getUserRollLuckPercent({ ...safeUserData, equippedDice: diceKey })
     : null;
-  const currentDiceIcon = hasEquippedDice ? (luckSummary?.diceInfo?.emoji || null) : null;
-  const totalLuckVal = hasEquippedDice ? (Number(luckSummary?.totalLuckPercent) || 0) : 0;
+  const currentDiceIcon = hasEquippedDice ? (luckSummary?.diceInfo?.emoji || diceInfo?.emoji || null) : null;
+  const totalLuckVal = hasEquippedDice
+    ? (Number(luckSummary?.totalLuckPercent ?? diceInfo?.luckPercent) || 0)
+    : 0;
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f8fafc';
