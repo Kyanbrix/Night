@@ -1,4 +1,3 @@
-
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
   ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, MessageFlags
@@ -62,6 +61,9 @@ async function execute(ctx) {
       if (i.customId === 'sort_members') sortBy = 'members';
       await clanMsg.edit({ components: [await renderClanContainer(), getClanRows()], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
+    clanCollector.on('end', async () => {
+      await clanMsg.edit({ components: [await renderClanContainer()], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    });
     return true;
   }
 
@@ -81,7 +83,7 @@ async function execute(ctx) {
     if (user.dice < clanCreationCost) {
       return message.reply(toSmallCaps(`❌ You do not have enough dice to create a clan! You need **${clanCreationCost} 🎲 Dice**, but you only have **${user.dice} 🎲**.`));
     }
-    user.dice -= clanCreationCost;
+    user.dice = Number(user.dice || 0) - clanCreationCost;
     db.clans[clanName] = {
       name: clanName, leader: userId, viceLeader: null, members: [userId],
       roles: { [userId]: 'Leader' }, description: '', logoId: logoArg, renameCount: 0
@@ -124,23 +126,28 @@ async function execute(ctx) {
     const leaveMsg = await message.reply({ content: toSmallCaps(`⚠️ Are you sure you want to leave your clan **${clanName}**?`), components: [confirmRow] });
 
     const leaveCollector = leaveMsg.createMessageComponentCollector({ time: 15000 });
+    let handled = false;
     leaveCollector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
       if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('Not your confirmation!'), ephemeral: true });
+      handled = true;
+      leaveCollector.stop();
       if (i.customId === 'confirm_leave') {
-        leaveCollector.stop();
         const targetClan = db.clans[clanName];
         if (targetClan) {
           targetClan.members = targetClan.members.filter(id => id !== userId);
           if (targetClan.roles) delete targetClan.roles[userId];
+          if (targetClan.viceLeader === userId) targetClan.viceLeader = null;
           if (targetClan.members.length === 0) delete db.clans[clanName];
         }
         user.clan = null;
         await saveUsers();
         return leaveMsg.edit({ content: toSmallCaps(`✅ Successfully left the clan **${clanName}**.`), components: [] }).catch(() => {});
       }
-      leaveCollector.stop();
       return leaveMsg.edit({ content: toSmallCaps('❌ Clan leave request cancelled.'), components: [] }).catch(() => {});
+    });
+    leaveCollector.on('end', async () => {
+      if (!handled) await leaveMsg.edit({ components: [] }).catch(() => {});
     });
     return true;
   }
@@ -224,6 +231,7 @@ async function execute(ctx) {
     });
 
     const collector = promptMsg.createMessageComponentCollector({ time: 25000, max: 1 });
+    let promoted = false;
     collector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
       if (i.user.id !== userId) return i.followUp({ content: toSmallCaps('❌ Only the command sender can select the position!'), ephemeral: true });
@@ -231,6 +239,7 @@ async function execute(ctx) {
       if (actorRole !== 'Leader' && (CLAN_ROLE_HIERARCHY[chosenRole] || 0) >= actorTier) {
         return i.followUp({ content: toSmallCaps('❌ You cannot assign a position equal to or higher than your own rank!'), ephemeral: true });
       }
+      promoted = true;
       if (!clanObj.roles) clanObj.roles = {};
       clanObj.roles[target.id] = chosenRole;
       clanObj.viceLeader = chosenRole === 'Co-Leader' ? target.id : (clanObj.viceLeader === target.id ? null : clanObj.viceLeader);
@@ -241,6 +250,9 @@ async function execute(ctx) {
       });
       await saveUsers();
       await promptMsg.edit({ content: toSmallCaps(`✅ <@${target.id}> has been set to **${chosenRole}** in clan **${clanObj.name}**!`), components: [] }).catch(() => {});
+    });
+    collector.on('end', async () => {
+      if (!promoted) await promptMsg.edit({ components: [] }).catch(() => {});
     });
     return true;
   }
@@ -324,6 +336,9 @@ async function execute(ctx) {
           return i.followUp({ content: 'There is no claimable rewards in the mail.', ephemeral: true });
         }
       });
+      mailCollector.on('end', async () => {
+        await mailMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      });
       return true;
     }
 
@@ -371,7 +386,7 @@ async function execute(ctx) {
             claimedSummaries.push(`${qty}x ${rarityIconsMap[rarity] || ''} ${rw.emoji || sampleChibi.emoji} ${rw.name || sampleChibi.name}`);
           } else if (rw.type === 'dice') {
             const diceAmt = Math.max(1, parseInt(rw.dice, 10) || 0);
-            user.dice = (user.dice || 0) + diceAmt;
+            user.dice = Number(user.dice || 0) + diceAmt;
             claimedSummaries.push(`${diceAmt}x ${BETA_EMOJIS.DICE} Dice`);
           }
           mailEntry.claimed = true;
@@ -382,6 +397,9 @@ async function execute(ctx) {
         await mailMsg.edit({ components: [renderMailContainer(), claimRow], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
         return i.followUp({ content: toSmallCaps(`✅ Claimed mail rewards: ${claimedSummaries.join(', ')}!`), ephemeral: true });
       }
+    });
+    mailCollector.on('end', async () => {
+      await mailMsg.edit({ components: [renderMailContainer()], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
     return true;
   }
