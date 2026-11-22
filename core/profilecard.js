@@ -1,4 +1,3 @@
-
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
@@ -436,19 +435,14 @@ function resolveEquippedDiceState(safeUserData) {
     safeUserData.diceKey
   ];
 
-  const ownedDice = Array.isArray(safeUserData.ownedDice)
-    ? safeUserData.ownedDice.map(d => normalizeDiceKey(d)).filter(Boolean)
-    : [];
-
   for (const rawCandidate of candidateKeys) {
     const key = normalizeDiceKey(rawCandidate);
     if (!key) continue;
 
-    if (ownedDice.length > 0 && !ownedDice.includes(key)) {
-      continue;
-    }
+    const diceInfo =
+      shopDiceMap?.[key] ||
+      (getEquippedDiceInfo ? getEquippedDiceInfo({ ...safeUserData, equippedDice: key }) : null);
 
-    const diceInfo = shopDiceMap?.[key] || (getEquippedDiceInfo ? getEquippedDiceInfo({ ...safeUserData, equippedDice: key }) : null);
     return {
       hasEquippedDice: true,
       diceKey: key,
