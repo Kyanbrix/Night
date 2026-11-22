@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const { RARITY_RATES, RARITY_ICONS } = require('./constants');
+const { RARITY_RATES } = require('./constants');
 
 const DATA_FILE = path.join(__dirname, '..', 'data.json');
 
@@ -29,6 +29,7 @@ function normalizeGameData(raw) {
     shinyChibiExpPerLevel: 100,
     ...(data.settings || {})
   };
+  data.rarities = Array.isArray(data.rarities) && data.rarities.length > 0 ? data.rarities : [];
   data.rarityRates = Array.isArray(data.rarityRates) && data.rarityRates.length > 0
     ? data.rarityRates
     : RARITY_RATES;
@@ -120,23 +121,25 @@ const db = {
 };
 
 function sanitizeUserInventories(usersObj) {
-  let changed = false;
+  let anyChanged = false;
   for (const u of Object.values(usersObj || {})) {
     if (!u || typeof u !== 'object') continue;
     const chibis = u.inventory?.chibis;
     if (Array.isArray(chibis)) {
+      let userChanged = false;
       const removedIds = new Set();
       const filtered = chibis.filter(c => {
         if (!c || typeof c !== 'object') return true;
         if (String(c.name || '').toLowerCase() === 'str_aegis') {
           if (c.chibiId) removedIds.add(c.chibiId);
           if (c.id) removedIds.add(c.id);
-          changed = true;
+          userChanged = true;
           return false;
         }
         return true;
       });
-      if (changed) {
+      if (userChanged) {
+        anyChanged = true;
         u.inventory.chibis = filtered;
         if (Array.isArray(u.team)) {
           u.team = u.team.map(slotId => (slotId && removedIds.has(slotId) ? null : slotId));
@@ -147,7 +150,7 @@ function sanitizeUserInventories(usersObj) {
       }
     }
   }
-  return changed;
+  return anyChanged;
 }
 
 async function initDatabase() {
