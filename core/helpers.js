@@ -67,6 +67,7 @@ function formatCompactNumber(num) {
 }
 
 function isTester(userId) {
+  if (!db?.config) return false;
   if (!db.config.ownerId) db.config.ownerId = userId;
   return userId === db.config.ownerId || (Array.isArray(db.config.testers) && db.config.testers.includes(userId));
 }
@@ -95,11 +96,11 @@ function getRarityIconMap(useBetaEmojis = false) {
     SRR: '<:Newsrr1:1573559263627055164>',
     UTR: '<:Newutr1:1573559322527662090>',
     STR: '<:Str:1573559367339614348>',
-    SSRP: useBetaEmojis ? BETA_EMOJIS.RARITIES.SSRP : '<a:Ssrp:1572096279545126985>',
+    SSRP: useBetaEmojis ? BETA_EMOJIS?.RARITIES?.SSRP : '<a:Ssrp:1572096279545126985>',
     UGMR: '<:What:1573806040644980917>'
   };
   (gameData.rarities || []).forEach(r => {
-    if (!map[r.key]) map[r.key] = (useBetaEmojis && BETA_EMOJIS.RARITIES[r.key]) ? BETA_EMOJIS.RARITIES[r.key] : r.emoji;
+    if (!map[r.key]) map[r.key] = (useBetaEmojis && BETA_EMOJIS?.RARITIES?.[r.key]) ? BETA_EMOJIS.RARITIES[r.key] : r.emoji;
   });
   return map;
 }
@@ -180,7 +181,7 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
   if (targetUserData.rolledUmgr || (targetUserData.inventory?.chibis || []).some(c => String(c.rarity || '').toUpperCase() === 'UGMR')) badgeSet.add('ugmr');
   if (Number(targetUserData.gamblingEarnings || targetUserData.gamblingWon || 0) >= 1_000_000_000_000) badgeSet.add('gamblingod');
   if (targetUserData.foughtDev3v3) badgeSet.add('devvsplayer');
-  if (targetUserId === db.config.ownerId || isTester(targetUserId)) badgeSet.add('developer');
+  if (targetUserId === db?.config?.ownerId || isTester(targetUserId)) badgeSet.add('developer');
   if (targetUserData.permissions === true) badgeSet.add('admin');
   if (targetUserData.supporter === true || targetUserData.betaSupporter === true) badgeSet.add('supporter');
 
@@ -194,8 +195,8 @@ async function evaluateAndSyncUserBadges(targetUserId, targetUserData, guild = n
       const member = await guild.members.fetch(targetUserId).catch(() => null);
       if (member) {
         if (member.premiumSinceTimestamp) { badgeSet.add('booster'); badgeSet.add('nitro'); }
-        if (member.permissions.has(PermissionsBitField.Flags.Administrator)) badgeSet.add('admin');
-        if (member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || member.permissions.has(PermissionsBitField.Flags.ManageMessages)) badgeSet.add('mods');
+        if (member.permissions?.has(PermissionsBitField.Flags.Administrator)) badgeSet.add('admin');
+        if (member.permissions?.has(PermissionsBitField.Flags.ModerateMembers) || member.permissions?.has(PermissionsBitField.Flags.ManageMessages)) badgeSet.add('mods');
       }
     } catch {}
   }
@@ -287,7 +288,7 @@ function pushClanMail(userId, mailItem) {
 }
 
 function parseDurationToMs(durationStr) {
-  const match = durationStr.match(/^(\d+)([smhdw])$/i);
+  const match = String(durationStr || '').match(/^(\d+)([smhdw])$/i);
   if (!match) return null;
   const val = parseInt(match[1], 10);
   const mult = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
@@ -317,18 +318,28 @@ function formatTimePlayed(startInput, nowMs = Date.now()) {
 }
 
 function addExpAndLevelUp(user, chibi, baseExpAmount) {
-  const expAmount = Math.round(baseExpAmount * (db.config.globalXpMultiplier || 1.0));
-  user.userExp += expAmount;
-  let userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
+  const xpMult = Number(db?.config?.globalXpMultiplier) || 1.0;
+  const expAmount = Math.round((Number(baseExpAmount) || 0) * xpMult);
+  const settings = gameData.settings || {};
+  const userExpBase = Number(settings.userExpBase) || 100;
+  const userExpPerLevel = Number(settings.userExpPerLevel) || 50;
+
+  user.userLevel = Math.max(1, Number(user.userLevel) || 1);
+  user.userExp = (Number(user.userExp) || 0) + expAmount;
+
+  let userMaxExp = userExpBase + (user.userLevel - 1) * userExpPerLevel;
   while (user.userExp >= userMaxExp) {
     user.userExp -= userMaxExp;
     user.userLevel += 1;
-    userMaxExp = gameData.settings.userExpBase + (user.userLevel - 1) * gameData.settings.userExpPerLevel;
+    userMaxExp = userExpBase + (user.userLevel - 1) * userExpPerLevel;
   }
+
   if (chibi) {
-    chibi.exp += expAmount;
-    const baseChibiExp = chibi.isShiny ? gameData.settings.shinyChibiExpBase : gameData.settings.normalChibiExpBase;
-    const perLvl = chibi.isShiny ? gameData.settings.shinyChibiExpPerLevel : gameData.settings.normalChibiExpPerLevel;
+    const baseChibiExp = chibi.isShiny ? (Number(settings.shinyChibiExpBase) || 150) : (Number(settings.normalChibiExpBase) || 100);
+    const perLvl = chibi.isShiny ? (Number(settings.shinyChibiExpPerLevel) || 75) : (Number(settings.normalChibiExpPerLevel) || 50);
+    chibi.level = Math.max(1, Number(chibi.level) || 1);
+    chibi.exp = (Number(chibi.exp) || 0) + expAmount;
+
     let chibiMaxExp = baseChibiExp + (chibi.level - 1) * perLvl;
     while (chibi.exp >= chibiMaxExp) {
       chibi.exp -= chibiMaxExp;
