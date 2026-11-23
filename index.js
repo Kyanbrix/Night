@@ -3,7 +3,6 @@ const {
   ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SectionBuilder, ThumbnailBuilder,
   AttachmentBuilder, MessageFlags, PermissionsBitField
 } = require('discord.js');
-const fetch = require('node-fetch');
 const mongoose = require('mongoose');
 
 const {
