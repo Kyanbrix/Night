@@ -116,6 +116,151 @@ function parseBadgeFlagValue(rawVal) {
   return null;
 }
 
+function buildHelpCategories(prefix) {
+  return {
+    rolling: {
+      label: 'Rolling, Drops & Games',
+      emoji: '🎲',
+      title: '🎲 Rolling, Drops & Games',
+      lines: [
+        `\`${prefix}roll [qty] [boost]\` (\`${prefix}r\`)`,
+        `\`${prefix}drop\` (\`${prefix}d\`)`,
+        `\`${prefix}slot [bet]\``,
+        `\`${prefix}shop\``,
+        `\`${prefix}rarities\` (\`${prefix}rar\`)`
+      ]
+    },
+    economy: {
+      label: 'Rewards & Economy',
+      emoji: '💰',
+      title: '💰 Rewards & Economy',
+      lines: [
+        `\`${prefix}work\` (\`${prefix}w\`)`,
+        `\`${prefix}working\` (\`${prefix}wg\`)`,
+        `\`${prefix}workshift\` (\`${prefix}ws\`)`,
+        `\`${prefix}balance\` (\`${prefix}bal\`)`,
+        `\`${prefix}casino\` (\`${prefix}cs\`)`,
+        `\`${prefix}blackjack\` (\`${prefix}bj\`)`,
+        `\`${prefix}coinflip\` (\`${prefix}cf\` / \`${prefix}cp\`)`,
+        `\`${prefix}ticketbuy\` (\`${prefix}tb\`)`,
+        `\`${prefix}ticketuse\` (\`${prefix}tu\`)`,
+        `\`${prefix}lottery\` (\`${prefix}lot\`)`,
+        `\`${prefix}csell [qty] [rarity]\` (\`${prefix}sell\`)`,
+        `\`${prefix}daily\``,
+        `\`${prefix}points\``,
+        `\`${prefix}rank\` / \`${prefix}ranks\``,
+        `\`${prefix}ccranks\` (\`${prefix}ccr\`)`,
+        `\`${prefix}customnn\` (\`${prefix}cnn\`)`,
+        `\`${prefix}profilebg\``,
+        `\`${prefix}seasons\` (\`${prefix}ss\`)`,
+        `\`${prefix}higheststats\` (\`${prefix}hss\`)`,
+        `\`${prefix}tradehistory\` (\`${prefix}th\`)`
+      ]
+    },
+    event: {
+      label: 'Event System',
+      emoji: '🌟',
+      title: '🌟 Event System',
+      lines: [
+        `\`${prefix}event\``,
+        `\`${prefix}eadventure\` (\`${prefix}ca\`)`,
+        `\`${prefix}eshop\` (\`${prefix}es\`)`,
+        `\`${prefix}ecrystal\` (\`${prefix}ec\`)`
+      ]
+    },
+    rpg: {
+      label: 'RPG & Battling',
+      emoji: '⚔️',
+      title: '⚔️ RPG & Battling',
+      lines: [
+        `\`${prefix}cstats\``,
+        `\`${prefix}equipteam [id] [slot]\``,
+        `\`${prefix}battle [@user]\``
+      ]
+    },
+    inventory: {
+      label: 'Inventory & Profile',
+      emoji: '🎒',
+      title: '🎒 Inventory & Profile',
+      lines: [
+        `\`${prefix}inventory\` (\`${prefix}inv\`)`,
+        `\`${prefix}collections\` (\`${prefix}col\`)`,
+        `\`${prefix}profile\` (\`${prefix}p\`) [@user]`,
+        `\`${prefix}trade\` (\`${prefix}t\`) [@user]`
+      ]
+    },
+    clans: {
+      label: 'Clans & Server',
+      emoji: '🏛️',
+      title: '🏛️ Clans & Server',
+      lines: [
+        `\`${prefix}clanlist\``,
+        `\`${prefix}cclaninfo\``,
+        `\`${prefix}ccreateclan\``,
+        `\`${prefix}cclanjoin\``,
+        `\`${prefix}clanleave\``,
+        `\`${prefix}clanrename\``,
+        `\`${prefix}prefixchange\``,
+        `\`${prefix}enablec\``,
+        `\`${prefix}disablec\``
+      ]
+    }
+  };
+}
+
+function renderHelpContainer(prefix, selectedKey = null) {
+  const categories = buildHelpCategories(prefix);
+  let bodyContent = '';
+
+  if (selectedKey && categories[selectedKey]) {
+    const cat = categories[selectedKey];
+    bodyContent = toSmallCaps(`${cat.title}\n`) + cat.lines.join('\n');
+  } else {
+    bodyContent = Object.values(categories)
+      .map(cat => toSmallCaps(`${cat.title}\n`) + cat.lines.join('\n'))
+      .join('\n\n');
+  }
+
+  const activeLabel = selectedKey && categories[selectedKey]
+    ? categories[selectedKey].label
+    : 'All Categories';
+
+  return new ContainerBuilder()
+    .setAccentColor(0xff77aa)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        toSmallCaps(`# 🌸 Chibi RPG RNG — Help Center\nViewing: **${activeLabel}**\nSelect a category below:`)
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyContent));
+}
+
+function renderHelpMenuRow(selectedKey = null) {
+  const categories = buildHelpCategories('');
+  const options = [
+    {
+      label: 'All Categories',
+      value: 'all',
+      emoji: '📚',
+      default: !selectedKey
+    },
+    ...Object.entries(categories).map(([key, cat]) => ({
+      label: cat.label,
+      value: key,
+      emoji: cat.emoji,
+      default: selectedKey === key
+    }))
+  ];
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('help_category_select')
+      .setPlaceholder(toSmallCaps('Choose a help category...'))
+      .addOptions(options)
+  );
+}
+
 async function execute(ctx) {
   const { command, args, message, client, userId, currentPrefix, user, currentMs, callerHasBetaView, rarityIconsMap, getDisplayName } = ctx;
   if (!CORE_CMDS.includes(command)) return false;
@@ -334,65 +479,35 @@ async function execute(ctx) {
   }
 
   if (command === 'help') {
-    const betaHelpSection = isTester(userId)
-      ? toSmallCaps('🧪 **Beta Tester Exclusive Commands**\n') +
-        `\`${currentPrefix}testerpanel\` — Open Beta Tester Panel\n` +
-        `\`${currentPrefix}testerfeatures\` (\`${currentPrefix}tf\`) — List active beta features\n` +
-        `\`${currentPrefix}admingivebadges\` (\`${currentPrefix}agb\`) — View/grant badges\n` +
-        `\`${currentPrefix}cpromote\` (\`${currentPrefix}cp\`) [@user] — Promote clan member\n` +
-        `\`${currentPrefix}kick\` [@user] [reason] — Kick member from clan\n` +
-        `\`${currentPrefix}cannounce\` [msg] — Announce to clan mail\n` +
-        `\`${currentPrefix}ceditdesc\` (\`${currentPrefix}ced\`) [desc] — Edit clan description\n` +
-        `\`${currentPrefix}cmail\` — View clan mail inbox\n\n`
-      : '';
-
-    const helpText =
-      betaHelpSection +
-      toSmallCaps('🎲 **Rolling, Drops & Games**\n') +
-      `\`${currentPrefix}roll [qty] [boost]\` (${currentPrefix}r) — Roll Chibis\n` +
-      `\`${currentPrefix}drop\` (${currentPrefix}d) — Claim free dice every 10s\n` +
-      `\`${currentPrefix}slot [bet]\` — Play Chibi Slot Machine 🎰\n` +
-      `\`${currentPrefix}shop\` — Buy Spray & Clover boosts\n` +
-      `\`${currentPrefix}rarities\` (${currentPrefix}rar) — View Chibi drop rates\n\n` +
-      toSmallCaps('🌟 **Beta Event System**\n') +
-      `\`${currentPrefix}event\` — View Beta Event Hub\n` +
-      `\`${currentPrefix}eadventure\` (${currentPrefix}ca) — Explore & Battle NPCs for Crystals\n` +
-      `\`${currentPrefix}eshop\` (${currentPrefix}es) — Open Event Crystal Shop\n` +
-      `\`${currentPrefix}ecrystal\` (${currentPrefix}ec) — Check Crystal balance\n\n` +
-      toSmallCaps('🎁 **Rewards & Economy**\n') +
-      `\`${currentPrefix}daily\` — Claim daily streak rewards (x5 🎲)\n` +
-      `\`${currentPrefix}points\` — Check points & rank badge\n` +
-      `\`${currentPrefix}rank\` / \`${currentPrefix}ranks\` — View leaderboards\n` +
-      `\`${currentPrefix}ccranks\` (${currentPrefix}ccr) — Clan Leaderboard\n` +
-      `\`${currentPrefix}customnn\` (${currentPrefix}cnn) — Set custom nickname\n` +
-      `\`${currentPrefix}profilebg\` — Customize profile background (Nitro/Supporter)\n` +
-      `\`${currentPrefix}seasons\` (${currentPrefix}ss) — Season schedules\n` +
-      `\`${currentPrefix}higheststats\` (${currentPrefix}hss) — Peak season stats\n` +
-      `\`${currentPrefix}tradehistory\` (${currentPrefix}th) — View trade logs\n\n` +
-      toSmallCaps('⚔️ **RPG & Battling**\n') +
-      `\`${currentPrefix}cstats\` — Inspect team card\n` +
-      `\`${currentPrefix}equipteam [id] [slot]\` — Manage team (1-3)\n` +
-      `\`${currentPrefix}battle [@user]\` — 3v3 Arena Clash\n\n` +
-      toSmallCaps('🎒 **Inventory & Profile**\n') +
-      `\`${currentPrefix}inventory\` (${currentPrefix}inv) — Items bag\n` +
-      `\`${currentPrefix}collections\` (${currentPrefix}col) — Chibi binder\n` +
-      `\`${currentPrefix}profile\` (${currentPrefix}p) [@user] — User profile\n` +
-      `\`${currentPrefix}trade\` (${currentPrefix}t) [@user] — 2-Player Trade\n\n` +
-      toSmallCaps('🏛️ **Clans & Server**\n') +
-      `\`${currentPrefix}clanlist\` — View clans\n` +
-      `\`${currentPrefix}cclaninfo\` — Clan details & info\n` +
-      `\`${currentPrefix}ccreateclan\` / \`${currentPrefix}cclanjoin\` / \`${currentPrefix}clanleave\` / \`${currentPrefix}clanrename\`\n` +
-      `\`${currentPrefix}prefixchange\` / \`${currentPrefix}enablec\` / \`${currentPrefix}disablec\``;
-
-    return message.reply({
-      components: [
-        new ContainerBuilder().setAccentColor(0xff77aa)
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(toSmallCaps('# 🌸 Chibi RPG RNG — Help Center\nExplore the categories below:')))
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(helpText))
-      ],
+    let selectedCategory = null;
+    const helpMsg = await message.reply({
+      components: [renderHelpContainer(currentPrefix, selectedCategory), renderHelpMenuRow(selectedCategory)],
       flags: MessageFlags.IsComponentsV2
     });
+
+    const helpCollector = helpMsg.createMessageComponentCollector({ time: 120000 });
+    helpCollector.on('collect', async i => {
+      if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+      if (i.user.id !== userId) {
+        return i.followUp({ content: toSmallCaps('❌ Only the command user can use this help menu!'), ephemeral: true });
+      }
+      if (i.customId === 'help_category_select') {
+        const val = i.values?.[0];
+        selectedCategory = val && val !== 'all' ? val : null;
+        await helpMsg.edit({
+          components: [renderHelpContainer(currentPrefix, selectedCategory), renderHelpMenuRow(selectedCategory)],
+          flags: MessageFlags.IsComponentsV2
+        }).catch(() => {});
+      }
+    });
+
+    helpCollector.on('end', async () => {
+      await helpMsg.edit({
+        components: [renderHelpContainer(currentPrefix, selectedCategory)],
+        flags: MessageFlags.IsComponentsV2
+      }).catch(() => {});
+    });
+    return true;
   }
 
   if (command === 'status') {
