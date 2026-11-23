@@ -1,3 +1,4 @@
+
 const BADGE_CATALOG = {
   // Obtainable Badges
   hacker: {
@@ -125,12 +126,15 @@ const BADGE_CATALOG = {
   }
 };
 
+const BALANCE_ICON = '<:Balance:1574526346019864656>';
+
 const BETA_EMOJIS = {
   USERS: '<:Users:1572761957340287066>',
   TOTAL_BADGE: '<:Totalbadge:1572774284273909801>',
   STATS: '<:Stats:1572761987736408145>',
   DICE: '<:Dice:1572769311414820937>',
   CASH: '<:Cash:1572769444025999420>',
+  BALANCE: BALANCE_ICON,
   STREAK: '<:Streak:1572769479803277403>',
   EXP: '<:Expp:1572769510170038282>',
   RANK: '<:Rank:1572771446801965076>',
@@ -263,6 +267,117 @@ const TRIVIA_BANK = [
 const SHINY_ICON = '<a:Shinynew:1572053794332872886>';
 const RARITY_HIERARCHY = { SSRP: 10, UGMR: 9, USRR: 8, STR: 7, UTR: 6, SRR: 5, SR: 4, R: 3, U: 2, C: 1 };
 
+// PH Event ends on December 2, 2026 (23:59:59.999 local time)
+const PH_EVENT_END_MS = new Date(2026, 11, 2, 23, 59, 59, 999).getTime();
+
+const ECONOMY_JOBS = [
+  {
+    id: 'farmer',
+    name: 'Farmer',
+    emoji: '🌾',
+    minSalary: 50000,
+    maxSalary: 150000,
+    shiftSalary: 250000,
+    isPhEvent: false
+  },
+  {
+    id: 'streamer',
+    name: 'Streamer',
+    emoji: '🎮',
+    minSalary: 80000,
+    maxSalary: 210000,
+    shiftSalary: 450000,
+    isPhEvent: false
+  },
+  {
+    id: 'youtuber',
+    name: 'YouTuber',
+    emoji: '📹',
+    minSalary: 120000,
+    maxSalary: 500000,
+    shiftSalary: 650000,
+    isPhEvent: false
+  },
+  {
+    id: 'seaman',
+    name: 'Seaman',
+    emoji: '⚓',
+    minSalary: 350000,
+    maxSalary: 600000,
+    shiftSalary: 1200000,
+    isPhEvent: false
+  },
+  {
+    id: 'akyat_bahay',
+    name: 'Akyat Bahay',
+    emoji: '🥷',
+    minSalary: 350000,
+    maxSalary: 800000,
+    shiftSalary: 1000000,
+    isPhEvent: true
+  },
+  {
+    id: 'adik_sa_sha',
+    name: 'Adik sa Sha',
+    emoji: '😵‍💫',
+    minSalary: 500000,
+    maxSalary: 1300000,
+    shiftSalary: 5000000,
+    isPhEvent: true
+  },
+  {
+    id: 'promoter_sa_sugal',
+    name: 'Promoter Sa Sugal',
+    emoji: '🎲',
+    minSalary: 900000,
+    maxSalary: 3450000,
+    shiftSalary: 15000000,
+    isPhEvent: true
+  },
+  {
+    id: 'artista_sa_pilipinas',
+    name: 'Artista Sa Pilipinas',
+    emoji: '🌟',
+    minSalary: 2300000,
+    maxSalary: 6700000,
+    shiftSalary: 25000000,
+    isPhEvent: true
+  },
+  {
+    id: 'bangag_na_senator',
+    name: 'Bangag Na Senator',
+    emoji: '🏛️',
+    minSalary: 5000000,
+    maxSalary: 12000000,
+    shiftSalary: 75000000,
+    isPhEvent: true
+  }
+];
+
+function isPhEventActive(nowMs = Date.now()) {
+  return nowMs <= PH_EVENT_END_MS;
+}
+
+function getActiveEconomyJobs(nowMs = Date.now()) {
+  const phActive = isPhEventActive(nowMs);
+  return ECONOMY_JOBS.filter(job => !job.isPhEvent || phActive);
+}
+
+const CSELL_RATES = {
+  C: 8000,
+  U: 16000,
+  R: 24000,
+  SR: 32000,
+  SRR: 43000,
+  UTR: 54000,
+  STR: 61000,
+  SRT: 61000,
+  USRR: 100000,
+  UGMR: 200000,
+  UMGR: 200000,
+  SSRP: 500000
+};
+
 const ALL_VALID_COMMANDS = new Set([
   'start', 'help', 'status', 'roll', 'drop', 'slot', 'shop', 'rarities',
   'event', 'eadventure', 'eshop', 'ecrystal', 'daily', 'points', 'rank', 'ranks',
@@ -271,6 +386,8 @@ const ALL_VALID_COMMANDS = new Set([
   'clanlist', 'cclaninfo', 'ccreateclan', 'cclanjoin', 'clanleave', 'clanrename',
   'cpromote', 'cp', 'cannounce', 'kick', 'cmail', 'ceditdesc', 'ced',
   'prefixchange', 'enablec', 'disablec', 'meme', 'trivia',
+  'work', 'working', 'workshift', 'balance', 'casino', 'blackjack', 'coinflip',
+  'ticketuse', 'ticketbuy', 'lottery', 'csell',
   'ownercommands', 'admincommands', 'ownerbotmaintenance', 'ownersetstatus',
   'adminrestoreall', 'ownerresetdata', 'fixadmin', 'ownersecretpanel',
   'ownergivechibi', 'adminsetclanrewards', 'owneradminpermsrem', 'removeadminperms',
@@ -286,7 +403,9 @@ const TESTER_ONLY_COMMANDS = new Set([
 ]);
 
 module.exports = {
-  BADGE_CATALOG, BETA_EMOJIS, RARITY_ICONS, RARITY_RATES, CLAN_ROLE_HIERARCHY,
-  CLAN_LOGOS, EVENT_ICONS, EVENT_NPCS, EVENT_CHIBIS_POOL, SEASON_LIST,
-  TRIVIA_BANK, SHINY_ICON, RARITY_HIERARCHY, ALL_VALID_COMMANDS, TESTER_ONLY_COMMANDS
+  BADGE_CATALOG, BALANCE_ICON, BETA_EMOJIS, RARITY_ICONS, RARITY_RATES,
+  CLAN_ROLE_HIERARCHY, CLAN_LOGOS, EVENT_ICONS, EVENT_NPCS, EVENT_CHIBIS_POOL,
+  SEASON_LIST, TRIVIA_BANK, SHINY_ICON, RARITY_HIERARCHY,
+  PH_EVENT_END_MS, ECONOMY_JOBS, isPhEventActive, getActiveEconomyJobs, CSELL_RATES,
+  ALL_VALID_COMMANDS, TESTER_ONLY_COMMANDS
 };
