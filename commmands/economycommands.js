@@ -2,12 +2,13 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   ContainerBuilder,
   TextDisplayBuilder,
   MessageFlags
 } = require('discord.js');
 
-const { gameData } = require('../core/database');
+const { db } = require('../core/database');
 const {
   toSmallCaps,
   updateUserRank,
@@ -16,21 +17,102 @@ const {
 } = require('../core/helpers');
 
 const ECONOMY_COMMANDS = [
-  'work', 'working', 'workshift',
+  'work', 'working', 'workshift', 'job', 'jobs',
   'balance',
   'casino', 'blackjack', 'coinflip',
   'ticketbuy', 'ticketuse', 'lottery',
   'csell'
 ];
 
-const JOB_TIERS = [
-  { name: 'Farmer', minStreak: 0, baseCash: 120, bonusDiceChance: 0.25 },
-  { name: 'Merchant', minStreak: 2, baseCash: 220, bonusDiceChance: 0.35 },
-  { name: 'Artisan', minStreak: 5, baseCash: 360, bonusDiceChance: 0.45 },
-  { name: 'Guild Captain', minStreak: 10, baseCash: 550, bonusDiceChance: 0.55 },
-  { name: 'Director', minStreak: 18, baseCash: 820, bonusDiceChance: 0.65 },
-  { name: 'President', minStreak: 30, baseCash: 1200, bonusDiceChance: 0.8 }
+const BASE_JOBS = [
+  {
+    id: 'farmer',
+    name: 'Farmer',
+    emoji: '🌾',
+    minSalary: 50000,
+    maxSalary: 150000,
+    shiftSalary: 250000,
+    isEvent: false
+  },
+  {
+    id: 'streamer',
+    name: 'Streamer',
+    emoji: '🎮',
+    minSalary: 80000,
+    maxSalary: 210000,
+    shiftSalary: 450000,
+    isEvent: false
+  },
+  {
+    id: 'youtuber',
+    name: 'YouTuber',
+    emoji: '📹',
+    minSalary: 120000,
+    maxSalary: 500000,
+    shiftSalary: 650000,
+    isEvent: false
+  },
+  {
+    id: 'seaman',
+    name: 'Seaman',
+    emoji: '⚓',
+    minSalary: 350000,
+    maxSalary: 600000,
+    shiftSalary: 1200000,
+    isEvent: false
+  }
 ];
+
+const PH_EVENT_JOBS = [
+  {
+    id: 'akyat_bahay',
+    name: 'Akyat Bahay',
+    emoji: '🥷',
+    minSalary: 350000,
+    maxSalary: 800000,
+    shiftSalary: 1000000,
+    isEvent: true
+  },
+  {
+    id: 'adik_sa_sha',
+    name: 'Adik sa Sha',
+    emoji: '🧪',
+    minSalary: 500000,
+    maxSalary: 1300000,
+    shiftSalary: 5000000,
+    isEvent: true
+  },
+  {
+    id: 'promoter_sa_sugal',
+    name: 'Promoter Sa Sugal',
+    emoji: '🎰',
+    minSalary: 900000,
+    maxSalary: 3450000,
+    shiftSalary: 15000000,
+    isEvent: true
+  },
+  {
+    id: 'artista_sa_pilipinas',
+    name: 'Artista Sa Pilipinas',
+    emoji: '🎬',
+    minSalary: 2300000,
+    maxSalary: 6700000,
+    shiftSalary: 25000000,
+    isEvent: true
+  },
+  {
+    id: 'bangag_na_senator',
+    name: 'Bangag Na Senator',
+    emoji: '🏛️',
+    minSalary: 5000000,
+    maxSalary: 12000000,
+    shiftSalary: 75000000,
+    isEvent: true
+  }
+];
+
+// PH Event ends after December 2, 2026 (end of Dec 2, 2026 in UTC+8 / PHT)
+const PH_EVENT_END_MS = Date.parse('2026-12-02T23:59:59+08:00');
 
 const RARITY_SELL_VALUES = {
   C: 15,
@@ -48,7 +130,37 @@ const RARITY_SELL_VALUES = {
 const WORK_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const SHIFT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-function ensureEconomyFields(user) {
+function isPhEventActive(nowMs = Date.now()) {
+  return nowMs <= PH_EVENT_END_MS;
+}
+
+function getAvailableJobs(nowMs = Date.now()) {
+  if (isPhEventActive(nowMs)) {
+    return [...BASE_JOBS, ...PH_EVENT_JOBS];
+  }
+  return [...BASE_JOBS];
+}
+
+function findJobByQuery(query, nowMs = Date.now()) {
+  if (!query) return null;
+  const normalized = String(query).trim().toLowerCase().replace(/\s+/g, ' ');
+  const slug = normalized.replace(/\s+/g, '_');
+  const jobs = getAvailableJobs(nowMs);
+  return (
+    jobs.find(j => j.id === slug || j.name.toLowerCase() === normalized) ||
+    jobs.find(j => j.name.toLowerCase().includes(normalized)) ||
+    null
+  );
+}
+
+function formatDiceDisplay(val) {
+  const num = Number(val) || 0;
+  if (!Number.isFinite(num)) return String(val);
+  if (Math.abs(num) >= 1e15) return num.toExponential(4);
+  return num.toLocaleString();
+}
+
+function ensureEconomyFields(user, nowMs = Date.now()) {
   if (typeof user.cash !== 'number' || Number.isNaN(user.cash)) user.cash = 0;
   if (typeof user.dice !== 'number' || Number.isNaN(user.dice)) user.dice = 0;
   if (typeof user.points !== 'number' || Number.isNaN(user.points)) user.points = 0;
@@ -62,19 +174,20 @@ function ensureEconomyFields(user) {
     user.inventory = { chibis: [], items: { spray: 0, clover: 0 } };
   }
   if (!Array.isArray(user.inventory.chibis)) user.inventory.chibis = [];
+
+  // If user selected a PH Event job and the event is over, clear selected job so they pick an active one
+  if (user.selectedJobId && !isPhEventActive(nowMs)) {
+    const wasEventJob = PH_EVENT_JOBS.some(j => j.id === user.selectedJobId);
+    if (wasEventJob) {
+      user.selectedJobId = null;
+    }
+  }
 }
 
-function resolveJobTier(user) {
-  if (user.customJob && typeof user.customJob === 'string') {
-    const matched = JOB_TIERS.find(j => j.name.toLowerCase() === user.customJob.toLowerCase());
-    if (matched) return matched;
-  }
-  const streakOrWork = Math.max(Number(user.streak || 0), Math.floor(Number(user.workCount || 0) / 3));
-  let chosen = JOB_TIERS[0];
-  for (const tier of JOB_TIERS) {
-    if (streakOrWork >= tier.minStreak) chosen = tier;
-  }
-  return chosen;
+function getSelectedJob(user, nowMs = Date.now()) {
+  if (!user.selectedJobId) return null;
+  const available = getAvailableJobs(nowMs);
+  return available.find(j => j.id === user.selectedJobId) || null;
 }
 
 function formatDurationShort(ms) {
@@ -117,6 +230,92 @@ function calculateBlackjackTotal(hand) {
   return total;
 }
 
+function buildWorkListText(currentPrefix, selectedJob, nowMs = Date.now()) {
+  const eventActive = isPhEventActive(nowMs);
+  const baseLines = BASE_JOBS.map(j =>
+    `• ${j.emoji} **${j.name}** — Work: \`$${j.minSalary.toLocaleString()}–$${j.maxSalary.toLocaleString()}\` | Shift: \`$${j.shiftSalary.toLocaleString()}\``
+  ).join('\n');
+
+  let eventBlock = '';
+  if (eventActive) {
+    const eventLines = PH_EVENT_JOBS.map(j =>
+      `• ${j.emoji} **${j.name}** — Work: \`$${j.minSalary.toLocaleString()}–$${j.maxSalary.toLocaleString()}\` | Shift: \`$${j.shiftSalary.toLocaleString()}\``
+    ).join('\n');
+    eventBlock = `\n\n🇵🇭 **PH EVENT (Ends Dec 2, 2026):**\n${eventLines}`;
+  }
+
+  const currentJobLabel = selectedJob
+    ? `${selectedJob.emoji} **${selectedJob.name}**`
+    : '*None selected yet — choose one below or run `' + currentPrefix + 'work <job name>`*';
+
+  return (
+    `Current Job: ${currentJobLabel}\n\n` +
+    `**Work List:**\n${baseLines}${eventBlock}`
+  );
+}
+
+function buildJobSelectRow(selectedJobId = null, nowMs = Date.now()) {
+  const jobs = getAvailableJobs(nowMs);
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('economy_choose_job_select')
+      .setPlaceholder(toSmallCaps('Choose your work / job...'))
+      .addOptions(
+        jobs.map(j => ({
+          label: `${j.name}${j.isEvent ? ' [PH Event]' : ''}`.slice(0, 100),
+          description: `Work $${j.minSalary.toLocaleString()}-$${j.maxSalary.toLocaleString()} | Shift $${j.shiftSalary.toLocaleString()}`.slice(0, 100),
+          value: j.id,
+          emoji: j.emoji,
+          default: selectedJobId === j.id
+        }))
+      )
+  );
+}
+
+async function promptJobSelection(message, user, userId, currentPrefix, nowMs, saveUsers, headerNote = '') {
+  const container = new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      toSmallCaps(`# 💼 Choose Your Work\n${headerNote ? `${headerNote}\n\n` : ''}`) +
+      buildWorkListText(currentPrefix, getSelectedJob(user, nowMs), nowMs)
+    )
+  );
+  const selectRow = buildJobSelectRow(user.selectedJobId, nowMs);
+  const promptMsg = await message.reply({
+    components: [container, selectRow],
+    flags: MessageFlags.IsComponentsV2
+  });
+
+  const collector = promptMsg.createMessageComponentCollector({ time: 45000 });
+  collector.on('collect', async i => {
+    if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+    if (i.user.id !== userId) {
+      return i.followUp({ content: toSmallCaps('❌ Only the command user can choose a job here!'), ephemeral: true });
+    }
+    if (i.customId === 'economy_choose_job_select') {
+      const chosen = getAvailableJobs(Date.now()).find(j => j.id === i.values[0]);
+      if (!chosen) {
+        return i.followUp({ content: toSmallCaps('❌ That job is no longer available.'), ephemeral: true });
+      }
+      user.selectedJobId = chosen.id;
+      await saveUsers();
+      collector.stop();
+
+      const updatedContainer = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          toSmallCaps(`# ✅ Work Selected — ${chosen.emoji} ${chosen.name}\n\n`) +
+          `• Random Work Salary: **$${chosen.minSalary.toLocaleString()}–$${chosen.maxSalary.toLocaleString()}** (\`${currentPrefix}work\`)\n` +
+          `• Workshift Salary: **$${chosen.shiftSalary.toLocaleString()}** (\`${currentPrefix}workshift\`)`
+        )
+      );
+      await promptMsg.edit({ components: [updatedContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    }
+  });
+
+  collector.on('end', async () => {
+    await promptMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  });
+}
+
 async function execute({
   command,
   args,
@@ -131,53 +330,134 @@ async function execute({
 }) {
   if (!ECONOMY_COMMANDS.includes(command)) return false;
 
-  ensureEconomyFields(user);
+  const nowMs = Date.now() || currentMs;
+  ensureEconomyFields(user, nowMs);
 
-  // 1. WORK
+  // JOB / JOBS selector command
+  if (command === 'job' || command === 'jobs') {
+    if (args.length > 0) {
+      const chosen = findJobByQuery(args.join(' '), nowMs);
+      if (!chosen) {
+        await promptJobSelection(
+          message,
+          user,
+          userId,
+          currentPrefix,
+          nowMs,
+          saveUsers,
+          `❌ Could not find an active job matching "${args.join(' ')}". Pick one below:`
+        );
+        return true;
+      }
+      user.selectedJobId = chosen.id;
+      await saveUsers();
+      return message.reply(toSmallCaps(
+        `✅ You are now working as ${chosen.emoji} **${chosen.name}**!\n` +
+        `💵 Work Salary: **$${chosen.minSalary.toLocaleString()}–$${chosen.maxSalary.toLocaleString()}** | ⏱️ Workshift Salary: **$${chosen.shiftSalary.toLocaleString()}**`
+      ));
+    }
+
+    await promptJobSelection(message, user, userId, currentPrefix, nowMs, saveUsers);
+    return true;
+  }
+
+  // 1. WORK (choose job if not selected or if a job name is passed; otherwise do work)
   if (command === 'work') {
-    const elapsed = currentMs - user.lastWork;
+    if (args.length > 0) {
+      const requestedJob = findJobByQuery(args.join(' '), nowMs);
+      if (!requestedJob) {
+        await promptJobSelection(
+          message,
+          user,
+          userId,
+          currentPrefix,
+          nowMs,
+          saveUsers,
+          `❌ Unknown or expired job "${args.join(' ')}". Select your work below:`
+        );
+        return true;
+      }
+      user.selectedJobId = requestedJob.id;
+      await saveUsers();
+    }
+
+    const job = getSelectedJob(user, nowMs);
+    if (!job) {
+      await promptJobSelection(
+        message,
+        user,
+        userId,
+        currentPrefix,
+        nowMs,
+        saveUsers,
+        '⚠️ You haven’t chosen a work yet! Select your work from the menu below:'
+      );
+      return true;
+    }
+
+    const elapsed = nowMs - user.lastWork;
     if (elapsed < WORK_COOLDOWN_MS) {
       const waitStr = formatDurationShort(WORK_COOLDOWN_MS - elapsed);
       return message.reply(toSmallCaps(`⏳ You are still resting from work! Try \`${currentPrefix}work\` again in **${waitStr}**.`));
     }
 
-    const job = resolveJobTier(user);
-    const variance = 0.85 + Math.random() * 0.35;
-    const earnedCash = Math.max(50, Math.round(job.baseCash * variance));
-    const earnedDice = Math.random() < job.bonusDiceChance ? Math.floor(Math.random() * 3) + 1 : 0;
+    const earnedCash = Math.floor(Math.random() * (job.maxSalary - job.minSalary + 1)) + job.minSalary;
     const earnedExp = addExpAndLevelUp(user, null, 120);
 
-    user.lastWork = currentMs;
+    user.lastWork = nowMs;
     user.workCount += 1;
     user.cash += earnedCash;
-    user.dice += earnedDice;
     if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
     updateUserRank(user);
     await evaluateAndSyncUserBadges(userId, user, message.guild);
     await saveUsers();
 
-    const diceLine = earnedDice > 0 ? `\n🎲 Bonus Dice: **+${earnedDice}x Dice**` : '';
+    const changeJobRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('economy_switch_job_btn')
+        .setLabel(toSmallCaps('Change Work'))
+        .setStyle(ButtonStyle.Secondary)
+    );
+
     const container = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
       new TextDisplayBuilder().setContent(toSmallCaps(
-        `# 💼 Shift Complete — ${job.name}\n\n` +
-        `💵 Earned Cash: **+$${earnedCash.toLocaleString()}**` +
-        `${diceLine}\n` +
+        `# 💼 SHIFT COMPLETE — ${job.name}\n\n` +
+        `💵 Earned Cash: **+$${earnedCash.toLocaleString()}** *(Range: $${job.minSalary.toLocaleString()}–$${job.maxSalary.toLocaleString()})*\n` +
         `✨ EXP Gained: **+${earnedExp}**\n` +
-        `🏦 Cash Balance: **$${user.cash.toLocaleString()}** | 🎲 Dice: **${user.dice}**`
+        `🏦 Cash Balance: **$${user.cash.toLocaleString()}** | 🎲 Dice: **${formatDiceDisplay(user.dice)}**`
       ))
     );
-    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    const workMsg = await message.reply({
+      components: [container, changeJobRow],
+      flags: MessageFlags.IsComponentsV2
+    });
+
+    const btnCollector = workMsg.createMessageComponentCollector({ time: 30000, max: 1 });
+    btnCollector.on('collect', async i => {
+      if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+      if (i.user.id !== userId) {
+        return i.followUp({ content: toSmallCaps('❌ Only the command sender can change their work here!'), ephemeral: true });
+      }
+      if (i.customId === 'economy_switch_job_btn') {
+        await workMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        await promptJobSelection(message, user, userId, currentPrefix, Date.now(), saveUsers);
+      }
+    });
+    btnCollector.on('end', async () => {
+      await workMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    });
+    return true;
   }
 
-  // 2. WORKING (Active shift / job status)
+  // 2. WORKING (Active shift / job status + selector)
   if (command === 'working') {
-    const job = resolveJobTier(user);
-    const cooldownLeft = Math.max(0, WORK_COOLDOWN_MS - (currentMs - user.lastWork));
+    const job = getSelectedJob(user, nowMs);
+    const cooldownLeft = Math.max(0, WORK_COOLDOWN_MS - (nowMs - user.lastWork));
     const cooldownStatus = cooldownLeft > 0 ? `Cooling down (${formatDurationShort(cooldownLeft)})` : 'Ready';
 
     let shiftStatus = 'No active shift';
     if (user.activeShift) {
-      const remaining = user.activeShift.endsAt - currentMs;
+      const remaining = user.activeShift.endsAt - nowMs;
       if (remaining > 0) {
         shiftStatus = `In Progress (${formatDurationShort(remaining)} remaining)`;
       } else {
@@ -185,80 +465,142 @@ async function execute({
       }
     }
 
+    const jobSummary = job
+      ? `${job.emoji} **${job.name}** (Work: $${job.minSalary.toLocaleString()}–$${job.maxSalary.toLocaleString()} | Shift: $${job.shiftSalary.toLocaleString()})`
+      : `*Not chosen yet — pick one below*`;
+
     const container = new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(
       new TextDisplayBuilder().setContent(toSmallCaps(
-        `# 🧑‍💼 Current Job & Work Status\n\n` +
-        `💼 Role Tier: **${job.name}**\n` +
+        `# 🧑‍💼 Work & Shift Status\n\n` +
+        `💼 Selected Work: ${jobSummary}\n` +
         `📊 Completed Shifts / Works: **${user.workCount}**\n` +
         `🔨 Quick Work (\`${currentPrefix}work\`): **${cooldownStatus}**\n` +
-        `⏱️ Timed Shift (\`${currentPrefix}workshift\`): **${shiftStatus}**`
-      ))
+        `⏱️ Timed Shift (\`${currentPrefix}workshift\`): **${shiftStatus}**\n\n`
+      ) + buildWorkListText(currentPrefix, job, nowMs))
     );
-    return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+
+    const selectRow = buildJobSelectRow(user.selectedJobId, nowMs);
+    const statusMsg = await message.reply({
+      components: [container, selectRow],
+      flags: MessageFlags.IsComponentsV2
+    });
+
+    const collector = statusMsg.createMessageComponentCollector({ time: 45000 });
+    collector.on('collect', async i => {
+      if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+      if (i.user.id !== userId) {
+        return i.followUp({ content: toSmallCaps('❌ Not your job menu!'), ephemeral: true });
+      }
+      if (i.customId === 'economy_choose_job_select') {
+        const chosen = getAvailableJobs(Date.now()).find(j => j.id === i.values[0]);
+        if (chosen) {
+          user.selectedJobId = chosen.id;
+          await saveUsers();
+          await i.followUp({
+            content: toSmallCaps(`✅ Selected work: ${chosen.emoji} **${chosen.name}**!`),
+            ephemeral: true
+          });
+        }
+      }
+    });
+    collector.on('end', async () => {
+      await statusMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    });
+    return true;
   }
 
-  // 3. WORKSHIFT (Start or claim a timed shift)
+  // 3. WORKSHIFT (Start or claim a timed shift using selected job's shiftSalary)
   if (command === 'workshift') {
-    const job = resolveJobTier(user);
+    if (args.length > 0) {
+      const requestedJob = findJobByQuery(args.join(' '), nowMs);
+      if (!requestedJob) {
+        await promptJobSelection(
+          message,
+          user,
+          userId,
+          currentPrefix,
+          nowMs,
+          saveUsers,
+          `❌ Unknown or expired job "${args.join(' ')}". Select your work below:`
+        );
+        return true;
+      }
+      user.selectedJobId = requestedJob.id;
+      await saveUsers();
+    }
+
+    const job = getSelectedJob(user, nowMs);
+    if (!job) {
+      await promptJobSelection(
+        message,
+        user,
+        userId,
+        currentPrefix,
+        nowMs,
+        saveUsers,
+        '⚠️ Choose your work first before starting a workshift:'
+      );
+      return true;
+    }
 
     if (!user.activeShift) {
       user.activeShift = {
-        startedAt: currentMs,
-        endsAt: currentMs + SHIFT_DURATION_MS,
-        roleName: job.name
+        startedAt: nowMs,
+        endsAt: nowMs + SHIFT_DURATION_MS,
+        jobId: job.id,
+        roleName: job.name,
+        shiftSalary: job.shiftSalary
       };
       await saveUsers();
       return message.reply(toSmallCaps(
-        `⏱️ Started a **15m** shift as **${job.name}**! Run \`${currentPrefix}workshift\` again once the timer finishes to collect your shift payout.`
+        `⏱️ Started a **15m** workshift as ${job.emoji} **${job.name}** (Salary: **$${job.shiftSalary.toLocaleString()}**)! Run \`${currentPrefix}workshift\` again when finished to claim.`
       ));
     }
 
-    const remaining = user.activeShift.endsAt - currentMs;
+    const remaining = user.activeShift.endsAt - nowMs;
     if (remaining > 0) {
       return message.reply(toSmallCaps(
-        `⏳ Your shift as **${user.activeShift.roleName || job.name}** is still underway! **${formatDurationShort(remaining)}** remaining.`
+        `⏳ Your workshift as **${user.activeShift.roleName || job.name}** is still in progress! **${formatDurationShort(remaining)}** remaining.`
       ));
     }
 
-    const payoutCash = Math.round(job.baseCash * 1.6);
-    const payoutDice = Math.floor(Math.random() * 3) + 2;
+    const activeJob = getAvailableJobs(nowMs).find(j => j.id === user.activeShift.jobId) || job;
+    const payoutCash = Number(user.activeShift.shiftSalary) || activeJob.shiftSalary;
     const payoutExp = addExpAndLevelUp(user, null, 220);
 
     user.activeShift = null;
     user.workCount += 1;
     user.cash += payoutCash;
-    user.dice += payoutDice;
     if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
     updateUserRank(user);
     await evaluateAndSyncUserBadges(userId, user, message.guild);
     await saveUsers();
 
     return message.reply(toSmallCaps(
-      `✅ **Shift Payout Claimed (${job.name})!**\n` +
-      `💵 Cash Earned: **+$${payoutCash.toLocaleString()}**\n` +
-      `🎲 Dice Earned: **+${payoutDice}x Dice**\n` +
-      `✨ EXP Gained: **+${payoutExp}**`
+      `✅ **Workshift Payout Claimed (${activeJob.emoji} ${activeJob.name})!**\n` +
+      `💵 Workshift Salary: **+$${payoutCash.toLocaleString()}**\n` +
+      `✨ EXP Gained: **+${payoutExp}**\n` +
+      `🏦 Cash Balance: **$${user.cash.toLocaleString()}**`
     ));
   }
 
   // 4. BALANCE
   if (command === 'balance') {
     const targetMention = message.mentions.users.first();
-    const targetId = targetMention ? targetMention.id : userId;
-    const targetUser = targetId === userId ? user : null;
-
-    if (!targetUser) {
+    if (targetMention && targetMention.id !== userId) {
       return message.reply(toSmallCaps(`❌ View your own balance with \`${currentPrefix}balance\`.`));
     }
 
     updateUserRank(user);
     const displayName = user.customNickname || message.author.username;
+    const job = getSelectedJob(user, nowMs);
     const container = new ContainerBuilder().setAccentColor(0xf1c40f).addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         toSmallCaps(`# 💰 ${displayName}'s Balance\n\n`) +
         toSmallCaps(`💵 Cash: **$${user.cash.toLocaleString()}**\n`) +
-        toSmallCaps(`🎲 Dice: **${user.dice.toLocaleString()}**\n`) +
+        toSmallCaps(`🎲 Dice: **${formatDiceDisplay(user.dice)}**\n`) +
         toSmallCaps(`🎟️ Tickets: **${user.tickets.toLocaleString()}**\n`) +
+        toSmallCaps(`💼 Current Work: **${job ? `${job.emoji} ${job.name}` : 'None'}**\n`) +
         toSmallCaps(`🏆 Points: **${user.points.toLocaleString()}**\n`) +
         toSmallCaps(`🎖️ Rank: `) + `${user.rank}`
       )
@@ -266,7 +608,7 @@ async function execute({
     return message.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   }
 
-  // 5. CASINO (Quick cash or dice spin)
+  // 5. CASINO
   if (command === 'casino') {
     const wager = parsePositiveInt(args[0]);
     const currencyMode = (args[1] || 'cash').toLowerCase() === 'dice' ? 'dice' : 'cash';
@@ -277,7 +619,7 @@ async function execute({
 
     if (currencyMode === 'dice') {
       if (user.dice < wager) {
-        return message.reply(toSmallCaps(`❌ You only have **${user.dice} 🎲 Dice**!`));
+        return message.reply(toSmallCaps(`❌ You only have **${formatDiceDisplay(user.dice)} 🎲 Dice**!`));
       }
       user.dice -= wager;
       const roll = Math.random();
@@ -296,7 +638,7 @@ async function execute({
       await saveUsers();
       return message.reply(toSmallCaps(
         `🎰 **Casino Wheel** — ${label}\n` +
-        `🎲 Payout: **${payout > 0 ? `+${payout}` : `-${wager}`} Dice** | Balance: **${user.dice} 🎲**`
+        `🎲 Payout: **${payout > 0 ? `+${payout.toLocaleString()}` : `-${wager.toLocaleString()}`} Dice** | Balance: **${formatDiceDisplay(user.dice)} 🎲**`
       ));
     }
 
@@ -453,7 +795,7 @@ async function execute({
         return finishBlackjack(bjMsg, 'lose');
       }
     });
-    return;
+    return true;
   }
 
   // 7. COINFLIP
@@ -488,7 +830,7 @@ async function execute({
   // 8. TICKETBUY
   if (command === 'ticketbuy') {
     const qty = Math.max(1, parsePositiveInt(args[0]) || 1);
-    const unitPrice = 250; // $250 per ticket
+    const unitPrice = 250;
     const totalCost = qty * unitPrice;
 
     if (user.cash < totalCost) {
@@ -526,7 +868,7 @@ async function execute({
     return message.reply(toSmallCaps(
       `🎟️ Used **${qty}x Ticket(s)**!\n` +
       `🎲 Received: **+${bonusDice}x Dice** | 💵 Received: **+$${bonusCash.toLocaleString()}**\n` +
-      `🎟️ Remaining Tickets: **${user.tickets}** | 🎲 Dice: **${user.dice}**`
+      `🎟️ Remaining Tickets: **${user.tickets}** | 🎲 Dice: **${formatDiceDisplay(user.dice)}**`
     ));
   }
 
@@ -542,7 +884,7 @@ async function execute({
 
     if (sub === 'draw') {
       if (db.config.lotteryEntries.length === 0) {
-        return message.reply(toSmallCaps(`🎟️ No lottery tickets have been entered yet! Use \`${currentPrefix}lottery enter\` to join.`));
+        return message.reply(toSmallCaps(`🎟️ No lottery tickets have been entered yet! Use \`${currentPrefix}lottery\` with a ticket to join.`));
       }
       const winnerId = db.config.lotteryEntries[Math.floor(Math.random() * db.config.lotteryEntries.length)];
       const jackpot = db.config.lotteryPool;
@@ -562,7 +904,6 @@ async function execute({
       ));
     }
 
-    // Default: enter lottery using 1 ticket
     if (user.tickets < 1) {
       return message.reply(toSmallCaps(
         `🎟️ **Chibi Lottery**\n` +
@@ -583,7 +924,7 @@ async function execute({
     ));
   }
 
-  // 11. CSELL (Sell chibis for cash)
+  // 11. CSELL
   if (command === 'csell') {
     if (user.inventory.chibis.length === 0) {
       return message.reply(toSmallCaps(`❌ Your chibi collection is empty! Use \`${currentPrefix}roll\` first.`));
@@ -631,7 +972,7 @@ async function execute({
       const val = (baseVal + lvlBonus) * shinyMult;
       totalCashEarned += val;
       if (soldPreview.length < 5) {
-        soldPreview.push(`${rarityIconsMap?.[c.rarity] || '📦'} ${c.emoji || '✨'} **${c.name}** (+$${val})`);
+        soldPreview.push(`${rarityIconsMap?.[c.rarity] || '📦'} ${c.emoji || '✨'} **${c.name}** (+$${val.toLocaleString()})`);
       }
     });
 
