@@ -279,14 +279,8 @@ function buildWorkListText(user, currentPrefix, nowMs = Date.now()) {
     eventBlock = `\n\n🇵🇭 **PH EVENT (Ends Dec 2, 2026):**\n${eventLines}`;
   }
 
-  const selectedJob = getSelectedJob(user, nowMs);
-  const statusLine = selectedJob
-    ? `Current Work: ${selectedJob.emoji} **${selectedJob.name}**`
-    : `Current Work: *None selected yet*`;
-
   return (
-    `${statusLine}\n` +
-    `Use \`${currentPrefix}work\` to choose or work, \`${currentPrefix}working\` to work every 2m, and \`${currentPrefix}workshift\` to shift.\n\n` +
+    `Use \`${currentPrefix}working\` to work every 2m or \`${currentPrefix}workshift\` to shift.\n\n` +
     `**Work List:**\n${baseLines}${eventBlock}`
   );
 }
@@ -382,7 +376,7 @@ async function promptJobSelection(message, user, userId, currentPrefix, nowMs, s
       const updatedContainer = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           toSmallCaps(`# ✅ Work Selected — ${chosen.emoji} ${chosen.name}\n\n`) +
-          `Use \`${currentPrefix}work\` to work, \`${currentPrefix}working\` to work every 2m, or \`${currentPrefix}workshift\` to shift.`
+          `Use \`${currentPrefix}working\` to work every 2m or \`${currentPrefix}workshift\` to shift.`
         )
       );
       await promptMsg.edit({ components: [updatedContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -438,7 +432,7 @@ async function execute({
     return true;
   }
 
-  // 1. WORK: Automatically shows if user already has a work or opens the choose-work UI if not
+  // 1. WORK: Only checks if user already has a work or opens the UI to choose one (no cash payout)
   if (command === 'work') {
     if (args.length > 0) {
       const requestedJob = findJobByQuery(args.join(' '), nowMs);
@@ -458,6 +452,7 @@ async function execute({
       if (!applied.ok) {
         return message.reply(toSmallCaps(applied.reason));
       }
+      return message.reply(toSmallCaps(`✅ You are now in work: ${requestedJob.emoji} **${requestedJob.name}**!`));
     }
 
     const job = getSelectedJob(user, nowMs);
@@ -469,49 +464,28 @@ async function execute({
         currentPrefix,
         nowMs,
         saveUsers,
-        '⚠️ You don’t have a work yet! Choose your work below:'
+        '❌ You are not in a work yet! Choose your work below:'
       );
       return true;
     }
 
     const cdRemaining = getJobCooldownRemaining(user, job.id, nowMs);
-    if (cdRemaining > 0) {
-      await promptJobSelection(
-        message,
-        user,
-        userId,
-        currentPrefix,
-        nowMs,
-        saveUsers,
-        `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown (${formatDurationShort(cdRemaining)} left). Choose another work:`
-      );
-      return true;
-    }
-
-    const earnedCash = rollJobSalary(job);
-    const earnedExp = addExpAndLevelUp(user, null, 120);
-
-    user.workCount += 1;
-    user.cash += earnedCash;
-    if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
-    updateUserRank(user);
-    await evaluateAndSyncUserBadges(userId, user, message.guild);
-    await saveUsers();
+    const cdLine = cdRemaining > 0
+      ? `\n⏳ **1d Cooldown:** **${formatDurationShort(cdRemaining)}** remaining`
+      : '';
 
     const changeJobRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('economy_switch_job_btn')
-        .setLabel(toSmallCaps('Change Work'))
+        .setLabel(toSmallCaps('Choose / Change Work'))
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const container = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
+    const container = new ContainerBuilder().setAccentColor(0x3498db).addTextDisplayComponents(
       new TextDisplayBuilder().setContent(toSmallCaps(
-        `# 💼 WORK COMPLETE — ${job.name}\n\n` +
-        `📌 Chosen Work: **${job.emoji} ${job.name}**\n` +
-        `💵 Earned Cash: **+$${earnedCash.toLocaleString()}**\n` +
-        `✨ EXP Gained: **+${earnedExp}**\n` +
-        `🏦 Cash Balance: **$${user.cash.toLocaleString()}** | 🎲 Dice: **${formatDiceDisplay(user.dice)}**`
+        `# 💼 CURRENT WORK STATUS\n\n` +
+        `✅ You are already in work: **${job.emoji} ${job.name}**${cdLine}\n` +
+        `Use \`${currentPrefix}working\` to work every 2m or \`${currentPrefix}workshift\` to shift.`
       ))
     );
 
@@ -524,7 +498,7 @@ async function execute({
     btnCollector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
       if (i.user.id !== userId) {
-        return i.followUp({ content: toSmallCaps('❌ Only the command sender can change their work here!'), ephemeral: true });
+        return i.followUp({ content: toSmallCaps('❌ Only the command sender can choose/change work here!'), ephemeral: true });
       }
       if (i.customId === 'economy_switch_job_btn') {
         await workMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -537,7 +511,7 @@ async function execute({
     return true;
   }
 
-  // 2. WORKING: Active working every 2 minutes (does NOT shift the work)
+  // 2. WORKING: Working every 2 minutes (does NOT shift the work)
   if (command === 'working') {
     const subArg = (args[0] || '').toLowerCase();
 
