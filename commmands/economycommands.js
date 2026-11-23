@@ -114,6 +114,7 @@ const PH_EVENT_JOBS = [
 // PH Event ends after December 2, 2026
 const PH_EVENT_END_MS = Date.parse('2026-12-02T23:59:59+08:00');
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const WORKING_INTERVAL_MS = 2 * 60 * 1000; // Every 2 minutes
 const SHIFT_DURATION_MS = 15 * 60 * 1000;
 
 const RARITY_SELL_VALUES = {
@@ -168,6 +169,9 @@ function ensureEconomyFields(user, nowMs = Date.now()) {
   if (!user.jobCooldowns || typeof user.jobCooldowns !== 'object') {
     user.jobCooldowns = {};
   }
+  if (!user.workingLoop || typeof user.workingLoop !== 'object') {
+    user.workingLoop = null;
+  }
   if (!user.activeShift || typeof user.activeShift !== 'object') {
     user.activeShift = null;
   }
@@ -176,13 +180,15 @@ function ensureEconomyFields(user, nowMs = Date.now()) {
   }
   if (!Array.isArray(user.inventory.chibis)) user.inventory.chibis = [];
 
-  // Expire PH Event jobs after December 2, 2026
   if (!isPhEventActive(nowMs)) {
     for (const evJob of PH_EVENT_JOBS) {
       delete user.jobCooldowns[evJob.id];
     }
     if (user.selectedJobId && PH_EVENT_JOBS.some(j => j.id === user.selectedJobId)) {
       user.selectedJobId = null;
+    }
+    if (user.workingLoop && PH_EVENT_JOBS.some(j => j.id === user.workingLoop.jobId)) {
+      user.workingLoop = null;
     }
     if (user.activeShift && PH_EVENT_JOBS.some(j => j.id === user.activeShift.jobId)) {
       user.activeShift = null;
@@ -210,6 +216,10 @@ function setJobOneDayCooldown(user, jobId, nowMs = Date.now()) {
 function getSelectedJob(user, nowMs = Date.now()) {
   if (!user.selectedJobId) return null;
   return getAvailableJobs(nowMs).find(j => j.id === user.selectedJobId) || null;
+}
+
+function rollJobSalary(job) {
+  return Math.floor(Math.random() * (job.maxSalary - job.minSalary + 1)) + job.minSalary;
 }
 
 function formatDurationShort(ms) {
@@ -259,7 +269,7 @@ function buildWorkListText(user, currentPrefix, nowMs = Date.now()) {
   const formatLine = (j) => {
     const cd = getJobCooldownRemaining(user, j.id, nowMs);
     const cdTag = cd > 0 ? ` — ⏳ **1d Cooldown (${formatDurationShort(cd)})**` : '';
-    return `• ${j.emoji} **${j.name}** — Work: \`$${j.minSalary.toLocaleString()}–$${j.maxSalary.toLocaleString()}\` | Shift: \`$${j.shiftSalary.toLocaleString()}\`${cdTag}`;
+    return `• ${j.emoji} **${j.name}**${cdTag}`;
   };
 
   const baseLines = BASE_JOBS.map(formatLine).join('\n');
@@ -270,13 +280,13 @@ function buildWorkListText(user, currentPrefix, nowMs = Date.now()) {
   }
 
   const selectedJob = getSelectedJob(user, nowMs);
-  const currentJobLabel = selectedJob
-    ? `${selectedJob.emoji} **${selectedJob.name}**`
-    : `*None selected yet — choose one below or run \`${currentPrefix}work <job name>\`*`;
+  const statusLine = selectedJob
+    ? `Current Work: ${selectedJob.emoji} **${selectedJob.name}**`
+    : `Current Work: *None selected yet*`;
 
   return (
-    `Current Work: ${currentJobLabel}\n` +
-    `*Note: Choosing the same work again triggers a **1d** cooldown.*\n\n` +
+    `${statusLine}\n` +
+    `Use \`${currentPrefix}work\` to choose or work, \`${currentPrefix}working\` to work every 2m, and \`${currentPrefix}workshift\` to shift.\n\n` +
     `**Work List:**\n${baseLines}${eventBlock}`
   );
 }
@@ -293,8 +303,8 @@ function buildJobSelectRow(user, nowMs = Date.now()) {
           return {
             label: `${j.name}${j.isEvent ? ' [PH Event]' : ''}`.slice(0, 100),
             description: (cd > 0
-              ? `On 1d cooldown (${formatDurationShort(cd)} left)`
-              : `Work $${j.minSalary.toLocaleString()}-$${j.maxSalary.toLocaleString()} | Shift $${j.shiftSalary.toLocaleString()}`
+              ? `1d cooldown (${formatDurationShort(cd)} left)`
+              : `${j.isEvent ? 'PH Event Work' : 'Work'}`
             ).slice(0, 100),
             value: j.id,
             emoji: j.emoji,
@@ -309,22 +319,20 @@ async function applyChosenWork(user, job, nowMs, saveUsers) {
   const prevJobId = user.selectedJobId;
   const cdRemaining = getJobCooldownRemaining(user, job.id, nowMs);
 
-  // If user tries to choose that same work again while it is on 1d cooldown
   if (cdRemaining > 0) {
     return {
       ok: false,
-      reason: `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown! Try again in **${formatDurationShort(cdRemaining)}** or choose a different work.`
+      reason: `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown! Try again in **${formatDurationShort(cdRemaining)}** or choose another work.`
     };
   }
 
-  // If choosing the same work again, put that work on a 1d cooldown
   if (prevJobId === job.id) {
     setJobOneDayCooldown(user, job.id, nowMs);
     user.selectedJobId = null;
     await saveUsers();
     return {
       ok: false,
-      reason: `⏳ You selected **${job.emoji} ${job.name}** again! **${job.name}** is now on a **1d** cooldown. Choose another work to continue.`
+      reason: `⏳ You chose **${job.emoji} ${job.name}** again! **${job.name}** is now on a **1d** cooldown. Choose a different work.`
     };
   }
 
@@ -374,8 +382,7 @@ async function promptJobSelection(message, user, userId, currentPrefix, nowMs, s
       const updatedContainer = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           toSmallCaps(`# ✅ Work Selected — ${chosen.emoji} ${chosen.name}\n\n`) +
-          `• Random Work Salary: **$${chosen.minSalary.toLocaleString()}–$${chosen.maxSalary.toLocaleString()}** (\`${currentPrefix}work\`)\n` +
-          `• Workshift Salary: **$${chosen.shiftSalary.toLocaleString()}** (\`${currentPrefix}working\` / \`${currentPrefix}workshift\`)`
+          `Use \`${currentPrefix}work\` to work, \`${currentPrefix}working\` to work every 2m, or \`${currentPrefix}workshift\` to shift.`
         )
       );
       await promptMsg.edit({ components: [updatedContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -385,107 +392,6 @@ async function promptJobSelection(message, user, userId, currentPrefix, nowMs, s
   collector.on('end', async () => {
     await promptMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   });
-}
-
-async function handleShiftCommand(commandName, args, message, user, userId, currentPrefix, nowMs, saveUsers, trackPeakPoints) {
-  if (args.length > 0) {
-    const requestedJob = findJobByQuery(args.join(' '), nowMs);
-    if (!requestedJob) {
-      await promptJobSelection(
-        message,
-        user,
-        userId,
-        currentPrefix,
-        nowMs,
-        saveUsers,
-        `❌ Unknown or expired work "${args.join(' ')}". Select your work below:`
-      );
-      return true;
-    }
-    const applied = await applyChosenWork(user, requestedJob, nowMs, saveUsers);
-    if (!applied.ok) {
-      return message.reply(toSmallCaps(applied.reason));
-    }
-  }
-
-  let job = getSelectedJob(user, nowMs);
-  if (!job && user.activeShift) {
-    job = getAvailableJobs(nowMs).find(j => j.id === user.activeShift.jobId) || null;
-  }
-
-  if (!job) {
-    await promptJobSelection(
-      message,
-      user,
-      userId,
-      currentPrefix,
-      nowMs,
-      saveUsers,
-      `⚠️ Choose which work you are shifting for using \`${currentPrefix}${commandName}\`:`
-    );
-    return true;
-  }
-
-  const cdRemaining = getJobCooldownRemaining(user, job.id, nowMs);
-  if (cdRemaining > 0 && !user.activeShift) {
-    await promptJobSelection(
-      message,
-      user,
-      userId,
-      currentPrefix,
-      nowMs,
-      saveUsers,
-      `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown (${formatDurationShort(cdRemaining)} left). Pick another work:`
-    );
-    return true;
-  }
-
-  if (!user.activeShift) {
-    user.activeShift = {
-      startedAt: nowMs,
-      endsAt: nowMs + SHIFT_DURATION_MS,
-      jobId: job.id,
-      roleName: job.name,
-      shiftSalary: job.shiftSalary
-    };
-    await saveUsers();
-    return message.reply(toSmallCaps(
-      `⏱️ **Shifting Started (${job.emoji} ${job.name})** via \`${currentPrefix}${commandName}\`!\n` +
-      `💵 Shift Salary: **$${job.shiftSalary.toLocaleString()}** | Duration: **15m**\n` +
-      `Run \`${currentPrefix}working\` or \`${currentPrefix}workshift\` when finished to claim.`
-    ));
-  }
-
-  const remaining = user.activeShift.endsAt - nowMs;
-  if (remaining > 0) {
-    return message.reply(toSmallCaps(
-      `⏳ **Shifting in Progress (${user.activeShift.roleName || job.name})**\n` +
-      `⏱️ Time Remaining: **${formatDurationShort(remaining)}** | 💵 Shift Salary: **$${Number(user.activeShift.shiftSalary || job.shiftSalary).toLocaleString()}**`
-    ));
-  }
-
-  const shiftJobId = user.activeShift.jobId || job.id;
-  const shiftRoleName = user.activeShift.roleName || job.name;
-  const payoutCash = Number(user.activeShift.shiftSalary) || job.shiftSalary;
-  const payoutExp = addExpAndLevelUp(user, null, 220);
-
-  user.activeShift = null;
-  user.workCount += 1;
-  user.cash += payoutCash;
-  if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
-  updateUserRank(user);
-  await evaluateAndSyncUserBadges(userId, user, message.guild);
-  await saveUsers();
-
-  const shiftJobObj = getAvailableJobs(nowMs).find(j => j.id === shiftJobId);
-  const jobBadge = shiftJobObj ? `${shiftJobObj.emoji} ${shiftJobObj.name}` : shiftRoleName;
-
-  return message.reply(toSmallCaps(
-    `✅ **Workshift Complete — ${jobBadge}!**\n` +
-    `💵 Shift Salary Earned: **+$${payoutCash.toLocaleString()}**\n` +
-    `✨ EXP Gained: **+${payoutExp}**\n` +
-    `🏦 Cash Balance: **$${user.cash.toLocaleString()}**`
-  ));
 }
 
 async function execute({
@@ -525,17 +431,14 @@ async function execute({
       if (!applied.ok) {
         return message.reply(toSmallCaps(applied.reason));
       }
-      return message.reply(toSmallCaps(
-        `✅ Chosen work: ${chosen.emoji} **${chosen.name}**!\n` +
-        `💵 Work Salary: **$${chosen.minSalary.toLocaleString()}–$${chosen.maxSalary.toLocaleString()}** | ⏱️ Shift Salary: **$${chosen.shiftSalary.toLocaleString()}**`
-      ));
+      return message.reply(toSmallCaps(`✅ Chosen work: ${chosen.emoji} **${chosen.name}**!`));
     }
 
     await promptJobSelection(message, user, userId, currentPrefix, nowMs, saveUsers);
     return true;
   }
 
-  // 1. WORK (Choose work if needed & pay randomized salary)
+  // 1. WORK: Automatically shows if user already has a work or opens the choose-work UI if not
   if (command === 'work') {
     if (args.length > 0) {
       const requestedJob = findJobByQuery(args.join(' '), nowMs);
@@ -547,7 +450,7 @@ async function execute({
           currentPrefix,
           nowMs,
           saveUsers,
-          `❌ Unknown or expired work "${args.join(' ')}". Select your work below:`
+          `❌ Unknown or expired work "${args.join(' ')}". Choose your work below:`
         );
         return true;
       }
@@ -566,7 +469,7 @@ async function execute({
         currentPrefix,
         nowMs,
         saveUsers,
-        '⚠️ Choose your work from the list below:'
+        '⚠️ You don’t have a work yet! Choose your work below:'
       );
       return true;
     }
@@ -580,12 +483,12 @@ async function execute({
         currentPrefix,
         nowMs,
         saveUsers,
-        `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown (${formatDurationShort(cdRemaining)} left). Pick another work:`
+        `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown (${formatDurationShort(cdRemaining)} left). Choose another work:`
       );
       return true;
     }
 
-    const earnedCash = Math.floor(Math.random() * (job.maxSalary - job.minSalary + 1)) + job.minSalary;
+    const earnedCash = rollJobSalary(job);
     const earnedExp = addExpAndLevelUp(user, null, 120);
 
     user.workCount += 1;
@@ -598,14 +501,15 @@ async function execute({
     const changeJobRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('economy_switch_job_btn')
-        .setLabel(toSmallCaps('Choose / Change Work'))
+        .setLabel(toSmallCaps('Change Work'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const container = new ContainerBuilder().setAccentColor(0x2ecc71).addTextDisplayComponents(
       new TextDisplayBuilder().setContent(toSmallCaps(
         `# 💼 WORK COMPLETE — ${job.name}\n\n` +
-        `💵 Earned Cash: **+$${earnedCash.toLocaleString()}** *(Range: $${job.minSalary.toLocaleString()}–$${job.maxSalary.toLocaleString()})*\n` +
+        `📌 Chosen Work: **${job.emoji} ${job.name}**\n` +
+        `💵 Earned Cash: **+$${earnedCash.toLocaleString()}**\n` +
         `✨ EXP Gained: **+${earnedExp}**\n` +
         `🏦 Cash Balance: **$${user.cash.toLocaleString()}** | 🎲 Dice: **${formatDiceDisplay(user.dice)}**`
       ))
@@ -620,7 +524,7 @@ async function execute({
     btnCollector.on('collect', async i => {
       if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
       if (i.user.id !== userId) {
-        return i.followUp({ content: toSmallCaps('❌ Only the command sender can choose/change work here!'), ephemeral: true });
+        return i.followUp({ content: toSmallCaps('❌ Only the command sender can change their work here!'), ephemeral: true });
       }
       if (i.customId === 'economy_switch_job_btn') {
         await workMsg.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -633,9 +537,202 @@ async function execute({
     return true;
   }
 
-  // 2. WORKING & 3. WORKSHIFT (Both handle shifting for a work + 1d cooldown if choosing the same work again)
-  if (command === 'working' || command === 'workshift') {
-    return handleShiftCommand(command, args, message, user, userId, currentPrefix, nowMs, saveUsers, trackPeakPoints);
+  // 2. WORKING: Active working every 2 minutes (does NOT shift the work)
+  if (command === 'working') {
+    const subArg = (args[0] || '').toLowerCase();
+
+    if (subArg === 'stop' || subArg === 'off') {
+      if (!user.workingLoop) {
+        return message.reply(toSmallCaps(`ℹ️ You are not currently working on a 2m loop.`));
+      }
+      const loopJob = getAvailableJobs(nowMs).find(j => j.id === user.workingLoop.jobId) || getSelectedJob(user, nowMs);
+      const elapsed = Math.max(0, nowMs - Number(user.workingLoop.lastTickAt || user.workingLoop.startedAt || nowMs));
+      const completedCycles = Math.floor(elapsed / WORKING_INTERVAL_MS);
+      let totalPaid = 0;
+
+      if (completedCycles > 0 && loopJob) {
+        for (let c = 0; c < completedCycles; c++) {
+          totalPaid += rollJobSalary(loopJob);
+        }
+        user.cash += totalPaid;
+        user.workCount += completedCycles;
+      }
+
+      user.workingLoop = null;
+      if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
+      updateUserRank(user);
+      await saveUsers();
+
+      return message.reply(toSmallCaps(
+        `🛑 **Stopped Working**\n` +
+        `💵 Claimed Cycles (${completedCycles}x 2m): **+$${totalPaid.toLocaleString()}**\n` +
+        `🏦 Cash Balance: **$${user.cash.toLocaleString()}**`
+      ));
+    }
+
+    const job = getSelectedJob(user, nowMs);
+    if (!job) {
+      await promptJobSelection(
+        message,
+        user,
+        userId,
+        currentPrefix,
+        nowMs,
+        saveUsers,
+        '⚠️ Choose your work first before running `-working`:'
+      );
+      return true;
+    }
+
+    if (!user.workingLoop) {
+      user.workingLoop = {
+        jobId: job.id,
+        startedAt: nowMs,
+        lastTickAt: nowMs
+      };
+      await saveUsers();
+      return message.reply(toSmallCaps(
+        `🔨 **Working Started — ${job.emoji} ${job.name}**\n` +
+        `⏱️ Earning every **2m** (Next payout in **2m 0s**). Run \`${currentPrefix}working\` again to claim or \`${currentPrefix}working stop\` to stop.`
+      ));
+    }
+
+    const loopJob = getAvailableJobs(nowMs).find(j => j.id === user.workingLoop.jobId) || job;
+    const lastTick = Number(user.workingLoop.lastTickAt || user.workingLoop.startedAt || nowMs);
+    const elapsedSinceTick = Math.max(0, nowMs - lastTick);
+    const cyclesReady = Math.floor(elapsedSinceTick / WORKING_INTERVAL_MS);
+
+    if (cyclesReady <= 0) {
+      const nextPayoutIn = WORKING_INTERVAL_MS - elapsedSinceTick;
+      return message.reply(toSmallCaps(
+        `⏳ **Working (${loopJob.emoji} ${loopJob.name})**\n` +
+        `⏱️ Next 2m payout in: **${formatDurationShort(nextPayoutIn)}**`
+      ));
+    }
+
+    let earnedCash = 0;
+    for (let i = 0; i < cyclesReady; i++) {
+      earnedCash += rollJobSalary(loopJob);
+    }
+    const earnedExp = addExpAndLevelUp(user, null, 80 * cyclesReady);
+
+    user.workingLoop.lastTickAt = lastTick + cyclesReady * WORKING_INTERVAL_MS;
+    user.workCount += cyclesReady;
+    user.cash += earnedCash;
+    if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
+    updateUserRank(user);
+    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await saveUsers();
+
+    const nextIn = WORKING_INTERVAL_MS - (nowMs - user.workingLoop.lastTickAt);
+    return message.reply(toSmallCaps(
+      `🔨 **Working Payout (${loopJob.emoji} ${loopJob.name}) — ${cyclesReady}x 2m**\n` +
+      `💵 Earned Cash: **+$${earnedCash.toLocaleString()}**\n` +
+      `✨ EXP Gained: **+${earnedExp}**\n` +
+      `⏱️ Next 2m payout in: **${formatDurationShort(nextIn)}** | 🏦 Cash: **$${user.cash.toLocaleString()}**`
+    ));
+  }
+
+  // 3. WORKSHIFT: Shifting the work you choose (+ 1d cooldown if choosing that same work again)
+  if (command === 'workshift') {
+    if (args.length > 0) {
+      const requestedJob = findJobByQuery(args.join(' '), nowMs);
+      if (!requestedJob) {
+        await promptJobSelection(
+          message,
+          user,
+          userId,
+          currentPrefix,
+          nowMs,
+          saveUsers,
+          `❌ Unknown or expired work "${args.join(' ')}". Choose your work below:`
+        );
+        return true;
+      }
+      const applied = await applyChosenWork(user, requestedJob, nowMs, saveUsers);
+      if (!applied.ok) {
+        return message.reply(toSmallCaps(applied.reason));
+      }
+    }
+
+    let job = getSelectedJob(user, nowMs);
+    if (!job && user.activeShift) {
+      job = getAvailableJobs(nowMs).find(j => j.id === user.activeShift.jobId) || null;
+    }
+
+    if (!job) {
+      await promptJobSelection(
+        message,
+        user,
+        userId,
+        currentPrefix,
+        nowMs,
+        saveUsers,
+        '⚠️ Choose the work you want to shift for:'
+      );
+      return true;
+    }
+
+    const cdRemaining = getJobCooldownRemaining(user, job.id, nowMs);
+    if (cdRemaining > 0 && !user.activeShift) {
+      await promptJobSelection(
+        message,
+        user,
+        userId,
+        currentPrefix,
+        nowMs,
+        saveUsers,
+        `⏳ **${job.emoji} ${job.name}** is on a **1d** cooldown (${formatDurationShort(cdRemaining)} left). Choose another work:`
+      );
+      return true;
+    }
+
+    if (!user.activeShift) {
+      user.activeShift = {
+        startedAt: nowMs,
+        endsAt: nowMs + SHIFT_DURATION_MS,
+        jobId: job.id,
+        roleName: job.name,
+        shiftSalary: job.shiftSalary
+      };
+      await saveUsers();
+      return message.reply(toSmallCaps(
+        `⏱️ **Workshift Started (${job.emoji} ${job.name})**\n` +
+        `💵 Shift Salary: **$${job.shiftSalary.toLocaleString()}** | Duration: **15m**\n` +
+        `Run \`${currentPrefix}workshift\` again when finished to claim.`
+      ));
+    }
+
+    const remaining = user.activeShift.endsAt - nowMs;
+    if (remaining > 0) {
+      return message.reply(toSmallCaps(
+        `⏳ **Workshift in Progress (${user.activeShift.roleName || job.name})**\n` +
+        `⏱️ Time Remaining: **${formatDurationShort(remaining)}** | 💵 Shift Salary: **$${Number(user.activeShift.shiftSalary || job.shiftSalary).toLocaleString()}**`
+      ));
+    }
+
+    const shiftJobId = user.activeShift.jobId || job.id;
+    const shiftRoleName = user.activeShift.roleName || job.name;
+    const payoutCash = Number(user.activeShift.shiftSalary) || job.shiftSalary;
+    const payoutExp = addExpAndLevelUp(user, null, 220);
+
+    user.activeShift = null;
+    user.workCount += 1;
+    user.cash += payoutCash;
+    if (typeof trackPeakPoints === 'function') trackPeakPoints(user);
+    updateUserRank(user);
+    await evaluateAndSyncUserBadges(userId, user, message.guild);
+    await saveUsers();
+
+    const shiftJobObj = getAvailableJobs(nowMs).find(j => j.id === shiftJobId);
+    const jobBadge = shiftJobObj ? `${shiftJobObj.emoji} ${shiftJobObj.name}` : shiftRoleName;
+
+    return message.reply(toSmallCaps(
+      `✅ **Workshift Complete — ${jobBadge}!**\n` +
+      `💵 Shift Salary Earned: **+$${payoutCash.toLocaleString()}**\n` +
+      `✨ EXP Gained: **+${payoutExp}**\n` +
+      `🏦 Cash Balance: **$${user.cash.toLocaleString()}**`
+    ));
   }
 
   // 4. BALANCE
