@@ -1486,6 +1486,7 @@ client.on('messageCreate', async message => {
           `📶 Latency / Ping: ${ping}ms\n` +
           `⏱️ Uptime: ${hours}h ${minutes}m ${seconds}s\n` +
           `🌐 Connected Servers: ${client.guilds.cache.size} Servers\n` +
+          `   Cached users: ${client.users.cache.size} users cached \n`+
           `💻 Runtime: Node.js (Discord.js v14 - Components V2)\n` +
           `⚙️ Status: 🟢 Online & Operational (MongoDB Connected)`
         ))
